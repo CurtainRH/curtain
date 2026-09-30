@@ -28,7 +28,7 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1
       - run: bun install --frozen-lockfile
       - run: bun run check
-      - run: bun run test:unit
+      - run: bun run test # unit + e2e (e2e spin up anvil and deploy with Deploy.s.sol)
       - name: forge test
         working-directory: backend/contracts
         run: forge test
@@ -45,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: image
-        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}-api" >> "$GITHUB_OUTPUT"
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}-operator" >> "$GITHUB_OUTPUT"
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
