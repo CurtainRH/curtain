@@ -1,19 +1,27 @@
-name: backend
+name: ci
 
 on:
   push:
     branches: [main]
-    paths: ["backend/**", ".github/workflows/backend.yml"]
   pull_request:
-    paths: ["backend/**", ".github/workflows/backend.yml"]
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    # CI runs on the public repo only (free Actions minutes). Later jobs chain off this one.
-    if: github.repository == 'CurtainRH/curtain'
+  frontend-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun x tsc --noEmit
+      - run: bun run build
+
+  backend-test:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -34,8 +42,8 @@ jobs:
         run: forge test
 
   build-push:
-    needs: test
-    if: github.event_name == 'push'
+    needs: [backend-test, frontend-test]
+    if: github.event_name == 'push' && github.repository == 'CurtainRH/curtain'
     runs-on: ubuntu-latest
     permissions:
       contents: read
