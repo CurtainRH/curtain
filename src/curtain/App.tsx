@@ -29,6 +29,8 @@ import {
 import { gsap } from "gsap";
 import Dashboard from "./Dashboard";
 import { ensureChain, errorMessage, provider } from "./integration";
+import { useAccount } from "wagmi";
+import { useConnectModal, useAccountModal } from "@rainbow-me/rainbowkit";
 import Legal from "./Legal";
 import VelvetCards from "./VelvetCards";
 import { TheatreEntrance, SceneStory, ActProgramme, Soundscape } from "./StageExperience";
@@ -56,7 +58,7 @@ export function Logo({ compact = false }: { compact?: boolean }) {
     <span className={`brand ${compact ? "compact" : ""}`}>
       <span className="brand-mark">
         <img
-          src="/__l5e/assets-v1/677f9849-19e8-4118-863a-a09648689d5c/curtain-logo-exact.png"
+          src="/curtain-logo-exact.png"
           width="448"
           height="571"
           alt={compact ? "Curtain" : ""}
@@ -164,16 +166,16 @@ function Modal({
             preload="metadata"
             src={
               modal.film === "technology"
-                ? "/__l5e/assets-v1/d16e55a0-0730-443b-9ccc-ef7c7f1eddc2/curtain-invitation-15s.mp4"
-                : "/__l5e/assets-v1/2424dcdf-58c9-41af-aedc-2e0ccf6f574c/overture-web.mp4"
+                ? "/curtain-invitation-15s.mp4"
+                : "/overture-web.mp4"
             }
           >
             <track
               kind="captions"
               src={
                 modal.film === "technology"
-                  ? "/__l5e/assets-v1/a58b4a39-f4d4-4887-98bd-54e2a7fcc2e3/invitation-en.vtt"
-                  : "/__l5e/assets-v1/f030b853-6e96-477e-ab98-9f27a854fed6/overture-en.vtt"
+                  ? "/invitation-en.vtt"
+                  : "/overture-en.vtt"
               }
               srcLang="en"
               label="English"
@@ -248,35 +250,38 @@ const menuItems = [
     title: "The overture",
     sub: "Discover Curtain",
     to: "/",
-    img: "/__l5e/assets-v1/5b32431e-fca2-47ce-bf64-34f653c8a1c6/theatre.png",
+    img: "/theatre.png",
   },
   {
     n: "II",
     title: "Your private box",
     sub: "Enter the application",
     to: "/app",
-    img: "/__l5e/assets-v1/94329eb2-ae7d-463c-a6be-a490597a115f/private-stage-clean.png",
+    img: "/private-stage-clean.png",
   },
   {
     n: "III",
     title: "The protocol",
     sub: "Understand the mechanics",
     to: "/#protocol",
-    img: "/__l5e/assets-v1/71c0cc35-6678-4d57-aca2-eb69c3b54b47/opening-act-clean.png",
+    img: "/opening-act-clean.png",
   },
   {
     n: "IV",
     title: "The fine print",
     sub: "Terms & privacy",
     to: "/legal/terms",
-    img: "/__l5e/assets-v1/3a85e301-5839-4847-acd8-27a62c0db4ef/invitation-clean.png",
+    img: "/invitation-clean.png",
   },
 ];
 export default function App() {
+  const { address: wagmiAddress, isConnected } = useAccount();
+  const { openConnectModal } = useConnectModal();
+  const { openAccountModal } = useAccountModal();
+  const wallet = isConnected && wagmiAddress ? wagmiAddress : "";
   const [path, setPath] = useState(location.pathname);
   const [menu, setMenu] = useState(false);
   const [modal, setModal] = useState<ModalState>(null);
-  const [wallet, setWallet] = useState("");
   const [error, setError] = useState("");
   const [motion, setMotion] = useState(() => {
     try {
@@ -431,15 +436,13 @@ export default function App() {
     elements.forEach((e) => observer.observe(e));
     return () => observer.disconnect();
   }, [path]);
-  useEffect(() => {
-    const walletProvider = provider();
-    if (!walletProvider?.on) return;
-    const change = (accounts: string[]) => setWallet(accounts[0] || "");
-    walletProvider.on("accountsChanged", change);
-    return () => walletProvider.removeListener?.("accountsChanged", change);
-  }, []);
   const connectWallet = async () => {
     setError("");
+    if (openConnectModal) {
+      setModal(null);
+      openConnectModal();
+      return;
+    }
     const walletProvider = provider();
     if (!walletProvider) {
       setError(
@@ -451,7 +454,6 @@ export default function App() {
       const accounts = await walletProvider.request({ method: "eth_requestAccounts" });
       if (accounts?.[0]) {
         await ensureChain();
-        setWallet(accounts[0]);
         setModal(null);
       }
     } catch (e) {
@@ -466,7 +468,13 @@ export default function App() {
         wallet,
         connect: () => {
           setError("");
-          setModal({ kind: "wallet" });
+          if (!isConnected && openConnectModal) {
+            openConnectModal();
+          } else if (isConnected && openAccountModal) {
+            openAccountModal();
+          } else {
+            setModal({ kind: "wallet" });
+          }
         },
       }}
     >

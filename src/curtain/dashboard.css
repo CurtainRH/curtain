@@ -18,7 +18,7 @@
   padding: 29px 18px 24px;
   background:
     linear-gradient(#101d2eeb, #091323f5),
-    url("/__l5e/assets-v1/c3dddae0-e159-4368-b552-19d6ce124194/velvet-clean.png") center/auto 100%;
+    url("/velvet-clean.png") center/auto 100%;
   display: flex;
   flex-direction: column;
   position: sticky;
@@ -374,7 +374,7 @@
   overflow: hidden;
   background:
     linear-gradient(110deg, #111d30ed, #0a162dd9),
-    url("/__l5e/assets-v1/5b32431e-fca2-47ce-bf64-34f653c8a1c6/theatre.png") center/cover;
+    url("/theatre.png") center/cover;
 }
 .next-act:before {
   content: "";
@@ -1164,7 +1164,7 @@
   padding: 35px 25px;
   background:
     linear-gradient(#08152799, #09132390),
-    url("/__l5e/assets-v1/5b32431e-fca2-47ce-bf64-34f653c8a1c6/theatre.png") center/cover;
+    url("/theatre.png") center/cover;
   border: 1px solid var(--line);
   text-align: center;
 }
@@ -1332,7 +1332,7 @@
   margin-bottom: 25px;
   background:
     linear-gradient(100deg, #13243dd9, #091525d9),
-    url("/__l5e/assets-v1/5b32431e-fca2-47ce-bf64-34f653c8a1c6/theatre.png") center/cover;
+    url("/theatre.png") center/cover;
 }
 .proof-banner > svg {
   color: var(--gold);
