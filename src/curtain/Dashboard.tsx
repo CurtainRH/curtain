@@ -1,16 +1,20 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowUpRight,
-  Coins,
+  Check,
+  ChevronDown,
   ChevronRight,
+  Coins,
   Download,
   Info,
   LayoutDashboard,
   Menu,
   RefreshCw,
   Repeat2,
+  Search,
   Wallet,
+  X,
 } from "lucide-react";
 import { formatUnits, isAddress, parseUnits, type Address } from "viem";
 import {
@@ -83,6 +87,25 @@ const statusCopy = {
   refunded: "Refunded to your wallet",
   challenged: "This swap was already delivered; the refund was declined.",
 };
+
+export const TOKEN_CATEGORIES = [
+  { id: "all", label: "All Assets" },
+  { id: "tech", label: "Tech & AI" },
+  { id: "etf", label: "ETFs & Commodities" },
+  { id: "crypto", label: "Crypto & FinTech" },
+  { id: "retail", label: "Meme & Retail" },
+  { id: "bluechip", label: "High-Cap Bluechips" },
+] as const;
+
+export const CATEGORY_MAP: Record<string, { label: string; badgeClass: string }> = {
+  all: { label: "All Assets", badgeClass: "badge-all" },
+  tech: { label: "Tech & AI", badgeClass: "badge-tech" },
+  etf: { label: "ETFs & Commodities", badgeClass: "badge-etf" },
+  crypto: { label: "Crypto & FinTech", badgeClass: "badge-crypto" },
+  retail: { label: "Meme & Retail", badgeClass: "badge-retail" },
+  bluechip: { label: "High-Cap Bluechips", badgeClass: "badge-bluechip" },
+};
+
 export default function Dashboard({ path }: { path: string }) {
   const { wallet, connect, navigate } = useNav();
   const app = useCurtain(wallet);
@@ -110,6 +133,33 @@ export default function Dashboard({ path }: { path: string }) {
   const input = app.tokens.find((t) => t.symbol === from);
   const output = app.tokens.find((t) => t.symbol === to);
   const delaySeconds = delayed ? Number(delay === "custom" ? customDelay : delay) : 0;
+
+  const [pickingTarget, setPickingTarget] = useState<"from" | "to" | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: app.tokens.length };
+    for (const t of app.tokens) {
+      const cat = t.category || "bluechip";
+      counts[cat] = (counts[cat] || 0) + 1;
+    }
+    return counts;
+  }, [app.tokens]);
+
+  const filteredTokens = useMemo(() => {
+    return app.tokens.filter((t) => {
+      const matchesCategory =
+        selectedCategory === "all" || (t.category || "bluechip") === selectedCategory;
+      const q = searchQuery.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        t.symbol.toLowerCase().includes(q) ||
+        t.name.toLowerCase().includes(q) ||
+        (t.category && (CATEGORY_MAP[t.category]?.label || "").toLowerCase().includes(q));
+      return matchesCategory && matchesSearch;
+    });
+  }, [app.tokens, selectedCategory, searchQuery]);
   useEffect(() => {
     setRecipient(wallet);
     setLatest(undefined);
@@ -480,18 +530,155 @@ export default function Dashboard({ path }: { path: string }) {
       </div>
     );
   }
-  function picker(id: string, value: string, set: (v: string) => void) {
+  function picker(id: string, value: string, target: "from" | "to") {
     const token = app.tokens.find((t) => t.symbol === value);
+    const cat = token?.category ? CATEGORY_MAP[token.category] : undefined;
     return (
-      <div className="asset-input">
-        {token && <Token token={token} />}
-        <select id={id} value={value} onChange={(e) => set(e.target.value)}>
-          {app.tokens.map((t) => (
-            <option key={t.symbol} value={t.symbol}>
-              {t.symbol} · {balanceText(t)}
-            </option>
-          ))}
-        </select>
+      <button
+        id={id}
+        type="button"
+        className="asset-select-trigger"
+        onClick={() => {
+          setSearchQuery("");
+          setSelectedCategory("all");
+          setPickingTarget(target);
+        }}
+        aria-haspopup="dialog"
+      >
+        <div className="asset-trigger-left">
+          {token && <Token token={token} />}
+          <div className="asset-trigger-info">
+            <div className="asset-trigger-title">
+              <span className="asset-trigger-symbol">{token?.symbol || value}</span>
+              {cat && <span className={`category-tag ${cat.badgeClass}`}>{cat.label}</span>}
+            </div>
+            <span className="asset-trigger-name">{token?.name || "Select token"}</span>
+          </div>
+        </div>
+        <div className="asset-trigger-right">
+          <span className="asset-trigger-balance">{token ? balanceText(token) : "—"}</span>
+          <ChevronDown size={16} className="asset-trigger-chevron" />
+        </div>
+      </button>
+    );
+  }
+
+  function tokenModal() {
+    if (!pickingTarget) return null;
+    const currentVal = pickingTarget === "from" ? from : to;
+    return (
+      <div
+        className="token-modal-backdrop"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setPickingTarget(null);
+        }}
+      >
+        <div className="token-modal-card" role="dialog" aria-modal="true" aria-label="Select Token">
+          <div className="token-modal-header">
+            <div className="token-modal-title">
+              <h3>Select {pickingTarget === "from" ? "deposit" : "recipient"} asset</h3>
+              <p className="token-modal-subtitle">
+                {app.tokens.length} verified assets on Robinhood Chain
+              </p>
+            </div>
+            <button
+              className="token-modal-close"
+              type="button"
+              onClick={() => setPickingTarget(null)}
+              aria-label="Close modal"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="token-modal-search">
+            <Search size={16} className="token-modal-search-icon" />
+            <input
+              type="text"
+              autoFocus
+              placeholder="Search by ticker, company, or category…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setPickingTarget(null);
+              }}
+            />
+            {searchQuery && (
+              <button
+                className="token-modal-search-clear"
+                type="button"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear search"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          <div className="token-category-pills">
+            {TOKEN_CATEGORIES.map((cat) => {
+              const count = categoryCounts[cat.id] ?? 0;
+              const isActive = selectedCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  className={`token-category-pill ${isActive ? "active" : ""}`}
+                  onClick={() => setSelectedCategory(cat.id)}
+                  aria-pressed={isActive}
+                >
+                  <span>{cat.label}</span>
+                  <span className="token-category-count">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="token-list-scroll">
+            {filteredTokens.length > 0 ? (
+              filteredTokens.map((t) => {
+                const isSelected = t.symbol === currentVal;
+                const catInfo = CATEGORY_MAP[t.category || "bluechip"];
+                return (
+                  <button
+                    key={t.symbol}
+                    type="button"
+                    className={`token-list-row ${isSelected ? "selected" : ""}`}
+                    onClick={() => {
+                      if (pickingTarget === "from") setFrom(t.symbol);
+                      else setTo(t.symbol);
+                      setPickingTarget(null);
+                    }}
+                  >
+                    <div className="token-list-left">
+                      <Token token={t} />
+                      <div className="token-list-names">
+                        <div className="token-list-top">
+                          <span className="token-list-symbol">{t.symbol}</span>
+                          {catInfo && (
+                            <span className={`category-tag ${catInfo.badgeClass}`}>
+                              {catInfo.label}
+                            </span>
+                          )}
+                        </div>
+                        <span className="token-list-name">{t.name}</span>
+                      </div>
+                    </div>
+                    <div className="token-list-right">
+                      <span className="token-list-balance">{balanceText(t)}</span>
+                      {isSelected && <Check size={16} className="token-list-check" />}
+                    </div>
+                  </button>
+                );
+              })
+            ) : (
+              <div className="token-modal-empty">
+                <p>No assets found matching "{searchQuery}"</p>
+                <small>Try searching another ticker or choosing another category.</small>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     );
   }
@@ -759,7 +946,7 @@ export default function Dashboard({ path }: { path: string }) {
                 <label className="field-label" htmlFor="swap-from">
                   From
                 </label>
-                {picker("swap-from", from, setFrom)}
+                {picker("swap-from", from, "from")}
                 <label className="field-label" htmlFor="swap-amount">
                   Amount
                 </label>
@@ -783,10 +970,34 @@ export default function Dashboard({ path }: { path: string }) {
                     Max
                   </button>
                 </div>
-                <label className="field-label" htmlFor="swap-to">
-                  To
-                </label>
-                {picker("swap-to", to, setTo)}
+                <div className="field-header-row">
+                  <label className="field-label" htmlFor="swap-to">
+                    To (Recipient Asset)
+                  </label>
+                  <span className="field-hint">
+                    {app.tokens.length} verified assets
+                  </span>
+                </div>
+                <div className="quick-category-pills">
+                  {TOKEN_CATEGORIES.map((cat) => {
+                    const active = (output?.category || "bluechip") === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        className={`quick-pill ${active ? "active" : ""}`}
+                        onClick={() => {
+                          setSelectedCategory(cat.id);
+                          setSearchQuery("");
+                          setPickingTarget("to");
+                        }}
+                      >
+                        {cat.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {picker("swap-to", to, "to")}
                 <label className="field-label" htmlFor="swap-recipient">
                   Recipient
                 </label>
@@ -1052,6 +1263,7 @@ export default function Dashboard({ path }: { path: string }) {
           )}
         </div>
       </div>
+      {tokenModal()}
     </main>
   );
 }

@@ -34,6 +34,7 @@ export interface TokenData {
   logo: string;
   address: Address;
   decimals: number;
+  category?: "tech" | "etf" | "crypto" | "retail" | "bluechip";
   balance?: bigint;
 }
 export type SwapState = Awaited<ReturnType<ReturnType<typeof client>["status"]>>;
@@ -113,6 +114,7 @@ export function useCurtain(wallet: string) {
             logo: meta.logo,
             address: token,
             decimals: d,
+            category: meta.category,
             ...(balance !== undefined ? { balance } : {}),
           };
         }),
