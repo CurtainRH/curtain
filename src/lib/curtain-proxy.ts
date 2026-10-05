@@ -50,7 +50,7 @@ function getVaultAddress(env?: unknown): string {
     if (p["VITE_VAULT_ADDR"]) return p["VITE_VAULT_ADDR"];
     if (p["VAULT_ADDR"]) return p["VAULT_ADDR"];
   }
-  return "";
+  return "0x72D3820D386b887c93A09766dbecA9BC80e224C0";
 }
 
 export async function handleCurtainApiProxy(

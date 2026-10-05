@@ -37,12 +37,16 @@ export function address(value: unknown): Address | undefined {
     ? value
     : undefined;
 }
-export const staking = address(env["VITE_STAKING_ADDR"]);
+export const staking = address(
+  env["VITE_STAKING_ADDR"] || "0xA0328Ada6694e95D7e946dFD54611BA57ACCA8c8",
+);
 export const stakeToken = address(env["VITE_STAKE_TOKEN_ADDR"]);
-export const fallbackVault = address(env["VITE_VAULT_ADDR"]);
+export const fallbackVault = address(
+  env["VITE_VAULT_ADDR"] || "0x72D3820D386b887c93A09766dbecA9BC80e224C0",
+);
 export const stakingBlock = /^\d+$/.test(env["VITE_STAKING_FROM_BLOCK"] || "")
   ? BigInt(env["VITE_STAKING_FROM_BLOCK"])
-  : undefined;
+  : 80903085n;
 export function provider() {
   return (window as Window & { ethereum?: EIP1193Provider }).ethereum;
 }
