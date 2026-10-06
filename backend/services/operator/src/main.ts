@@ -28,6 +28,38 @@ const env = (k: string, d?: string) => {
   return v;
 };
 
+function parseTokens(raw: string): Record<string, Address> {
+  let s = raw.trim();
+  // Strip outer quotes if Render or shell wrapped the entire string
+  if ((s.startsWith("'") && s.endsWith("'")) || (s.startsWith('"') && s.endsWith('"'))) {
+    s = s.slice(1, -1).trim();
+  }
+  if (s.includes('\\"')) {
+    try {
+      const unescaped = JSON.parse(`"${s}"`);
+      if (typeof unescaped === "string") s = unescaped;
+    } catch {}
+  }
+  try {
+    return JSON.parse(s);
+  } catch (err) {
+    try {
+      const fixed = s
+        .replace(/([{,]\s*)([a-zA-Z0-9_$-]+)\s*:/g, '$1"$2":')
+        .replace(/'/g, '"');
+      return JSON.parse(fixed);
+    } catch {
+      try {
+        const fn = new Function(`return (${s})`);
+        const res = fn();
+        if (typeof res === "object" && res !== null) return res as Record<string, Address>;
+      } catch {}
+      console.error("Failed to parse TOKENS env. Raw value received:\n", raw);
+      throw err;
+    }
+  }
+}
+
 const chainId = Number(env("CHAIN_ID", "4663"));
 const chain = defineChain({
   id: chainId, name: "rhc", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
@@ -57,7 +89,7 @@ const operator = new Operator({
 const server = Bun.serve({
   port: Number(process.env["PORT"] ?? env("OPERATOR_PORT", "3100")),
   fetch: createApi({
-    db, operator, vault, tokens: JSON.parse(env("TOKENS")), keeperFeeBps,
+    db, operator, vault, tokens: parseTokens(env("TOKENS")), keeperFeeBps,
     minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
   }),
 });

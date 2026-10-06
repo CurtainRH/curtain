@@ -25,7 +25,7 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1
       - run: bun install --frozen-lockfile
       - run: bun run check
-      - run: bun run test # unit + e2e (e2e spin up anvil and deploy with Deploy.s.sol)
+      - run: bun run test:unit
       - name: forge test
         working-directory: backend/contracts
         run: forge test
