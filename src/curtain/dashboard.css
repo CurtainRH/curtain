@@ -2341,3 +2341,30 @@
 .v2-privacy-score li.done {
   color: var(--gold);
 }
+
+/* Fresh wallet helper */
+.v2-fresh-wallet {
+  margin: 8px 0 12px;
+  padding: 12px;
+  border: 1px solid #d2ae6f20;
+  background: #d2ae6f07;
+}
+.v2-fresh-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  margin-top: 8px;
+}
+.v2-check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.v2-check input {
+  width: auto;
+  margin-top: 2px;
+}

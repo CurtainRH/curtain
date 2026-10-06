@@ -41,6 +41,7 @@ import {
 import { Logo, RouteLink, Socials, useNav } from "./App";
 import { downloadFile } from "./domain";
 import { useFeatures } from "./features";
+import FreshWallet from "./FreshWallet";
 import PrivacyScore from "./PrivacyScore";
 import StealthReceive from "./StealthReceive";
 import { useWorkspaceTools } from "./useWorkspaceTools";
@@ -147,6 +148,12 @@ export default function Dashboard({ path }: { path: string }) {
   const [to, setTo] = useState("NVDA");
   const [amount, setAmount] = useState("");
   const [recipient, setRecipient] = useState(wallet);
+  // #9: a wallet created here can't be used until the user confirms they saved its file.
+  const [freshWallet, setFreshWallet] = useState<{ address: Address; saved: boolean }>();
+  const freshUnsaved =
+    !!freshWallet &&
+    !freshWallet.saved &&
+    recipient.trim().toLowerCase() === freshWallet.address.toLowerCase();
   // Stealth payouts: shown only when the server flag (FEATURE_STEALTH_PAYOUTS) and the operator
   // both have them on.
   const stealthAvailable = features.stealthPayouts && !!app.stealth;
@@ -418,6 +425,9 @@ export default function Dashboard({ path }: { path: string }) {
         setMessage(splitProblem);
         return;
       }
+    } else if (freshUnsaved && !useStealth) {
+      setMessage("Confirm you've saved the fresh wallet's file and password first.");
+      return;
     } else if (useStealth) {
       if (!stealthMeta) {
         setMessage(stealthNote || "Enter the receiver's stealth meta-address.");
@@ -1447,6 +1457,12 @@ export default function Dashboard({ path }: { path: string }) {
                     <button className="text-button" onClick={() => setRecipient(wallet)}>
                       Use my wallet
                     </button>
+                    {features.freshWallet && (
+                      <FreshWallet
+                        onUse={(a) => setRecipient(a)}
+                        onSaved={(a, saved) => setFreshWallet({ address: a, saved })}
+                      />
+                    )}
                     <span className="field-help">
                       Sending to a fresh address gives you the most privacy.
                     </span>
@@ -1672,7 +1688,7 @@ export default function Dashboard({ path }: { path: string }) {
                     !quote?.available ||
                     quoting ||
                     app.offline ||
-                    (useSplit ? !!splitProblem : useStealth && !stealthMeta)
+                    (useSplit ? !!splitProblem : useStealth ? !stealthMeta : freshUnsaved)
                   }
                   onClick={() => void swap()}
                 >

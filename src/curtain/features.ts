@@ -10,6 +10,7 @@ const OFF: Features = {
   roundNudge: false,
   privacyScore: false,
   anonymitySet: false,
+  freshWallet: false,
 };
 
 let loaded: Promise<Features> | undefined;
