@@ -39,23 +39,24 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
 
   return async (req) => {
     const url = new URL(req.url);
+    const pathname = url.pathname.replace(/\/+/g, "/");
     try {
       if (req.method === "OPTIONS") {
         return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST", "access-control-allow-headers": "content-type" } });
       }
-      if (req.method === "GET" && url.pathname === "/health") return json({ status: "ok" });
+      if (req.method === "GET" && pathname === "/health") return json({ status: "ok" });
 
       // For an uptime monitor: 503 with the list of problems when something needs attention.
-      if (req.method === "GET" && url.pathname === "/status") {
+      if (req.method === "GET" && pathname === "/status") {
         const st = await cfg.operator.status(now(), { minBalanceWei: cfg.minBalanceWei });
         return json(st, st.ok ? 200 : 503);
       }
 
-      if (req.method === "GET" && url.pathname === "/config") {
+      if (req.method === "GET" && pathname === "/config") {
         return json({ vault: cfg.vault, tokens: cfg.tokens, keeperFeeBps: cfg.keeperFeeBps, maxDelaySeconds: MAX_DELAY_SECONDS });
       }
 
-      if (req.method === "GET" && url.pathname === "/quote") {
+      if (req.method === "GET" && pathname === "/quote") {
         const tokenIn = url.searchParams.get("tokenIn") ?? "";
         const tokenOut = url.searchParams.get("tokenOut") ?? "";
         const amountIn = url.searchParams.get("amountIn") ?? "";
@@ -68,7 +69,7 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         return json(await cfg.operator.quoteForUser(getAddress(tokenIn), getAddress(tokenOut), BigInt(amountIn), slippage));
       }
 
-      if (req.method === "POST" && url.pathname === "/intents") {
+      if (req.method === "POST" && pathname === "/intents") {
         const body = (await req.json()) as Record<string, unknown>;
         const intent = await createIntent(cfg.db, {
           tokenIn: String(body["tokenIn"]),
@@ -82,7 +83,7 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         return json({ id: intent.id, deadline: intent.deadline, salt: intent.salt, deadlineHash: intent.deadlineHash, vault: cfg.vault }, 201);
       }
 
-      const m = url.pathname.match(/^\/intents\/([0-9a-f]{32})$/);
+      const m = pathname.match(/^\/intents\/([0-9a-f]{32})$/);
       if (req.method === "GET" && m) {
         const rows = await cfg.db.query<Record<string, unknown>>(
           `SELECT i.status, i.deposit_id::text AS "depositId", i.amount_out::text AS "amountOut", s.tx_hash AS "payoutTx",
@@ -93,7 +94,7 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         return rows[0] ? json(rows[0]) : json({ error: "unknown intent" }, 404);
       }
 
-      if (req.method === "GET" && url.pathname === "/settlements/pending") {
+      if (req.method === "GET" && pathname === "/settlements/pending") {
         return json(await cfg.operator.pendingSettlements(now()));
       }
 

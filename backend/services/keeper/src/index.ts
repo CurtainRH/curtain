@@ -37,7 +37,8 @@ export class Keeper {
   constructor(private cfg: KeeperConfig) {}
 
   async pending(): Promise<PendingSettlement[]> {
-    const res = await (this.cfg.fetch ?? fetch)(`${this.cfg.operatorApi}/settlements/pending`);
+    const base = this.cfg.operatorApi.replace(/\/+$/, "");
+    const res = await (this.cfg.fetch ?? fetch)(`${base}/settlements/pending`);
     if (!res.ok) throw new Error(`operator API: HTTP ${res.status}`);
     return (await res.json()) as PendingSettlement[];
   }
