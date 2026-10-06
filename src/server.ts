@@ -3,6 +3,7 @@ import "./lib/error-capture";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { handleCurtainApiProxy, handleAssetProxy } from "./lib/curtain-proxy";
+import { handleFeatures } from "./lib/features";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -48,6 +49,9 @@ function isH3SwallowedErrorBody(body: string): boolean {
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      const featuresResponse = handleFeatures(request, env);
+      if (featuresResponse) return featuresResponse;
+
       const apiResponse = await handleCurtainApiProxy(request, env);
       if (apiResponse) return apiResponse;
 

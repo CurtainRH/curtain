@@ -8,13 +8,15 @@
   "types": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./abi": "./src/abi.ts"
+    "./abi": "./src/abi.ts",
+    "./stealth": "./src/stealth.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },
   "dependencies": {
+    "@noble/curves": "1.9.1",
     "viem": "^2.57.0"
   },
   "devDependencies": {

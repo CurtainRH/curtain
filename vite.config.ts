@@ -7,6 +7,7 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import type { Plugin, ProxyOptions } from "vite";
 import { handleCurtainApiProxy } from "./src/lib/curtain-proxy";
+import { handleFeatures } from "./src/lib/features";
 
 // Curtain media (images, films, fonts) is hosted by Lovable under /__l5e/. Lovable serves that
 // path itself; everywhere else (local dev, preview) proxy it to the published Lovable site.
@@ -23,6 +24,16 @@ function curtainApi(): Plugin {
     res: import("node:http").ServerResponse,
     next: (err?: unknown) => void,
   ) => {
+    if (req.url?.split("?")[0] === "/api/features") {
+      const response = handleFeatures(
+        new Request(new URL(req.url, "http://localhost")),
+        process.env,
+      )!;
+      res.statusCode = response.status;
+      response.headers.forEach((value, key) => res.setHeader(key, value));
+      res.end(await response.text());
+      return;
+    }
     if (!req.url?.startsWith("/api/curtain")) return next();
     try {
       const chunks: Buffer[] = [];

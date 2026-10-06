@@ -11,6 +11,11 @@
  *                   lands the whole settlement, so an unpaid deposit is always refundable in
  *                   its own token (audit H-01).
  * - `submitSettlements()` the operator's own keeper; anyone else can submit the same ones.
+ * - `processStealth()` for paid stealth payouts (FEATURE_STEALTH_PAYOUTS): announces each one
+ *                   on the ERC-5564 announcer (from the operator, so nothing links it to the
+ *                   depositor) and drops a little ETH on the stealth address so the receiver can
+ *                   move the tokens without funding it from a wallet that would link them. The
+ *                   drop is paid for by a small fee payout to the operator in the same settlement.
  *
  * Every intent state change is one database transaction together with the rows it touches.
  *
@@ -37,6 +42,24 @@ import type { Db } from "@curtain/db";
 import { hashPayouts, hashSwap, SETTLEMENT_TYPES, VAULT_ABI, type PayoutStruct, type SwapStruct } from "@curtain/sdk/abi";
 import type { Quote, Quoter, RouteBuilder } from "./routes";
 
+export const STEALTH_ANNOUNCER_ABI = parseAbi([
+  "function announce(uint256 schemeId, address stealthAddress, bytes ephemeralPubKey, bytes metadata)",
+  "event Announcement(uint256 indexed schemeId, address indexed stealthAddress, address indexed caller, bytes ephemeralPubKey, bytes metadata)",
+]);
+
+export interface StealthConfig {
+  /** ERC-5564 StealthAnnouncer. */
+  announcer: Address;
+  /** Wrapped ETH, used only to price the gas drop in the output token. */
+  weth: Address;
+  /** USDG: prices go WETH -> USDG -> output token (most pools pair with USDG). */
+  usdg?: Address;
+  /** ETH sent to each stealth address so its owner can pay gas (default 0.00002 ETH). */
+  gasDropWei: bigint;
+  /** The operator's own gas for the drop and the announcement (default 0.000005 ETH). */
+  overheadWei: bigint;
+}
+
 export interface OperatorConfig {
   db: Db;
   publicClient: PublicClient;
@@ -62,6 +85,8 @@ export interface OperatorConfig {
    * short reorg happened (default 200: Robinhood Chain makes several blocks a second, so a
    * small window would be only a few seconds). Every handler is idempotent. */
   rescanBlocks?: bigint;
+  /** Set only when FEATURE_STEALTH_PAYOUTS is on. */
+  stealth?: StealthConfig;
 }
 
 interface DueIntent {
@@ -75,6 +100,7 @@ interface DueIntent {
   deadline: string;
   deposit_id: string;
   secret: Hex;
+  stealth_fee: string | null;
 }
 
 export interface PendingSettlement {
@@ -92,8 +118,9 @@ interface Fees {
 
 interface Built {
   swap: SwapStruct;
+  /** In settlement order: each intent's payout, then its stealth fee payout if any. */
   payouts: PayoutStruct[];
-  rows: { intent: DueIntent; p: PayoutStruct }[];
+  rows: { intent: DueIntent; p: PayoutStruct; fee?: PayoutStruct }[];
   deadline: bigint;
   nonce: bigint;
   signature: Hex;
@@ -264,7 +291,7 @@ export class Operator {
     await db.transaction(async (tx) => {
       const due = await tx.query<DueIntent>(
         `SELECT id, token_in, token_out, deposited_amount::text, amount_in::text, min_out::text, recipient, deadline::text,
-                deposit_id::text, secret
+                deposit_id::text, secret, stealth_fee::text
          FROM intents WHERE status = 'deposited' AND pay_at <= $1 AND deadline > $2
          ORDER BY pay_at FOR UPDATE SKIP LOCKED`,
         [nowSec, nowSec + this.margin],
@@ -358,14 +385,24 @@ export class Operator {
     let paid = 0n;
     for (const i of intents) {
       const gross = (minOut * BigInt(i.deposited_amount)) / totalIn;
-      const protocolFee = (gross * feeBps) / BPS;
-      const keeperFee = (gross * keeperBps) / BPS;
+      // The stealth gas-drop fee comes off first; protocol and keeper fees apply to the rest,
+      // which is the recipient payout's own gross (the vault caps fees against that).
+      const stealthFee = stealthFeeOf(i);
+      const payoutGross = gross - stealthFee;
+      const protocolFee = (payoutGross * feeBps) / BPS;
+      const keeperFee = (payoutGross * keeperBps) / BPS;
       const p: PayoutStruct = {
-        recipient: getAddress(i.recipient), amount: gross - protocolFee - keeperFee, protocolFee, keeperFee,
+        recipient: getAddress(i.recipient), amount: payoutGross - protocolFee - keeperFee, protocolFee, keeperFee,
         tag: keccak256(encodeAbiParameters([{ type: "uint256" }, { type: "bytes32" }], [BigInt(i.deposit_id), i.secret])),
       };
       payouts.push(p);
-      rows.push({ intent: i, p });
+      // The gas-drop fee is its own payout to the operator, so the recipient's payout (and
+      // the refund-challenge tag) stay exactly as for a normal swap.
+      const fee: PayoutStruct | undefined = stealthFee > 0n
+        ? { recipient: this.account.address, amount: stealthFee, protocolFee: 0n, keeperFee: 0n, tag: stealthFeeTag(BigInt(i.deposit_id), i.secret) }
+        : undefined;
+      if (fee) payouts.push(fee);
+      rows.push(fee ? { intent: i, p, fee } : { intent: i, p });
       paid += gross;
     }
     const swap: SwapStruct = tokenIn === tokenOut
@@ -408,14 +445,18 @@ export class Operator {
       [b.nonce.toString(), b.swap.tokenIn, b.swap.tokenOut, b.swap.amountIn.toString(), b.swap.minOut.toString(), b.swap.router,
         b.swap.data, b.deadline.toString(), b.signature],
     );
-    for (const [position, { intent, p }] of b.rows.entries()) {
-      await tx.query(
-        `INSERT INTO payouts (settlement_id, position, intent_id, recipient, amount, protocol_fee, keeper_fee, tag)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [s!.id, position, intent.id, p.recipient, p.amount.toString(), p.protocolFee.toString(), p.keeperFee.toString(), p.tag],
-      );
+    // Positions follow the order of b.payouts (each payout, then its fee payout).
+    let position = 0;
+    for (const { intent, p, fee } of b.rows) {
+      for (const q of fee ? [p, fee] : [p]) {
+        await tx.query(
+          `INSERT INTO payouts (settlement_id, position, intent_id, recipient, amount, protocol_fee, keeper_fee, tag)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [s!.id, position++, intent.id, q.recipient, q.amount.toString(), q.protocolFee.toString(), q.keeperFee.toString(), q.tag],
+        );
+      }
       await tx.query("UPDATE intents SET status = 'settling', settlement_id = $2, amount_out = $3, updated_at = now() WHERE id = $1", [
-        intent.id, s!.id, (p.amount + p.protocolFee + p.keeperFee).toString(),
+        intent.id, s!.id, (p.amount + p.protocolFee + p.keeperFee + (fee?.amount ?? 0n)).toString(),
       ]);
     }
     return Number(s!.id);
@@ -427,7 +468,8 @@ export class Operator {
 
   /** What the recipient would receive from `minOut` split pro rata, after fees. */
   private netFor(i: DueIntent, minOut: bigint, totalIn: bigint, feeBps: bigint, keeperBps: bigint): bigint {
-    const gross = (minOut * BigInt(i.deposited_amount)) / totalIn;
+    const gross = (minOut * BigInt(i.deposited_amount)) / totalIn - stealthFeeOf(i);
+    if (gross <= 0n) return 0n;
     return gross - (gross * feeBps) / BPS - (gross * keeperBps) / BPS;
   }
 
@@ -483,15 +525,18 @@ export class Operator {
    * slippage tolerance the settlement will. `minOutSuggested` leaves a further `userSlippageBps`
    * (default 100 = 1%) for the price to move before the user's deposit is settled.
    */
-  async quoteForUser(tokenIn: Address, tokenOut: Address, amountIn: bigint, userSlippageBps = 100) {
+  async quoteForUser(tokenIn: Address, tokenOut: Address, amountIn: bigint, userSlippageBps = 100, stealthFee?: bigint) {
     const feeBps = BigInt(await this.feeBps());
     const keeperBps = BigInt(this.cfg.keeperFeeBps);
     const same = getAddress(tokenIn) === getAddress(tokenOut);
     const q: Quote = same ? { amountOut: amountIn } : await this.cfg.quote(getAddress(tokenIn), getAddress(tokenOut), amountIn);
-    const gross = same ? amountIn : (q.amountOut * (BPS - this.slippage)) / BPS;
-    const protocolFee = (gross * feeBps) / BPS;
-    const keeperFee = (gross * keeperBps) / BPS;
-    const expectedOut = gross - protocolFee - keeperFee;
+    const total = same ? amountIn : (q.amountOut * (BPS - this.slippage)) / BPS;
+    // Same order as build(): the stealth fee first, then protocol and keeper fees on the rest.
+    const gross = total - (stealthFee ?? 0n);
+    const positive = gross > 0n;
+    const protocolFee = positive ? (gross * feeBps) / BPS : 0n;
+    const keeperFee = positive ? (gross * keeperBps) / BPS : 0n;
+    const expectedOut = positive ? gross - protocolFee - keeperFee : 0n;
     return {
       amountIn: amountIn.toString(),
       marketOut: q.amountOut.toString(),
@@ -500,8 +545,106 @@ export class Operator {
       protocolFee: protocolFee.toString(),
       keeperFee: keeperFee.toString(),
       venue: same ? "none" : q.v4 ? `uniswap-v4 ${q.v4.key.fee / 10000}%` : q.fee !== undefined ? `uniswap-v3 ${q.fee / 10000}%` : "router",
-      available: q.amountOut > 0n,
+      // A stealth fee larger than the output means the amount is too small to deliver.
+      available: q.amountOut > 0n && expectedOut > 0n,
+      ...(stealthFee !== undefined ? { stealthFee: stealthFee.toString() } : {}),
     };
+  }
+
+  // ---------------------------------------------------------------- stealth payouts
+
+  get stealthEnabled(): boolean {
+    return !!this.cfg.stealth;
+  }
+
+  get stealthInfo() {
+    const st = this.cfg.stealth;
+    return st ? { enabled: true, schemeId: 1, announcer: st.announcer, gasDropWei: st.gasDropWei.toString() } : undefined;
+  }
+
+  private stealthFees = new Map<Address, { at: number; fee: bigint }>();
+
+  /**
+   * The gas-drop fee in `tokenOut` units: the ETH dropped plus the operator's own gas, priced
+   * WETH -> USDG -> tokenOut, plus 20% for price moves. Cached for 60 s so a quote and the
+   * intent made from it agree. null when stealth payouts are off or the token can't be priced.
+   */
+  async stealthFee(tokenOut: Address): Promise<bigint | null> {
+    const st = this.cfg.stealth;
+    if (!st) return null;
+    const token = getAddress(tokenOut);
+    const cached = this.stealthFees.get(token);
+    if (cached && Date.now() - cached.at < 60_000) return cached.fee;
+    const wei = st.gasDropWei + st.overheadWei;
+    let out: bigint;
+    if (st.usdg && token !== getAddress(st.usdg)) {
+      const usd = (await this.cfg.quote(st.weth, getAddress(st.usdg), wei)).amountOut;
+      out = usd > 0n ? (await this.cfg.quote(getAddress(st.usdg), token, usd)).amountOut : 0n;
+    } else {
+      out = (await this.cfg.quote(st.weth, token, wei)).amountOut;
+    }
+    if (out <= 0n) return null;
+    const fee = (out * 12n) / 10n;
+    this.stealthFees.set(token, { at: Date.now(), fee });
+    return fee;
+  }
+
+  /**
+   * For every paid stealth payout: announce it (ERC-5564) and drop gas on the stealth address.
+   * Idempotent across crashes: an announcement already on-chain is found by its indexed
+   * (schemeId, stealthAddress, caller) and recorded instead of re-sent; a stealth address that
+   * already holds ETH gets no second drop.
+   */
+  async processStealth(): Promise<number> {
+    const st = this.cfg.stealth;
+    if (!st) return 0;
+    const { db, publicClient } = this.cfg;
+    const rows = await db.query<{ id: string; recipient: Address; eph: Hex; tag: Hex; announce: string | null; drop: string | null; tx_hash: Hex }>(
+      `SELECT i.id, i.recipient, i.stealth_ephemeral_pub AS eph, i.stealth_view_tag AS tag,
+              i.stealth_announce_tx AS announce, i.stealth_drop_tx AS drop, s.tx_hash
+       FROM intents i JOIN settlements s ON s.id = i.settlement_id AND s.status = 'confirmed'
+       WHERE i.status IN ('paid', 'challenged') AND i.stealth_ephemeral_pub IS NOT NULL
+         AND (i.stealth_announce_tx IS NULL OR i.stealth_drop_tx IS NULL)
+       ORDER BY i.updated_at LIMIT 25`,
+    );
+    let done = 0;
+    for (const r of rows) {
+      const stealthAddress = getAddress(r.recipient);
+      try {
+        if (!r.announce) {
+          const { blockNumber } = await publicClient.getTransactionReceipt({ hash: r.tx_hash });
+          const existing = await publicClient.getContractEvents({
+            address: st.announcer, abi: STEALTH_ANNOUNCER_ABI, eventName: "Announcement",
+            args: { schemeId: 1n, stealthAddress, caller: this.account.address }, fromBlock: blockNumber,
+          });
+          let hash = existing[0]?.transactionHash;
+          if (!hash) {
+            hash = await this.cfg.walletClient.writeContract({
+              chain: this.cfg.walletClient.chain, account: this.account, address: st.announcer, abi: STEALTH_ANNOUNCER_ABI,
+              functionName: "announce", args: [1n, stealthAddress, r.eph, r.tag],
+            });
+            const rc = await publicClient.waitForTransactionReceipt({ hash });
+            if (rc.status !== "success") throw new Error(`announce reverted: ${hash}`);
+          }
+          await db.query("UPDATE intents SET stealth_announce_tx = $2, updated_at = now() WHERE id = $1", [r.id, hash]);
+        }
+        if (!r.drop) {
+          let hash: string = "skipped";
+          if ((await publicClient.getBalance({ address: stealthAddress })) === 0n) {
+            hash = await this.cfg.walletClient.sendTransaction({
+              chain: this.cfg.walletClient.chain, account: this.account, to: stealthAddress, value: st.gasDropWei,
+            });
+            const rc = await publicClient.waitForTransactionReceipt({ hash: hash as Hex });
+            if (rc.status !== "success") throw new Error(`gas drop reverted: ${hash}`);
+          }
+          await db.query("UPDATE intents SET stealth_drop_tx = $2, updated_at = now() WHERE id = $1", [r.id, hash]);
+        }
+        done++;
+      } catch (e) {
+        console.error(`stealth follow-up for intent ${r.id} failed (retrying next tick):`, e instanceof Error ? e.message.split("\n")[0] : e);
+      }
+    }
+    return done;
   }
 
   // ---------------------------------------------------------------- monitoring
@@ -526,7 +669,7 @@ export class Operator {
     const maxTickAge = opts.maxTickAgeMs ?? 60_000;
     const maxLag = opts.maxLagBlocks ?? 200n;
 
-    const [balance, head, cur, atRisk, pending] = await Promise.all([
+    const [balance, head, cur, atRisk, pending, stealthLate] = await Promise.all([
       publicClient.getBalance({ address: this.account.address }),
       publicClient.getBlockNumber(),
       db.query<{ block: string }>("SELECT block FROM chain_cursor WHERE id = 1"),
@@ -535,6 +678,10 @@ export class Operator {
         [nowSec],
       ),
       db.query<{ n: string }>("SELECT count(*)::text AS n FROM settlements WHERE status = 'signed'"),
+      db.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM intents WHERE status IN ('paid', 'challenged') AND stealth_ephemeral_pub IS NOT NULL
+           AND (stealth_announce_tx IS NULL OR stealth_drop_tx IS NULL) AND updated_at < now() - interval '10 minutes'`,
+      ),
     ]);
     const lagBlocks = cur[0] ? head - BigInt(cur[0].block) : head;
     const tickAgeMs = this.lastTickAt ? Date.now() - this.lastTickAt : null;
@@ -543,6 +690,7 @@ export class Operator {
     if (balance < minBalance) problems.push("operator gas balance is low");
     if (Number(atRisk[0]!.n) > 0) problems.push(`${atRisk[0]!.n} deposit(s) within 3 minutes of their deadline without a landed settlement`);
     if (lagBlocks > maxLag) problems.push(`chain watcher is ${lagBlocks} blocks behind`);
+    if (Number(stealthLate[0]!.n) > 0) problems.push(`${stealthLate[0]!.n} stealth payout(s) paid over 10 minutes ago without announcement or gas drop`);
     return {
       ok: problems.length === 0,
       problems,
@@ -573,6 +721,15 @@ export class Operator {
     if (r.status !== "success") throw new Error(`${functionName} reverted: ${hash}`);
     return hash;
   }
+}
+
+function stealthFeeOf(i: DueIntent): bigint {
+  return i.stealth_fee ? BigInt(i.stealth_fee) : 0n;
+}
+
+/** Tag for a stealth fee payout: unique per deposit and never equal to its payout tag. */
+export function stealthFeeTag(depositId: bigint, secret: Hex): Hex {
+  return keccak256(encodeAbiParameters([{ type: "uint256" }, { type: "bytes32" }, { type: "string" }], [depositId, secret, "curtain:stealth-fee"]));
 }
 
 /** CurtainVault.settle() arguments from a pending settlement (JSON-safe strings -> bigints). */

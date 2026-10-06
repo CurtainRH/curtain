@@ -14,7 +14,14 @@ import {
   type Address,
   type EIP1193Provider,
 } from "viem";
-import { CurtainClient, type EscapeTicket, type PendingTicket } from "@curtain/sdk";
+import {
+  CurtainClient,
+  parseMetaAddress,
+  StealthError,
+  type EscapeTicket,
+  type PendingTicket,
+  type StealthMetaAddress,
+} from "@curtain/sdk";
 const env = import.meta.env;
 // Always same-origin: the server relays /api/curtain/* to the operator (src/lib/curtain-proxy.ts),
 // so the operator URL never reaches the browser.
@@ -43,6 +50,10 @@ export const staking = address(
   env["VITE_STAKING_ADDR"] || "0xA0328Ada6694e95D7e946dFD54611BA57ACCA8c8",
 );
 export const stakeToken = address(env["VITE_STAKE_TOKEN_ADDR"]);
+/** ERC-6538 registry where receivers publish stealth meta-addresses (deployments/4663.json). */
+export const stealthRegistry = address(
+  env["VITE_STEALTH_REGISTRY_ADDR"] || "0x2143162F34BdE1fAc92544461d0850d3c4e89a9D",
+);
 export const fallbackVault = address(
   env["VITE_VAULT_ADDR"] || "0x72D3820D386b887c93A09766dbecA9BC80e224C0",
 );
@@ -243,6 +254,8 @@ export interface SavedTicket {
   depositTx?: string;
   delaySeconds?: number;
   chainId?: number;
+  /** Paid to a one-time stealth address (ERC-5564); `recipient` is that address. */
+  stealth?: boolean;
 }
 const storageKey = "curtain-tickets-v1";
 export function validTicket(value: unknown): value is EscapeTicket {
@@ -356,4 +369,38 @@ function contractMessage(name: string | undefined, arg?: unknown): string | unde
     TokensNotSet: "Staking isn't open yet.",
   };
   return name ? messages[name] : undefined;
+}
+
+const REGISTRY_ABI = parseAbi([
+  "function stealthMetaAddressOf(address registrant, uint256 schemeId) view returns (bytes)",
+]);
+
+/**
+ * Resolves what the sender typed into a receiver's stealth meta-address: either the meta-address
+ * itself (st:eth:0x…) or a wallet address that published one in the stealth registry.
+ * Throws a user-facing message when it can't.
+ */
+export async function resolveStealthRecipient(input: string): Promise<StealthMetaAddress> {
+  const value = input.trim();
+  if (isAddress(value)) {
+    if (!stealthRegistry) throw new Error("Stealth address lookup isn't configured.");
+    const raw = await publicClient.readContract({
+      address: stealthRegistry,
+      abi: REGISTRY_ABI,
+      functionName: "stealthMetaAddressOf",
+      args: [value, 1n],
+    });
+    if (!raw || raw === "0x")
+      throw new Error(
+        "This wallet hasn't published stealth keys. Ask the receiver for their stealth meta-address (st:eth:0x…).",
+      );
+    return parseMetaAddress(raw);
+  }
+  try {
+    return parseMetaAddress(value);
+  } catch (e) {
+    throw new Error(
+      e instanceof StealthError ? e.message : "Enter a stealth meta-address (st:eth:0x…).",
+    );
+  }
 }

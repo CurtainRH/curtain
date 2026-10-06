@@ -19,13 +19,16 @@ import {
 import { formatUnits, isAddress, parseUnits, type Address } from "viem";
 import {
   CHALLENGE_WINDOW_SECONDS,
+  generateStealthAddress,
   ROBINHOOD_CHAIN_TOKENS,
   TIERS,
   VAULT_ABI,
+  type StealthMetaAddress,
   type SwapQuote,
 } from "@curtain/sdk";
 import { Logo, RouteLink, Socials, useNav } from "./App";
 import { downloadFile } from "./domain";
+import { useFeatures } from "./features";
 import { useWorkspaceTools } from "./useWorkspaceTools";
 import {
   address,
@@ -37,6 +40,7 @@ import {
   OFFLINE_MESSAGE,
   publicClient,
   provider,
+  resolveStealthRecipient,
   stakeToken,
   staking,
   stakingBlock,
@@ -119,6 +123,15 @@ export default function Dashboard({ path }: { path: string }) {
   const [to, setTo] = useState("NVDA");
   const [amount, setAmount] = useState("");
   const [recipient, setRecipient] = useState(wallet);
+  // Stealth payouts: shown only when the server flag (FEATURE_STEALTH_PAYOUTS) and the operator
+  // both have them on.
+  const features = useFeatures();
+  const stealthAvailable = features.stealthPayouts && !!app.stealth;
+  const [stealthMode, setStealthMode] = useState(false);
+  const useStealth = stealthAvailable && stealthMode;
+  const [stealthInput, setStealthInput] = useState("");
+  const [stealthMeta, setStealthMeta] = useState<StealthMetaAddress>();
+  const [stealthNote, setStealthNote] = useState("");
   const [delayed, setDelayed] = useState(false);
   const [delay, setDelay] = useState("3600");
   const [customDelay, setCustomDelay] = useState("3600");
@@ -171,6 +184,21 @@ export default function Dashboard({ path }: { path: string }) {
     setMessage("");
   }, [path]);
   useEffect(() => {
+    setStealthMeta(undefined);
+    setStealthNote("");
+    if (!useStealth || !stealthInput.trim()) return;
+    let alive = true;
+    const timer = setTimeout(() => {
+      resolveStealthRecipient(stealthInput)
+        .then((meta) => alive && setStealthMeta(meta))
+        .catch((e: unknown) => alive && setStealthNote(errorMessage(e)));
+    }, 300);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [useStealth, stealthInput]);
+  useEffect(() => {
     let alive = true;
     setQuote(undefined);
     setQuoteError("");
@@ -187,6 +215,7 @@ export default function Dashboard({ path }: { path: string }) {
           output.address,
           rawAmount(amount, input.decimals),
           slippage,
+          { stealth: useStealth },
         );
         if (alive && number === requestNumber.current) {
           setQuote(q);
@@ -208,7 +237,7 @@ export default function Dashboard({ path }: { path: string }) {
       clearTimeout(first);
       clearInterval(timer);
     };
-  }, [input, output, amount, slippage, current.id, app.sdk]);
+  }, [input, output, amount, slippage, current.id, app.sdk, useStealth]);
   function link(hash: string, label: string) {
     return (
       <a
@@ -248,7 +277,12 @@ export default function Dashboard({ path }: { path: string }) {
   }
   async function swap() {
     if (!input || !output || !app.vault || !quote?.available || quoting) return;
-    if (
+    if (useStealth) {
+      if (!stealthMeta) {
+        setMessage(stealthNote || "Enter the receiver's stealth meta-address.");
+        return;
+      }
+    } else if (
       !isAddress(recipient) ||
       !address(recipient) ||
       recipient.toLowerCase() === app.vault.toLowerCase()
@@ -269,18 +303,30 @@ export default function Dashboard({ path }: { path: string }) {
       if (input.balance === undefined || raw > input.balance)
         throw new Error("Your token balance is too low for this swap.");
       // Refresh immediately before signing so minimum output matches the current form.
-      const fresh = await app.sdk.quote(input.address, output.address, raw, slippage);
+      const fresh = await app.sdk.quote(input.address, output.address, raw, slippage, {
+        stealth: useStealth,
+      });
       setQuote(fresh);
-      if (!fresh.available) throw new Error("No liquidity for this pair right now");
+      if (!fresh.available)
+        throw new Error(
+          useStealth
+            ? "This amount is too small to deliver to a stealth address. Try a larger amount."
+            : "No liquidity for this pair right now",
+        );
+      // A brand-new one-time address per swap, derived here in the browser. Only the receiver
+      // (with their keys) can find it from the operator's announcement and spend from it.
+      const pay = useStealth && stealthMeta ? generateStealthAddress(stealthMeta) : undefined;
+      const payTo = pay ? pay.stealthAddress : (recipient as Address);
       const fromBlock = await publicClient.getBlockNumber();
       const details = {
         createdAt: new Date().toISOString(),
         tokenIn: from,
         amountIn: formatUnits(raw, input.decimals),
         tokenOut: to,
-        recipient,
+        recipient: payTo,
         delaySeconds,
         chainId: chain.id,
+        ...(pay ? { stealth: true } : {}),
       };
       let pendingId = "";
       const result = await app.sdk
@@ -289,9 +335,12 @@ export default function Dashboard({ path }: { path: string }) {
             tokenIn: input.address,
             amountIn: raw,
             tokenOut: output.address,
-            recipient: recipient as Address,
+            recipient: payTo,
             minOut: BigInt(fresh.minOutSuggested),
             delaySeconds,
+            ...(pay
+              ? { stealth: { ephemeralPublicKey: pay.ephemeralPublicKey, viewTag: pay.viewTag } }
+              : {}),
           },
           {
             // Keep the ticket secrets before the wallet signs, so closing the tab mid-deposit
@@ -323,7 +372,11 @@ export default function Dashboard({ path }: { path: string }) {
       app.removePending(result.intentId);
       setLatest(row);
       setAmount("");
-      setMessage("Deposit confirmed. Save your escape ticket.");
+      setMessage(
+        pay
+          ? "Deposit confirmed. It will be delivered to a brand-new stealth address only the receiver can find. Save your escape ticket."
+          : "Deposit confirmed. Save your escape ticket.",
+      );
       void app.refresh();
     });
   }
@@ -995,18 +1048,65 @@ export default function Dashboard({ path }: { path: string }) {
                 <label className="field-label" htmlFor="swap-recipient">
                   Recipient
                 </label>
-                <input
-                  id="swap-recipient"
-                  value={recipient}
-                  onChange={(e) => setRecipient(e.target.value)}
-                  placeholder="0x…"
-                />
-                <button className="text-button" onClick={() => setRecipient(wallet)}>
-                  Use my wallet
-                </button>
-                <span className="field-help">
-                  Sending to a fresh address gives you the most privacy.
-                </span>
+                {stealthAvailable && (
+                  <div className="segmented">
+                    {[false, true].map((v) => (
+                      <button
+                        key={String(v)}
+                        aria-pressed={stealthMode === v}
+                        onClick={() => setStealthMode(v)}
+                      >
+                        {v ? "Stealth address" : "Wallet address"}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {useStealth ? (
+                  <>
+                    <input
+                      id="swap-recipient"
+                      value={stealthInput}
+                      onChange={(e) => setStealthInput(e.target.value)}
+                      placeholder="st:eth:0x… or the receiver's 0x… wallet"
+                      spellCheck={false}
+                      autoComplete="off"
+                    />
+                    {stealthMeta ? (
+                      <span className="field-help">
+                        Receiver's stealth keys found. This swap goes to a brand-new address that
+                        only they can find and spend from.
+                      </span>
+                    ) : stealthNote ? (
+                      <p role="alert" className="form-error">
+                        {stealthNote}
+                      </p>
+                    ) : (
+                      <span className="field-help">
+                        Paste the stealth meta-address the receiver gave you, or their wallet if
+                        they've published stealth keys.
+                      </span>
+                    )}
+                    <span className="field-help">
+                      A small fee, shown in the quote, puts gas on the new address so the receiver
+                      can move the tokens without linking it to their main wallet.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      id="swap-recipient"
+                      value={recipient}
+                      onChange={(e) => setRecipient(e.target.value)}
+                      placeholder="0x…"
+                    />
+                    <button className="text-button" onClick={() => setRecipient(wallet)}>
+                      Use my wallet
+                    </button>
+                    <span className="field-help">
+                      Sending to a fresh address gives you the most privacy.
+                    </span>
+                  </>
+                )}
                 <p className="field-label">Timing</p>
                 <div className="segmented">
                   {[false, true].map((v) => (
@@ -1106,7 +1206,21 @@ export default function Dashboard({ path }: { path: string }) {
                         <span>Keeper fee</span>
                         <span>0.05%</span>
                       </div>
-                      {!quote.available && <p>No liquidity for this pair right now</p>}
+                      {quote.stealthFee && (
+                        <div>
+                          <span>Stealth delivery fee</span>
+                          <span>
+                            {formatUnits(BigInt(quote.stealthFee), output.decimals)} {to}
+                          </span>
+                        </div>
+                      )}
+                      {!quote.available && (
+                        <p>
+                          {quote.stealthFee && BigInt(quote.marketOut) > 0n
+                            ? "This amount is too small to cover stealth delivery. Try a larger amount."
+                            : "No liquidity for this pair right now"}
+                        </p>
+                      )}
                     </>
                   )}
                   {quoteError && !app.offline && (
@@ -1118,7 +1232,13 @@ export default function Dashboard({ path }: { path: string }) {
                 <button
                   className="button gold v2-primary"
                   disabled={
-                    !!busy || !wallet || !app.vault || !quote?.available || quoting || app.offline
+                    !!busy ||
+                    !wallet ||
+                    !app.vault ||
+                    !quote?.available ||
+                    quoting ||
+                    app.offline ||
+                    (useStealth && !stealthMeta)
                   }
                   onClick={() => void swap()}
                 >

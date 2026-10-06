@@ -14,13 +14,19 @@
  *   MIN_OPERATOR_BALANCE_WEI  /status warns below this gas balance, default 0.005 ETH
  *   TICK_MS                default 5000
  *   START_BLOCK            first block to index (default: current head on first run)
+ *
+ *   FEATURE_STEALTH_PAYOUTS   "true" turns on stealth payouts (ERC-5564); anything else = off
+ *   STEALTH_ANNOUNCER_ADDR    ERC-5564 announcer (required when stealth payouts are on)
+ *   STEALTH_GAS_DROP_WEI      ETH dropped on each stealth address, default 20000000000000 (0.00002 ETH)
+ *   STEALTH_OVERHEAD_WEI      operator gas per stealth payout, charged in the fee, default 5000000000000
+ *   WETH_ADDR                 optional; default: the router's WETH9()
  */
 import { bunSqlDb, migrate } from "@curtain/db";
 import { DEFAULT_TOKENS } from "@curtain/sdk";
-import { createPublicClient, createWalletClient, defineChain, http, type Address, type Hex } from "viem";
+import { createPublicClient, createWalletClient, defineChain, getAddress, http, isAddress, parseAbi, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { createApi } from "./api";
-import { Operator } from "./operator";
+import { Operator, type StealthConfig } from "./operator";
 import { mockQuoter, mockRoute, uniswapQuoter, uniswapRoute } from "./routes";
 
 const env = (k: string, d?: string) => {
@@ -78,6 +84,27 @@ await migrate(db);
 const vault = env("VAULT_ADDR") as Address;
 const router = env("DEX_ROUTER_ADDR") as Address;
 const keeperFeeBps = Number(env("KEEPER_FEE_BPS", "5"));
+const tokens = parseTokens(process.env["TOKENS"]);
+
+/** Stealth payouts are off unless the flag is exactly "true"; when on, misconfiguration stops startup. */
+async function stealthConfig(): Promise<StealthConfig | undefined> {
+  if (process.env["FEATURE_STEALTH_PAYOUTS"]?.trim().toLowerCase() !== "true") return undefined;
+  const announcer = env("STEALTH_ANNOUNCER_ADDR").trim();
+  if (!isAddress(announcer)) throw new Error("STEALTH_ANNOUNCER_ADDR is not an address");
+  if (!(await publicClient.getCode({ address: announcer }))) throw new Error(`no contract at STEALTH_ANNOUNCER_ADDR ${announcer}`);
+  const wethEnv = process.env["WETH_ADDR"]?.trim();
+  const weth = wethEnv
+    ? (isAddress(wethEnv) ? getAddress(wethEnv) : (() => { throw new Error("WETH_ADDR is not an address"); })())
+    : await publicClient.readContract({ address: router, abi: parseAbi(["function WETH9() view returns (address)"]), functionName: "WETH9" });
+  const usdg = Object.entries(tokens).find(([symbol]) => symbol.toUpperCase() === "USDG")?.[1];
+  const gasDropWei = BigInt(env("STEALTH_GAS_DROP_WEI", "20000000000000"));
+  const overheadWei = BigInt(env("STEALTH_OVERHEAD_WEI", "5000000000000"));
+  if (gasDropWei <= 0n || gasDropWei > 1_000_000_000_000_000n) throw new Error("STEALTH_GAS_DROP_WEI must be between 1 wei and 0.001 ETH");
+  if (overheadWei < 0n) throw new Error("STEALTH_OVERHEAD_WEI can't be negative");
+  console.log(`stealth payouts ON: announcer ${announcer}, gas drop ${gasDropWei} wei`);
+  return { announcer: getAddress(announcer), weth: getAddress(weth), ...(usdg && isAddress(usdg) ? { usdg: getAddress(usdg) } : {}), gasDropWei, overheadWei };
+}
+const stealth = await stealthConfig();
 const mock = env("ROUTE", "uniswap") === "mock";
 const operator = new Operator({
   db, publicClient, walletClient, chainId, vault, router,
@@ -89,12 +116,13 @@ const operator = new Operator({
   slippageBps: Number(env("SLIPPAGE_BPS", "50")),
   keeperFeeBps,
   startBlock: process.env["START_BLOCK"] ? BigInt(process.env["START_BLOCK"]) : await publicClient.getBlockNumber(),
+  ...(stealth ? { stealth } : {}),
 });
 
 const server = Bun.serve({
   port: Number(process.env["PORT"] ?? env("OPERATOR_PORT", "3100")),
   fetch: createApi({
-    db, operator, vault, tokens: parseTokens(process.env["TOKENS"]), keeperFeeBps,
+    db, operator, vault, tokens, keeperFeeBps,
     minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
   }),
 });
@@ -109,6 +137,7 @@ for (;;) {
     await operator.processDue(now);
     await operator.submitSettlements(now);
     await operator.syncChain();
+    await operator.processStealth();
     operator.markTick();
   } catch (e) {
     console.error("operator tick failed:", e);

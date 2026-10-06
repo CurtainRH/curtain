@@ -4,8 +4,9 @@
  *   GET  /health                  liveness (always 200 while the process serves)
  *   GET  /status                  200 when healthy, 503 + problems when it needs attention
  *   GET  /config                  vault, tokens, fees, limits
- *   GET  /quote?tokenIn&tokenOut&amountIn[&slippageBps]   expected output after fees, suggested minOut
- *   POST /intents                 { tokenIn, amountIn, tokenOut, recipient, depositor, minOut, delaySeconds }
+ *   GET  /quote?tokenIn&tokenOut&amountIn[&slippageBps][&stealth=1]   expected output after fees, suggested minOut
+ *   POST /intents                 { tokenIn, amountIn, tokenOut, recipient, depositor, minOut, delaySeconds,
+ *                                   stealth?: { ephemeralPublicKey, viewTag } }   (stealth: FEATURE_STEALTH_PAYOUTS)
  *                                 -> { id, deadline, salt, deadlineHash, vault }
  *                                 Keep `deadline` and `salt`: they unlock the escape hatch.
  *   GET  /intents/:id             status of your swap
@@ -53,7 +54,8 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
       }
 
       if (req.method === "GET" && pathname === "/config") {
-        return json({ vault: cfg.vault, tokens: cfg.tokens, keeperFeeBps: cfg.keeperFeeBps, maxDelaySeconds: MAX_DELAY_SECONDS });
+        const stealth = cfg.operator.stealthInfo;
+        return json({ vault: cfg.vault, tokens: cfg.tokens, keeperFeeBps: cfg.keeperFeeBps, maxDelaySeconds: MAX_DELAY_SECONDS, ...(stealth ? { stealth } : {}) });
       }
 
       if (req.method === "GET" && pathname === "/quote") {
@@ -66,11 +68,29 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         if (!allowed.has(getAddress(tokenIn)) || !allowed.has(getAddress(tokenOut))) return json({ error: "token not supported" }, 400);
         const slippage = Number(url.searchParams.get("slippageBps") ?? 100);
         if (!(slippage >= 0 && slippage <= 5000)) return json({ error: "slippageBps must be 0..5000" }, 400);
-        return json(await cfg.operator.quoteForUser(getAddress(tokenIn), getAddress(tokenOut), BigInt(amountIn), slippage));
+        let stealthFee: bigint | undefined;
+        if (url.searchParams.get("stealth") === "1") {
+          if (!cfg.operator.stealthEnabled) return json({ error: "stealth payouts are not enabled" }, 400);
+          const fee = await cfg.operator.stealthFee(getAddress(tokenOut));
+          if (fee === null) return json({ error: "private address delivery isn't available for this token yet" }, 400);
+          stealthFee = fee;
+        }
+        return json(await cfg.operator.quoteForUser(getAddress(tokenIn), getAddress(tokenOut), BigInt(amountIn), slippage, stealthFee));
       }
 
       if (req.method === "POST" && pathname === "/intents") {
         const body = (await req.json()) as Record<string, unknown>;
+        let stealth: { ephemeralPublicKey: string; viewTag: string } | undefined;
+        let stealthFee: bigint | undefined;
+        if (body["stealth"] !== undefined && body["stealth"] !== null) {
+          if (!cfg.operator.stealthEnabled) return json({ error: "stealth payouts are not enabled" }, 400);
+          const st = body["stealth"] as Record<string, unknown>;
+          stealth = { ephemeralPublicKey: String(st["ephemeralPublicKey"]), viewTag: String(st["viewTag"]) };
+          const tokenOut = String(body["tokenOut"]);
+          const fee = isAddress(tokenOut) ? await cfg.operator.stealthFee(getAddress(tokenOut)) : null;
+          if (fee === null) return json({ error: "private address delivery isn't available for this token yet" }, 400);
+          stealthFee = fee;
+        }
         const intent = await createIntent(cfg.db, {
           tokenIn: String(body["tokenIn"]),
           amountIn: String(body["amountIn"]),
@@ -79,6 +99,7 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
           depositor: String(body["depositor"]),
           minOut: String(body["minOut"]),
           delaySeconds: Number(body["delaySeconds"] ?? 0),
+          ...(stealth ? { stealth, stealthFee } : {}),
         }, allowed, cfg.vault, now());
         return json({ id: intent.id, deadline: intent.deadline, salt: intent.salt, deadlineHash: intent.deadlineHash, vault: cfg.vault }, 201);
       }

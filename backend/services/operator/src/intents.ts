@@ -6,6 +6,7 @@
 import { randomBytes } from "node:crypto";
 import { encodeAbiParameters, getAddress, isAddress, keccak256, type Address, type Hex } from "viem";
 import type { Db } from "@curtain/db";
+import { isCompressedPublicKey } from "@curtain/sdk/stealth";
 
 export const MAX_DELAY_SECONDS = 180 * 24 * 3600; // 180 days
 /** Instant swaps are paid as soon as the deposit lands; this bounds how long the user has to
@@ -24,6 +25,10 @@ export interface IntentRequest {
   minOut: string | bigint;
   /** 0 = instant; otherwise the maximum random delay in seconds (up to 180 days). */
   delaySeconds: number;
+  /** Stealth payout: `recipient` is a one-time stealth address (ERC-5564). */
+  stealth?: { ephemeralPublicKey: string; viewTag: string };
+  /** Gas-drop fee in tokenOut units; required with `stealth`. */
+  stealthFee?: bigint;
 }
 
 export interface Intent {
@@ -61,6 +66,17 @@ export async function createIntent(db: Db, req: IntentRequest, allowedTokens: Se
   const minOut = BigInt(req.minOut);
   if (amountIn <= 0n) throw new IntentError("amountIn must be positive");
   if (minOut <= 0n) throw new IntentError("minOut must be positive");
+  let stealth: { eph: string; tag: string; fee: string } | null = null;
+  if (req.stealth !== undefined) {
+    const { ephemeralPublicKey, viewTag } = req.stealth;
+    if (typeof ephemeralPublicKey !== "string" || !isCompressedPublicKey(ephemeralPublicKey.toLowerCase())) {
+      throw new IntentError("stealth.ephemeralPublicKey must be a compressed secp256k1 public key");
+    }
+    if (typeof viewTag !== "string" || !/^0x[0-9a-fA-F]{2}$/.test(viewTag)) throw new IntentError("stealth.viewTag must be one byte");
+    if (req.stealthFee === undefined || req.stealthFee <= 0n) throw new IntentError("stealth fee is missing");
+    if (recipient === getAddress(req.depositor)) throw new IntentError("a stealth recipient can't be the depositor");
+    stealth = { eph: ephemeralPublicKey.toLowerCase(), tag: viewTag.toLowerCase(), fee: req.stealthFee.toString() };
+  }
   const delay = Math.floor(req.delaySeconds);
   if (!(delay >= 0 && delay <= MAX_DELAY_SECONDS)) throw new IntentError(`delaySeconds must be 0..${MAX_DELAY_SECONDS}`);
 
@@ -72,10 +88,11 @@ export async function createIntent(db: Db, req: IntentRequest, allowedTokens: Se
   const id = randomBytes(16).toString("hex");
 
   await db.query(
-    `INSERT INTO intents (id, deadline_hash, deadline, salt, pay_at, mode, token_in, amount_in, token_out, recipient, min_out, secret, depositor)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+    `INSERT INTO intents (id, deadline_hash, deadline, salt, pay_at, mode, token_in, amount_in, token_out, recipient, min_out, secret, depositor,
+                          stealth_ephemeral_pub, stealth_view_tag, stealth_fee)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
     [id, deadlineHash, deadline.toString(), salt, payAt.toString(), instant ? "instant" : "delayed", tokenIn, amountIn.toString(),
-      tokenOut, recipient, minOut.toString(), hex32(), getAddress(req.depositor)],
+      tokenOut, recipient, minOut.toString(), hex32(), getAddress(req.depositor), stealth?.eph ?? null, stealth?.tag ?? null, stealth?.fee ?? null],
   );
   return { id, deadline, salt, deadlineHash, payAt };
 }

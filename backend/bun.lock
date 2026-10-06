@@ -26,6 +26,7 @@
       "name": "@curtain/sdk",
       "version": "0.0.1",
       "dependencies": {
+        "@noble/curves": "1.9.1",
         "viem": "^2.57.0",
       },
       "devDependencies": {

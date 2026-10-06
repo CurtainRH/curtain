@@ -6,6 +6,7 @@ import {
   ROBINHOOD_CHAIN_TOKENS,
   VAULT_ABI,
   STAKING_ABI,
+  type ServiceConfig,
   type StakePosition,
 } from "@curtain/sdk";
 import {
@@ -51,6 +52,8 @@ export function useCurtain(wallet: string) {
   const [tokens, setTokens] = useState<TokenData[]>([]);
   const [vault, setVault] = useState(fallbackVault);
   const [maxDelay, setMaxDelay] = useState(15552000);
+  /** Present only when the operator has stealth payouts switched on. */
+  const [stealth, setStealth] = useState<ServiceConfig["stealth"]>();
   const [tickets, setTickets] = useState<SavedTicket[]>(() => readTickets(wallet));
   const [statuses, setStatuses] = useState<Record<string, SwapState>>({});
   const [deposits, setDeposits] = useState<Record<string, DepositState>>({});
@@ -95,6 +98,7 @@ export function useCurtain(wallet: string) {
         throw new Error("Curtain's service reported an unexpected vault. Swaps are disabled.");
       setVault(config.vault);
       setMaxDelay(Math.min(15552000, config.maxDelaySeconds));
+      setStealth(config.stealth?.enabled === true ? config.stealth : undefined);
       const list = await Promise.all(
         ROBINHOOD_CHAIN_TOKENS.map(async (meta): Promise<TokenData | undefined> => {
           const token = address(config.tokens[meta.symbol]);
@@ -127,6 +131,7 @@ export function useCurtain(wallet: string) {
       if (currentWallet.current !== wallet) return;
       setOffline(true);
       setTokens([]);
+      setStealth(undefined);
       // Connectivity problems are already covered by the offline note; only show anything else.
       setError(isConnectivityError(e) ? "" : errorMessage(e));
     }
@@ -336,6 +341,7 @@ export function useCurtain(wallet: string) {
     tokens,
     vault,
     maxDelay,
+    stealth,
     tickets,
     statuses,
     deposits,

@@ -16,6 +16,7 @@ import { ERC20_ABI, STAKING_ABI, VAULT_ABI } from "./abi";
 
 export * from "./abi";
 export * from "./tokens";
+export * from "./stealth";
 
 export const REFUND_DELAY_SECONDS = 180;
 export const CHALLENGE_WINDOW_SECONDS = 600;
@@ -51,6 +52,24 @@ export interface SwapQuote {
   venue: string;
   /** False when no pool can fill the swap right now. */
   available: boolean;
+  /** Stealth delivery only: the gas-drop fee (output token units), already taken out of
+   * expectedOut and minOutSuggested. */
+  stealthFee?: string;
+}
+
+/** Operator /config. `stealth` is present only when the operator has stealth payouts on. */
+export interface ServiceConfig {
+  vault: Address;
+  tokens: Record<string, Address>;
+  keeperFeeBps: number;
+  maxDelaySeconds: number;
+  stealth?: { enabled: boolean; schemeId: number; announcer: Address; gasDropWei: string };
+}
+
+/** What the operator needs to announce a stealth payout (ERC-5564) once it is paid. */
+export interface StealthIntent {
+  ephemeralPublicKey: Hex;
+  viewTag: Hex;
 }
 
 export interface SwapParams {
@@ -63,6 +82,8 @@ export interface SwapParams {
   minOut: bigint;
   /** 0 = instant; otherwise a random delay window in seconds (up to 180 days). */
   delaySeconds: number;
+  /** Set when `recipient` is a stealth address (see generateStealthAddress). */
+  stealth?: StealthIntent;
 }
 
 /** Everything needed to reclaim a deposit through the escape hatch. Keep it private. */
@@ -115,7 +136,7 @@ export class CurtainClient {
   }
 
   config() {
-    return this.api<{ vault: Address; tokens: Record<string, Address>; keeperFeeBps: number; maxDelaySeconds: number }>("/config");
+    return this.api<ServiceConfig>("/config");
   }
 
   status(intentId: string) {
@@ -123,8 +144,9 @@ export class CurtainClient {
   }
 
   /** Expected output for a swap right now, after fees. Use `minOutSuggested` as `minOut`. */
-  quote(tokenIn: Address, tokenOut: Address, amountIn: bigint, slippageBps = 100) {
+  quote(tokenIn: Address, tokenOut: Address, amountIn: bigint, slippageBps = 100, opts: { stealth?: boolean } = {}) {
     const q = new URLSearchParams({ tokenIn, tokenOut, amountIn: amountIn.toString(), slippageBps: String(slippageBps) });
+    if (opts.stealth) q.set("stealth", "1");
     return this.api<SwapQuote>(`/quote?${q}`);
   }
 
