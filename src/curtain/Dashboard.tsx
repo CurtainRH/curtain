@@ -1248,10 +1248,6 @@ export default function Dashboard({ path }: { path: string }) {
                   }}
                 />
               </div>
-              <Note>
-                Keep this file. If Curtain is ever unavailable, it lets you take your deposit back.
-                Tickets stay on your device; refunds use the chain directly.
-              </Note>
               {rows()}
             </section>
           )}
