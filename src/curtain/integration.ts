@@ -50,6 +50,14 @@ export const staking = address(
   env["VITE_STAKING_ADDR"] || "0xA0328Ada6694e95D7e946dFD54611BA57ACCA8c8",
 );
 export const stakeToken = address(env["VITE_STAKE_TOKEN_ADDR"]);
+/** ERC-5564 announcer the operator announces stealth payouts on (deployments/4663.json). */
+export const stealthAnnouncer = address(
+  env["VITE_STEALTH_ANNOUNCER_ADDR"] || "0x88F605D395EAB3ef5429CE20aCE36a5a142D31d3",
+);
+/** No announcement or payout can be older than the vault's first block. */
+export const stealthScanFromBlock = /^\d+$/.test(env["VITE_STEALTH_FROM_BLOCK"] || "")
+  ? BigInt(env["VITE_STEALTH_FROM_BLOCK"])
+  : 80903085n;
 /** ERC-6538 registry where receivers publish stealth meta-addresses (deployments/4663.json). */
 export const stealthRegistry = address(
   env["VITE_STEALTH_REGISTRY_ADDR"] || "0x2143162F34BdE1fAc92544461d0850d3c4e89a9D",
@@ -403,4 +411,28 @@ export async function resolveStealthRecipient(input: string): Promise<StealthMet
       e instanceof StealthError ? e.message : "Enter a stealth meta-address (st:eth:0x…).",
     );
   }
+}
+
+/**
+ * Reads logs over a long block range in chunks, halving a chunk the RPC refuses (range or
+ * result-size limits) instead of failing the whole scan.
+ */
+export async function logsInChunks<T>(
+  from: bigint,
+  to: bigint,
+  read: (fromBlock: bigint, toBlock: bigint) => Promise<T[]>,
+): Promise<T[]> {
+  const out: T[] = [];
+  let size = 2_000_000n;
+  for (let start = from; start <= to;) {
+    const end = start + size - 1n < to ? start + size - 1n : to;
+    try {
+      out.push(...(await read(start, end)));
+      start = end + 1n;
+    } catch (e) {
+      if (size <= 5_000n) throw e;
+      size /= 2n;
+    }
+  }
+  return out;
 }

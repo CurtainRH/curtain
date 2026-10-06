@@ -2250,3 +2250,32 @@
 .dashboard-body .form-error {
   overflow-wrap: anywhere;
 }
+
+/* Receive privately (stealth keys + inbox) */
+.v2-meta-address {
+  display: block;
+  padding: 12px;
+  margin: 6px 0;
+  border: 1px solid #d2ae6f30;
+  background: #d2ae6f07;
+  color: var(--gold);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+  user-select: all;
+}
+.v2-inbox-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid #d2ae6f20;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 720px) {
+  .v2-inbox-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}

@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Coins,
   Download,
+  Inbox,
   Info,
   LayoutDashboard,
   Menu,
@@ -29,6 +30,7 @@ import {
 import { Logo, RouteLink, Socials, useNav } from "./App";
 import { downloadFile } from "./domain";
 import { useFeatures } from "./features";
+import StealthReceive from "./StealthReceive";
 import { useWorkspaceTools } from "./useWorkspaceTools";
 import {
   address,
@@ -54,6 +56,7 @@ const nav = [
   { id: "swap", path: "/app/swap", name: "Swap", icon: Repeat2 },
   { id: "stake", path: "/app/stake", name: "Stake", icon: Coins },
   { id: "activity", path: "/app/activity", name: "Activity", icon: Activity },
+  { id: "receive", path: "/app/receive", name: "Receive", icon: Inbox },
 ];
 function Note({ children }: { children: ReactNode }) {
   return (
@@ -114,7 +117,12 @@ export const CATEGORY_MAP: Record<string, { label: string; badgeClass: string }>
 export default function Dashboard({ path }: { path: string }) {
   const { wallet, connect, navigate } = useNav();
   const app = useCurtain(wallet);
-  const current = nav.find((n) => n.id === (path.split("/")[2] || "overview")) || nav[0]!;
+  const features = useFeatures();
+  // "Receive" exists only while one of its features (FEATURE_STEALTH_KEYS / _INBOX) is on.
+  const navItems = nav.filter(
+    (n) => n.id !== "receive" || features.stealthKeys || features.stealthInbox,
+  );
+  const current = navItems.find((n) => n.id === (path.split("/")[2] || "overview")) || navItems[0]!;
   useWorkspaceTools(current.id, navigate);
   const [sideOpen, setSideOpen] = useState(false);
   const [busy, setBusy] = useState("");
@@ -125,7 +133,6 @@ export default function Dashboard({ path }: { path: string }) {
   const [recipient, setRecipient] = useState(wallet);
   // Stealth payouts: shown only when the server flag (FEATURE_STEALTH_PAYOUTS) and the operator
   // both have them on.
-  const features = useFeatures();
   const stealthAvailable = features.stealthPayouts && !!app.stealth;
   const [stealthMode, setStealthMode] = useState(false);
   const useStealth = stealthAvailable && stealthMode;
@@ -839,7 +846,7 @@ export default function Dashboard({ path }: { path: string }) {
           <span className="box-no">Nº 01</span>
         </div>
         <nav aria-label="Application navigation">
-          {nav.map((n) => (
+          {navItems.map((n) => (
             <RouteLink
               key={n.id}
               to={n.path}
@@ -1344,6 +1351,17 @@ export default function Dashboard({ path }: { path: string }) {
                 <div className="v2-section">{positionTable()}</div>
               </>
             ))}
+          {current.id === "receive" && (
+            <StealthReceive
+              wallet={wallet}
+              tokens={app.tokens}
+              showKeys={features.stealthKeys}
+              showInbox={features.stealthInbox}
+              busy={busy}
+              run={run}
+              setMessage={setMessage}
+            />
+          )}
           {current.id === "activity" && (
             <section className="panel">
               <div className="panel-heading">

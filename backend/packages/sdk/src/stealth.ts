@@ -111,3 +111,83 @@ export function metaAddressFromKeys(spendingPrivateKey: Hex, viewingPrivateKey: 
     viewingPublicKey: bytesToHex(secp256k1.getPublicKey(hexToBytes(viewingPrivateKey), true)),
   };
 }
+
+// ---------------------------------------------------------------- receiver side
+
+export const STEALTH_REGISTRY_ABI = [
+  { type: "function", name: "stealthMetaAddressOf", stateMutability: "view", inputs: [{ name: "registrant", type: "address" }, { name: "schemeId", type: "uint256" }], outputs: [{ type: "bytes" }] },
+  { type: "function", name: "registerKeys", stateMutability: "nonpayable", inputs: [{ name: "schemeId", type: "uint256" }, { name: "stealthMetaAddress", type: "bytes" }], outputs: [] },
+] as const;
+
+export const STEALTH_ANNOUNCEMENT_EVENT = {
+  type: "event",
+  name: "Announcement",
+  inputs: [
+    { name: "schemeId", type: "uint256", indexed: true },
+    { name: "stealthAddress", type: "address", indexed: true },
+    { name: "caller", type: "address", indexed: true },
+    { name: "ephemeralPubKey", type: "bytes", indexed: false },
+    { name: "metadata", type: "bytes", indexed: false },
+  ],
+} as const;
+
+/**
+ * The message a receiver signs to create (or later restore) their stealth keys. It must never
+ * change: the keys are derived from the signature, so a new wording would mean new keys.
+ */
+export const STEALTH_KEYS_MESSAGE = [
+  "Curtain stealth keys",
+  "",
+  "Sign to create or restore your private receiving keys for Curtain on Robinhood Chain.",
+  "",
+  "This signature unlocks payments sent to your stealth address. Only sign it on the Curtain app, and never share it.",
+  "",
+  "Version: 1",
+].join("\n");
+
+export interface StealthKeys {
+  spendingPrivateKey: Hex;
+  viewingPrivateKey: Hex;
+  meta: StealthMetaAddress;
+}
+
+/**
+ * Stealth keys from a wallet signature of STEALTH_KEYS_MESSAGE: spending = keccak256(r),
+ * viewing = keccak256(s), as the ScopeLift reference SDK. Re-signing restores the same keys,
+ * so nothing has to be stored; callers must check the wallet signs deterministically.
+ */
+export function stealthKeysFromSignature(signature: Hex): StealthKeys {
+  if (!/^0x[0-9a-fA-F]{130}$/.test(signature)) throw new StealthError("Unexpected signature format.");
+  const spendingPrivateKey = keccak256(`0x${signature.slice(2, 66)}`);
+  const viewingPrivateKey = keccak256(`0x${signature.slice(66, 130)}`);
+  for (const k of [spendingPrivateKey, viewingPrivateKey]) {
+    const n = BigInt(k);
+    if (n === 0n || n >= N) throw new StealthError("This signature can't be used as a key. Try another wallet.");
+  }
+  return { spendingPrivateKey, viewingPrivateKey, meta: metaAddressFromKeys(spendingPrivateKey, viewingPrivateKey) };
+}
+
+/** The registry value: 0x + 33-byte spending key + 33-byte viewing key. */
+export function metaAddressBytes(meta: StealthMetaAddress): Hex {
+  return `0x${meta.spendingPublicKey.slice(2)}${meta.viewingPublicKey.slice(2)}`;
+}
+
+/**
+ * If an announcement is a payment to these keys, returns the stealth address's private key.
+ * Malformed or foreign announcements return null (anyone can announce anything).
+ */
+export function matchAnnouncement(
+  keys: Pick<StealthKeys, "spendingPrivateKey" | "viewingPrivateKey">,
+  a: { stealthAddress: string; ephemeralPubKey: string; metadata: string },
+): Hex | null {
+  try {
+    if (!isCompressedPublicKey(a.ephemeralPubKey.toLowerCase()) || !/^0x[0-9a-fA-F]{2}/.test(a.metadata)) return null;
+    const eph = a.ephemeralPubKey.toLowerCase() as Hex;
+    if (!viewTagMatches(keys.viewingPrivateKey, eph, a.metadata.slice(0, 4) as Hex)) return null;
+    const key = computeStealthPrivateKey(keys.spendingPrivateKey, keys.viewingPrivateKey, eph);
+    const point = secp256k1.getPublicKey(hexToBytes(key), false);
+    return getAddress(publicKeyToAddress(bytesToHex(point))) === getAddress(a.stealthAddress) ? key : null;
+  } catch {
+    return null;
+  }
+}

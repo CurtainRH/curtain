@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import {
+  STEALTH_KEYS_MESSAGE,
   computeStealthPrivateKey,
+  matchAnnouncement,
+  metaAddressBytes,
+  stealthKeysFromSignature,
   encodeMetaAddress,
   generateStealthAddress,
   isCompressedPublicKey,
@@ -66,3 +70,38 @@ describe("stealth addresses (ERC-5564 scheme 1)", () => {
     expect(() => parseMetaAddress(`st:eth:0x04${meta.spendingPublicKey.slice(4)}${meta.viewingPublicKey.slice(2)}`)).toThrow();
   });
 });
+
+describe("receiver keys and inbox matching", () => {
+  test("keys come from a wallet signature and re-signing restores them", async () => {
+    const wallet = privateKeyToAccount(generatePrivateKey());
+    const a = stealthKeysFromSignature(await wallet.signMessage({ message: STEALTH_KEYS_MESSAGE }));
+    const b = stealthKeysFromSignature(await wallet.signMessage({ message: STEALTH_KEYS_MESSAGE }));
+    expect(a).toEqual(b);
+    expect(a.meta).toEqual(metaAddressFromKeys(a.spendingPrivateKey, a.viewingPrivateKey));
+    expect(parseMetaAddress(metaAddressBytes(a.meta))).toEqual(a.meta);
+    const other = stealthKeysFromSignature(await privateKeyToAccount(generatePrivateKey()).signMessage({ message: STEALTH_KEYS_MESSAGE }));
+    expect(other.meta).not.toEqual(a.meta);
+    expect(() => stealthKeysFromSignature("0x1234")).toThrow();
+  });
+
+  test("matchAnnouncement finds only our payments and ignores garbage", async () => {
+    const keys = stealthKeysFromSignature(await privateKeyToAccount(generatePrivateKey()).signMessage({ message: STEALTH_KEYS_MESSAGE }));
+    const pay = generateStealthAddress(keys.meta);
+    const key = matchAnnouncement(keys, { stealthAddress: pay.stealthAddress, ephemeralPubKey: pay.ephemeralPublicKey, metadata: pay.viewTag });
+    expect(key).not.toBeNull();
+    expect(privateKeyToAccount(key!).address).toBe(pay.stealthAddress);
+    // Longer metadata (view tag first) still matches.
+    expect(matchAnnouncement(keys, { stealthAddress: pay.stealthAddress, ephemeralPubKey: pay.ephemeralPublicKey, metadata: `${pay.viewTag}deadbeef` })).toBe(key);
+
+    const strangerPay = generateStealthAddress(metaAddressFromKeys(generatePrivateKey(), generatePrivateKey()));
+    expect(matchAnnouncement(keys, { stealthAddress: strangerPay.stealthAddress, ephemeralPubKey: strangerPay.ephemeralPublicKey, metadata: strangerPay.viewTag })).toBeNull();
+    // Right ephemeral key and tag, but a different claimed address: not ours to spend.
+    expect(matchAnnouncement(keys, { stealthAddress: strangerPay.stealthAddress, ephemeralPubKey: pay.ephemeralPublicKey, metadata: pay.viewTag })).toBeNull();
+    for (const bad of [
+      { stealthAddress: pay.stealthAddress, ephemeralPubKey: "0x", metadata: "0x" },
+      { stealthAddress: pay.stealthAddress, ephemeralPubKey: `0x02${"00".repeat(32)}`, metadata: pay.viewTag },
+      { stealthAddress: "nonsense", ephemeralPubKey: pay.ephemeralPublicKey, metadata: pay.viewTag },
+    ]) expect(matchAnnouncement(keys, bad)).toBeNull();
+  });
+});
+

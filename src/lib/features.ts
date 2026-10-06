@@ -9,7 +9,9 @@
 
 /** Flag name in the browser -> env var on the server. */
 export const FEATURE_ENV = {
-  stealthPayouts: "FEATURE_STEALTH_PAYOUTS",
+  stealthPayouts: "FEATURE_STEALTH_PAYOUTS", // #1 send to a stealth address
+  stealthKeys: "FEATURE_STEALTH_KEYS", // #3 set up and publish your stealth keys
+  stealthInbox: "FEATURE_STEALTH_INBOX", // #2 find and withdraw stealth payments
 } as const;
 
 export type FeatureName = keyof typeof FEATURE_ENV;

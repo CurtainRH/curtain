@@ -7,6 +7,12 @@ import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from "bu
 import { migrate, type Db } from "@curtain/db";
 import { pgliteDb } from "@curtain/db/pglite";
 import {
+  STEALTH_ANNOUNCEMENT_EVENT,
+  STEALTH_KEYS_MESSAGE,
+  STEALTH_REGISTRY_ABI,
+  matchAnnouncement,
+  metaAddressBytes,
+  stealthKeysFromSignature,
   computeStealthPrivateKey,
   encodeMetaAddress,
   generateStealthAddress,
@@ -222,5 +228,60 @@ describe("stealth payouts (e2e)", () => {
       args: [BigInt(depositId), BigInt(intent.body.deadline), intent.body.salt],
     }));
     await syncUntil(async () => (await call(`/intents/${intent.body.id}`)).body.status === "challenged");
+  });
+
+  it("receiver flow: keys from a signature, published to the registry, found by the inbox scan, withdrawn", async () => {
+    // #3: the receiver signs, derives keys, and publishes the meta-address under their wallet.
+    const receiverWallet = d.wallets.keeper; // any funded wallet
+    const sig = await receiverWallet.signMessage({ account: receiverWallet.account!, message: STEALTH_KEYS_MESSAGE });
+    expect(await receiverWallet.signMessage({ account: receiverWallet.account!, message: STEALTH_KEYS_MESSAGE })).toBe(sig);
+    const keys = stealthKeysFromSignature(sig);
+    const registry = (d.deployment as unknown as { stealthRegistry: Address }).stealthRegistry;
+    await wait(await receiverWallet.writeContract({
+      chain: d.chain, account: receiverWallet.account!, address: registry, abi: STEALTH_REGISTRY_ABI, functionName: "registerKeys", args: [1n, metaAddressBytes(keys.meta)],
+    }));
+
+    // #1: the sender only knows the receiver's wallet address and looks the keys up.
+    const raw = await d.publicClient.readContract({ address: registry, abi: STEALTH_REGISTRY_ABI, functionName: "stealthMetaAddressOf", args: [receiverWallet.account!.address, 1n] });
+    const pay = generateStealthAddress(parseMetaAddress(raw));
+    const amountIn = parseEther("200");
+    const quote = await call(`/quote?tokenIn=${usdg}&tokenOut=${nvda}&amountIn=${amountIn}&stealth=1`);
+    const user = d.wallets.user;
+    const intent = await call("/intents", {
+      tokenIn: usdg, amountIn: amountIn.toString(), tokenOut: nvda, recipient: pay.stealthAddress, minOut: quote.body.minOutSuggested,
+      delaySeconds: 0, depositor: user.account!.address, stealth: { ephemeralPublicKey: pay.ephemeralPublicKey, viewTag: pay.viewTag },
+    });
+    await wait(await user.writeContract({ chain: d.chain, account: user.account!, address: usdg, abi: ERC20_ABI, functionName: "approve", args: [d.deployment.vault, amountIn] }));
+    await wait(await user.writeContract({
+      chain: d.chain, account: user.account!, address: d.deployment.vault, abi: VAULT_ABI, functionName: "deposit", args: [usdg, amountIn, intent.body.deadlineHash],
+    }));
+    await syncUntil(async () => (await call(`/intents/${intent.body.id}`)).body.status === "deposited");
+    await op.processDue(await d.now());
+    await op.submitSettlements(await d.now());
+    await syncUntil(async () => (await call(`/intents/${intent.body.id}`)).body.status === "paid");
+    await op.processStealth();
+
+    // #2: the inbox scan, exactly as the browser does it.
+    const anns = await d.publicClient.getLogs({ address: announcer, event: STEALTH_ANNOUNCEMENT_EVENT, args: { schemeId: 1n }, fromBlock: 0n });
+    const mine = anns.flatMap((a) => {
+      const key = matchAnnouncement(keys, { stealthAddress: a.args.stealthAddress!, ephemeralPubKey: a.args.ephemeralPubKey!, metadata: a.args.metadata! });
+      return key ? [{ address: a.args.stealthAddress!, key }] : [];
+    });
+    expect(mine.map((m) => m.address)).toEqual([pay.stealthAddress]); // earlier tests' payments aren't ours
+    const paid = await d.publicClient.getContractEvents({ address: d.deployment.vault, abi: VAULT_ABI, eventName: "PaidOut", args: { recipient: [pay.stealthAddress] }, fromBlock: 0n });
+    expect(paid.length).toBe(1);
+    expect(paid[0]!.args.token).toBe(nvda);
+
+    const account = privateKeyToAccount(mine[0]!.key);
+    const stealthWallet = createWalletClient({ account, chain: d.chain, transport: http(d.rpcUrl) });
+    const fresh = privateKeyToAccount(generatePrivateKey()).address;
+    const held = await balance(nvda, pay.stealthAddress);
+    expect(held).toBeGreaterThan(0n);
+    await d.testClient.setNextBlockBaseFeePerGas({ baseFeePerGas: 20_000_000n });
+    await wait(await stealthWallet.writeContract({
+      chain: d.chain, account, address: nvda, abi: TRANSFER, functionName: "transfer", args: [fresh, held], maxFeePerGas: 40_000_000n, maxPriorityFeePerGas: 0n,
+    }));
+    expect(await balance(nvda, fresh)).toBe(held);
+    expect(await balance(nvda, pay.stealthAddress)).toBe(0n);
   });
 });
