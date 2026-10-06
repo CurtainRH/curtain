@@ -34,6 +34,7 @@ import {
   countdown,
   ensureChain,
   errorMessage,
+  OFFLINE_MESSAGE,
   publicClient,
   provider,
   stakeToken,
@@ -862,12 +863,7 @@ export default function Dashboard({ path }: { path: string }) {
               {app.error}
             </p>
           )}
-          {app.offline && (
-            <Note>
-              Curtain's service isn't reachable. Your funds are safe; refunds still work from
-              Activity.
-            </Note>
-          )}
+          {app.offline && <Note>{OFFLINE_MESSAGE}</Note>}
           {app.storageWarning && (
             <p role="alert" className="form-error">
               {app.storageWarning}
@@ -974,9 +970,7 @@ export default function Dashboard({ path }: { path: string }) {
                   <label className="field-label" htmlFor="swap-to">
                     To (Recipient Asset)
                   </label>
-                  <span className="field-hint">
-                    {app.tokens.length} verified assets
-                  </span>
+                  <span className="field-hint">{app.tokens.length} verified assets</span>
                 </div>
                 <div className="quick-category-pills">
                   {TOKEN_CATEGORIES.map((cat) => {
@@ -1115,7 +1109,7 @@ export default function Dashboard({ path }: { path: string }) {
                       {!quote.available && <p>No liquidity for this pair right now</p>}
                     </>
                   )}
-                  {quoteError && (
+                  {quoteError && !app.offline && (
                     <p role="alert" className="form-error">
                       {quoteError}
                     </p>

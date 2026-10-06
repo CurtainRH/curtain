@@ -15,6 +15,7 @@ import {
   client,
   decimals,
   errorMessage,
+  isConnectivityError,
   fallbackVault,
   publicClient,
   readPending,
@@ -84,19 +85,18 @@ export function useCurtain(wallet: string) {
   }, []);
   const refresh = useCallback(async () => {
     try {
-      if (!apiUrl) {
-        setError("Swaps are not configured. Set the Curtain API address to open this act.");
-        return;
-      }
       const config = await sdk.config();
       if (currentWallet.current !== wallet) return;
+      // The server's fallback /config (operator down) still lists tokens, but quotes and swaps
+      // can't run: show the calm offline note rather than letting swaps fail one by one.
+      const serviceOffline = (config as { offline?: unknown }).offline === true;
       if (!fallbackVault) throw new Error("The swap vault is not configured.");
       if (!trustedVault(config.vault))
         throw new Error("Curtain's service reported an unexpected vault. Swaps are disabled.");
       setVault(config.vault);
       setMaxDelay(Math.min(15552000, config.maxDelaySeconds));
       const list = await Promise.all(
-        ROBINHOOD_CHAIN_TOKENS.map(async (meta) => {
+        ROBINHOOD_CHAIN_TOKENS.map(async (meta): Promise<TokenData | undefined> => {
           const token = address(config.tokens[meta.symbol]);
           if (!token) return undefined;
           const d = await decimals(token);
@@ -121,13 +121,14 @@ export function useCurtain(wallet: string) {
       );
       if (currentWallet.current !== wallet) return;
       setTokens(list.filter((t): t is TokenData => !!t));
-      setOffline(false);
+      setOffline(serviceOffline);
       setError("");
     } catch (e) {
       if (currentWallet.current !== wallet) return;
       setOffline(true);
       setTokens([]);
-      setError(errorMessage(e));
+      // Connectivity problems are already covered by the offline note; only show anything else.
+      setError(isConnectivityError(e) ? "" : errorMessage(e));
     }
   }, [sdk, wallet]);
   useEffect(() => {
@@ -181,8 +182,8 @@ export function useCurtain(wallet: string) {
         setPositionTiers(tiers);
       }
     } catch (e) {
-      if (currentWallet.current !== wallet) return;
-      setError(errorMessage(e));
+      // Background staking refresh: a failed poll retries in 15s, so don't alarm the user.
+      console.warn("staking refresh failed", e);
     }
   }, [wallet]);
   useEffect(() => {

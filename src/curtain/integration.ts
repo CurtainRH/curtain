@@ -16,7 +16,9 @@ import {
 } from "viem";
 import { CurtainClient, type EscapeTicket, type PendingTicket } from "@curtain/sdk";
 const env = import.meta.env;
-export const apiUrl = (env["VITE_CURTAIN_API_URL"] || "/api/curtain").replace(/\/$/, "");
+// Always same-origin: the server relays /api/curtain/* to the operator (src/lib/curtain-proxy.ts),
+// so the operator URL never reaches the browser.
+export const apiUrl = "/api/curtain";
 export const chain = defineChain({
   id: Number(env["VITE_CHAIN_ID"] || 4663),
   name: Number(env["VITE_CHAIN_ID"] || 4663) === 4663 ? "Robinhood Chain" : "Curtain local chain",
@@ -84,9 +86,7 @@ export function client(wallet?: string) {
       try {
         return await fetch(input, { ...init, signal: AbortSignal.timeout(8000) });
       } catch {
-        throw new Error(
-          "Curtain's service isn't reachable. Your funds are safe; refunds still work from Activity.",
-        );
+        throw new Error(OFFLINE_MESSAGE);
       }
     },
     publicClient,
@@ -158,9 +158,79 @@ export function errorMessage(e: unknown): string {
   }
   if ((e as { code?: number })?.code === 4001)
     return "You cancelled in your wallet. Nothing was sent.";
-  if (e instanceof TypeError)
-    return "Curtain's service isn't reachable. Your funds are safe; refunds still work from Activity.";
-  return e instanceof Error ? e.message : "The action could not be completed.";
+  if (e instanceof TypeError || isConnectivityError(e)) return OFFLINE_MESSAGE;
+  const raw = e instanceof BaseError ? e.shortMessage : e instanceof Error ? e.message : "";
+  return friendlyText(raw);
+}
+
+export const OFFLINE_MESSAGE =
+  "Swaps are briefly unavailable while Curtain reconnects. Your funds are safe, and refunds still work from Activity.";
+const GENERIC_MESSAGE = "Something went wrong. Please try again in a moment.";
+
+/** Network, timeout, gateway and "operator offline" failures: the service, not the user, is at fault. */
+export function isConnectivityError(e: unknown): boolean {
+  if (e instanceof TypeError) return true;
+  const name = (e as { name?: string } | null)?.name ?? "";
+  if (name === "AbortError" || name === "TimeoutError") return true;
+  const text = e instanceof Error ? e.message : String(e ?? "");
+  return /isn.t reachable|not reachable|offline|pending.deployment|OPERATOR_OFFLINE|fetch failed|failed to fetch|network ?error|timed? ?out|HTTP 5\d\d|\binternal error\b|Unexpected token|not valid JSON|\bECONN|\b50[234]\b/i.test(
+    text,
+  );
+}
+
+// Known technical messages (from the operator API, the SDK, viem and wallets) mapped to plain
+// language. Anything unrecognised that looks technical falls back to a generic message.
+const FRIENDLY: [RegExp, string][] = [
+  [
+    /user (rejected|denied)|rejected the request|cancell?ed/i,
+    "You cancelled in your wallet. Nothing was sent.",
+  ],
+  [
+    /insufficient funds|gas required exceeds|exceeds the balance of the account/i,
+    "Your wallet doesn't have enough ETH to pay the network fee.",
+  ],
+  [
+    /transfer amount exceeds balance|exceeds balance|insufficient balance/i,
+    "You don't have enough of this token for that amount.",
+  ],
+  [/allowance/i, "Token approval didn't go through. Please approve and try again."],
+  [/token not supported|TokenNotAllowed/i, "This token isn't supported."],
+  [
+    /no (route|liquidity|pool)|liquidity/i,
+    "There isn't enough liquidity for this pair right now. Try a smaller amount.",
+  ],
+  [/amountIn|raw units|slippageBps|are required/i, "Enter a valid amount to swap."],
+  [/unknown intent|not found/i, "This swap isn't showing yet. It can take a minute to appear."],
+  [
+    /rate.?limit|too many requests|429/i,
+    "Curtain is busy right now. Please try again in a moment.",
+  ],
+  [
+    /refusing to use vault|unexpected vault|inconsistent escape ticket|vault is not configured/i,
+    "Swaps are paused as a safety precaution. Your funds are safe, and refunds still work from Activity.",
+  ],
+  [
+    /does not match|chain mismatch|wrong network|unrecognized chain|switch.*chain/i,
+    "Please switch your wallet to Robinhood Chain and try again.",
+  ],
+  [/nonce/i, "Your wallet has a pending transaction. Wait for it to finish, then try again."],
+  [
+    /reverted|execution reverted|no Deposited event|no Staked event/i,
+    "The transaction didn't go through, so nothing changed. Please try again.",
+  ],
+  [/walletClient|connect a browser wallet|no wallet|provider/i, "Connect your wallet to continue."],
+];
+
+function friendlyText(raw: string): string {
+  const text = raw.trim();
+  if (!text) return GENERIC_MESSAGE;
+  for (const [pattern, message] of FRIENDLY) if (pattern.test(text)) return message;
+  const technical =
+    text.length > 160 ||
+    /\n|0x[\da-f]{8,}|Error:|Details:|Version:|Request Arguments|HTTP \d|undefined|null|\{|\}/i.test(
+      text,
+    );
+  return technical ? GENERIC_MESSAGE : text;
 }
 export interface SavedTicket {
   intentId: string;

@@ -124,7 +124,7 @@ export async function handleCurtainApiProxy(
       const headers = new Headers();
       for (const [k, v] of request.headers.entries()) {
         const lower = k.toLowerCase();
-        if (lower !== "host" && lower !== "connection" && lower !== "content-length") {
+        if (!["host", "connection", "content-length", "cookie", "authorization"].includes(lower)) {
           headers.set(k, v);
         }
       }
@@ -138,6 +138,9 @@ export async function handleCurtainApiProxy(
       }
 
       const upstream = await fetch(target, init);
+      if (upstream.status >= 500 && (subpath === "/config" || subpath === "/health")) {
+        throw new Error(`operator returned ${upstream.status}`);
+      }
       const resHeaders = new Headers(upstream.headers);
       resHeaders.set("access-control-allow-origin", "*");
       return new Response(upstream.body, {
