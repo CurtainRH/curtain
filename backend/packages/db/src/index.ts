@@ -1,8 +1,4 @@
-/**
- * Minimal Postgres access shared by @curtain/api and @curtain/indexer. `Db` is a two-method
- * interface so production runs on Bun's built-in client (`bunSqlDb`) and tests run on PGlite
- * (real Postgres in WASM) without a server.
- */
+import { Pool, type PoolClient } from "pg";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -16,20 +12,44 @@ export interface Db {
 
 export const MIGRATIONS_DIR = join(import.meta.dir, "../../../db/migrations");
 
-/** Production adapter over Bun's built-in Postgres client. */
-export async function bunSqlDb(url = process.env["DATABASE_URL"]): Promise<Db> {
-  if (!url) throw new Error("DATABASE_URL is not set");
-  const { SQL } = await import("bun");
-  const sql = new SQL(url);
-  const wrap = (s: InstanceType<typeof SQL>): Db => ({
-    query: async <T>(text: string, params: unknown[] = []) => (await s.unsafe(text, params as never[])) as T[],
-    exec: async (text: string) => {
-      await s.unsafe(text).simple();
+export function pgPoolDb(pool: Pool): Db {
+  const wrap = (client: Pool | PoolClient): Db => ({
+    query: async <T = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<T[]> => {
+      const res = await client.query(text, params);
+      return res.rows as T[];
     },
-    transaction: <T>(fn: (tx: Db) => Promise<T>) => s.begin((tx) => fn(wrap(tx as unknown as InstanceType<typeof SQL>))) as Promise<T>,
+    exec: async (text: string): Promise<void> => {
+      await client.query(text);
+    },
+    transaction: async <T>(fn: (tx: Db) => Promise<T>): Promise<T> => {
+      const conn = client instanceof Pool ? await client.connect() : client;
+      const shouldRelease = client instanceof Pool;
+      try {
+        await conn.query("BEGIN");
+        const res = await fn(wrap(conn));
+        await conn.query("COMMIT");
+        return res;
+      } catch (err) {
+        await conn.query("ROLLBACK");
+        throw err;
+      } finally {
+        if (shouldRelease) {
+          (conn as PoolClient).release();
+        }
+      }
+    },
   });
-  return wrap(sql);
+  return wrap(pool);
 }
+
+/** Production adapter over pg.Pool (compatible with PgBouncer, Supabase, and AWS connection poolers). */
+export async function createDb(url = process.env["DATABASE_URL"]): Promise<Db> {
+  if (!url) throw new Error("DATABASE_URL is not set");
+  const pool = new Pool({ connectionString: url });
+  return pgPoolDb(pool);
+}
+
+export const bunSqlDb = createDb;
 
 /**
  * Applies `dir`/*.sql in filename order, once each, recorded in schema_migrations. Each file
