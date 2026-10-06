@@ -15,6 +15,7 @@ export const FEATURE_ENV = {
   splitPayouts: "FEATURE_SPLIT_PAYOUTS", // #4 one swap paid to 2-5 recipients
   splitTiming: "FEATURE_SPLIT_TIMING", // #5 one swap delivered in 2-5 pieces at random times
   roundNudge: "FEATURE_ROUND_NUDGE", // #6 suggest a round amount instead of a traceable one
+  privacyScore: "FEATURE_PRIVACY_SCORE", // #7 1-5 privacy meter on the swap form
 } as const;
 
 export type FeatureName = keyof typeof FEATURE_ENV;

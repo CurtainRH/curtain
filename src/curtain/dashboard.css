@@ -2302,3 +2302,42 @@
   gap: 14px;
   margin-top: 4px;
 }
+
+/* Privacy score */
+.v2-privacy-score {
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid #d2ae6f20;
+  background: #d2ae6f07;
+}
+.v2-privacy-score-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--gold);
+}
+.v2-privacy-meter {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin: 10px 0;
+}
+.v2-privacy-meter span {
+  height: 6px;
+  background: #d2ae6f20;
+}
+.v2-privacy-meter span.half {
+  background: linear-gradient(90deg, var(--gold) 50%, #d2ae6f20 50%);
+}
+.v2-privacy-meter span.full {
+  background: var(--gold);
+}
+.v2-privacy-score ul {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.v2-privacy-score li.done {
+  color: var(--gold);
+}

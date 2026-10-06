@@ -487,3 +487,89 @@ export function roundSuggestions(
       : {}),
   };
 }
+
+/** What the swap form knows about where the output goes. */
+export type RecipientKind = "own" | "used" | "fresh" | "stealth" | "unknown";
+
+export interface PrivacyFactor {
+  label: string;
+  points: number;
+  max: number;
+  /** How to score higher on this factor, when there's room. */
+  tip?: string;
+}
+
+/**
+ * #7 privacy score: an estimate from what the swap form controls, 1 to 5 in half points.
+ * Timing (2), recipient (1.5), amount (1) and a random split (0.5) add up to 5. It describes how
+ * easily this swap's deposit and payout can be matched, not a guarantee.
+ */
+export function privacyScore(s: {
+  delaySeconds: number;
+  pieces: boolean;
+  recipient: RecipientKind;
+  roundAmount: boolean;
+  /** Random split recipients or deliver-in-pieces: no single payout matches the deposit. */
+  randomSplit: boolean;
+}): { score: number; factors: PrivacyFactor[] } {
+  const timing = Math.min(
+    2,
+    (s.delaySeconds <= 0 ? 0 : s.delaySeconds < 86_400 ? 1 : 1.5) + (s.pieces ? 0.5 : 0),
+  );
+  const recipient = { own: 0, used: 0.5, unknown: 0.5, fresh: 1, stealth: 1.5 }[s.recipient];
+  const factors: PrivacyFactor[] = [
+    {
+      label:
+        s.delaySeconds <= 0
+          ? "Instant payout"
+          : `Private delay${s.delaySeconds >= 86_400 ? " of a day or more" : ""}${s.pieces ? ", in pieces" : ""}`,
+      points: timing,
+      max: 2,
+      ...(timing < 2
+        ? {
+            tip:
+              s.delaySeconds <= 0
+                ? "Add a private delay so the payout doesn't follow your deposit right away."
+                : s.delaySeconds < 86_400
+                  ? "A delay window of a day or more hides the timing better."
+                  : "Deliver in pieces to spread the payout over several random times.",
+          }
+        : {}),
+    },
+    {
+      label: {
+        own: "Paying your own connected wallet",
+        used: "Recipient has on-chain history",
+        unknown: "Recipient",
+        fresh: "Recipient with no on-chain activity found",
+        stealth: "Stealth address",
+      }[s.recipient],
+      points: recipient,
+      max: 1.5,
+      ...(recipient < 1.5
+        ? {
+            tip:
+              s.recipient === "own"
+                ? "Sending to the wallet you deposit from links both ends. Use a fresh or stealth address."
+                : "A stealth address gives the receiver a brand-new address nobody can link to them.",
+          }
+        : {}),
+    },
+    {
+      label: s.roundAmount ? "Round amount" : "Distinctive amount",
+      points: s.roundAmount ? 1 : 0,
+      max: 1,
+      ...(s.roundAmount ? {} : { tip: "Round amounts blend in with other deposits." }),
+    },
+    {
+      label: s.randomSplit ? "Random-sized payouts" : "Single payout amount",
+      points: s.randomSplit ? 0.5 : 0,
+      max: 0.5,
+      ...(s.randomSplit
+        ? {}
+        : { tip: "Splitting into random amounts means no payout matches your deposit." }),
+    },
+  ];
+  const total = factors.reduce((sum, f) => sum + f.points, 0);
+  return { score: Math.max(1, Math.round(total * 2) / 2), factors };
+}

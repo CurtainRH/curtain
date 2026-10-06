@@ -40,6 +40,7 @@ import {
 import { Logo, RouteLink, Socials, useNav } from "./App";
 import { downloadFile } from "./domain";
 import { useFeatures } from "./features";
+import PrivacyScore from "./PrivacyScore";
 import StealthReceive from "./StealthReceive";
 import { useWorkspaceTools } from "./useWorkspaceTools";
 import {
@@ -55,6 +56,7 @@ import {
   provider,
   resolveStealthRecipient,
   roundSuggestions,
+  type RecipientKind,
   stakeToken,
   staking,
   stakingBlock,
@@ -230,6 +232,56 @@ export default function Dashboard({ path }: { path: string }) {
     setSideOpen(false);
     setMessage("");
   }, [path]);
+  // #7: what the privacy score knows about the recipient(s): stealth, the connected wallet
+  // itself, a fresh address (no transactions, no ETH, no code, none of the output token) or
+  // one with history.
+  const [recipientKind, setRecipientKind] = useState<RecipientKind>("unknown");
+  const recipientsKey = (useSplit ? splitTo : [recipient]).join(",");
+  const outputToken = output?.address;
+  useEffect(() => {
+    if (!features.privacyScore) return;
+    if (useStealth) {
+      setRecipientKind("stealth");
+      return;
+    }
+    const list = recipientsKey.split(",").map((r) => r.trim());
+    if (!list.every((r) => isAddress(r))) {
+      setRecipientKind("unknown");
+      return;
+    }
+    if (address(wallet) && list.some((r) => r.toLowerCase() === wallet.toLowerCase())) {
+      setRecipientKind("own");
+      return;
+    }
+    let alive = true;
+    setRecipientKind("unknown");
+    const timer = setTimeout(() => {
+      Promise.all(
+        list.map(async (r) => {
+          const [nonce, balance, code, held] = await Promise.all([
+            publicClient.getTransactionCount({ address: r as Address }),
+            publicClient.getBalance({ address: r as Address }),
+            publicClient.getCode({ address: r as Address }),
+            outputToken
+              ? publicClient.readContract({
+                  address: outputToken,
+                  abi: erc20Abi,
+                  functionName: "balanceOf",
+                  args: [r as Address],
+                })
+              : Promise.resolve(0n),
+          ]);
+          return nonce === 0 && balance === 0n && (!code || code === "0x") && held === 0n;
+        }),
+      )
+        .then((fresh) => alive && setRecipientKind(fresh.every(Boolean) ? "fresh" : "used"))
+        .catch(() => alive && setRecipientKind("unknown"));
+    }, 500);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [features.privacyScore, useStealth, recipientsKey, wallet, outputToken]);
   useEffect(() => {
     setStealthMeta(undefined);
     setStealthNote("");
@@ -1553,6 +1605,25 @@ export default function Dashboard({ path }: { path: string }) {
                     </p>
                   )}
                 </div>
+                {features.privacyScore && input && (
+                  <PrivacyScore
+                    delaySeconds={delaySeconds}
+                    pieces={usePieces}
+                    recipient={recipientKind}
+                    roundAmount={(() => {
+                      if (usePieces) return true; // pieces are random-sized on purpose
+                      try {
+                        return (
+                          roundSuggestions(rawAmount(amount, input.decimals), input.decimals) ===
+                          null
+                        );
+                      } catch {
+                        return true; // no amount yet: don't count it against the swap
+                      }
+                    })()}
+                    randomSplit={(useSplit && splitMode === "random") || usePieces}
+                  />
+                )}
                 <button
                   className="button gold v2-primary"
                   disabled={

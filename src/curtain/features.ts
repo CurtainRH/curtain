@@ -8,6 +8,7 @@ const OFF: Features = {
   splitPayouts: false,
   splitTiming: false,
   roundNudge: false,
+  privacyScore: false,
 };
 
 let loaded: Promise<Features> | undefined;
