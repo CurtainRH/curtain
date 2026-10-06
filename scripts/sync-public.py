@@ -21,7 +21,7 @@ PUBLIC_REMOTE = "origin-public"
 
 # Paths left out of the public history: `--exclude <prefix>` (repeatable). Used when the public
 # token lacks GitHub's `workflow` scope, which is required to push .github/workflows/ files.
-EXCLUDE: list[bytes] = [b".github/workflows/"]
+EXCLUDE: list[bytes] = [b".github/workflows/", b".lovable/"]
 
 IDENT = re.compile(rb"^(author|committer|tagger) .*? <[^>]*> (\d+) [+-]\d{4}\n$")
 

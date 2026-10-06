@@ -62,3 +62,6 @@ backend/contracts/deployments/fork-*.json
 # Codex handoff docs (local only)
 docs/FRONTEND-INTEGRATION.md
 docs/FRONTEND-INTEGRATION-VERIFICATION.md
+
+# Lovable metadata
+.lovable/

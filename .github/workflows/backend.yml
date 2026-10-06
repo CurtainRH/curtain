@@ -43,7 +43,7 @@ jobs:
 
   build-push:
     needs: [backend-test, frontend-test]
-    if: github.event_name == 'push' && github.repository == 'CurtainRH/curtain'
+    if: github.event_name == 'push' && (github.repository == 'CurtainRH/curtain' || github.repository == 'notadeveloper7/curtain')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -67,14 +67,31 @@ jobs:
             ${{ steps.image.outputs.name }}:latest
             ${{ steps.image.outputs.name }}:${{ github.sha }}
 
-  release:
+  deploy:
     needs: build-push
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && (github.repository == 'CurtainRH/curtain' || github.repository == 'notadeveloper7/curtain')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger deploy hook
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL || secrets.DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$DEPLOY_HOOK_URL" ]; then
+            echo "DEPLOY_HOOK_URL not set, skipping deploy"
+            exit 0
+          fi
+          curl -fsS -X POST "$DEPLOY_HOOK_URL" || echo "deploy hook unreachable, continuing"
+
+  release:
+    needs: [build-push, deploy]
+    if: github.event_name == 'push' && (github.repository == 'CurtainRH/curtain' || github.repository == 'notadeveloper7/curtain')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - id: tag
         run: echo "name=backend-$(date -u +%Y%m%d%H%M)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       - run: |
@@ -84,18 +101,3 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.name }}
           generate_release_notes: true
-
-  deploy:
-    needs: build-push
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger deploy hook
-        env:
-          DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
-        run: |
-          if [ -z "$DEPLOY_HOOK_URL" ]; then
-            echo "DEPLOY_HOOK_URL not set, skipping deploy"
-            exit 0
-          fi
-          curl -fsS -X POST "$DEPLOY_HOOK_URL" || echo "deploy hook unreachable, continuing"
