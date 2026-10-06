@@ -6,7 +6,9 @@
  *   GET  /config                  vault, tokens, fees, limits
  *   GET  /quote?tokenIn&tokenOut&amountIn[&slippageBps][&stealth=1]   expected output after fees, suggested minOut
  *   POST /intents                 { tokenIn, amountIn, tokenOut, recipient, depositor, minOut, delaySeconds,
- *                                   stealth?: { ephemeralPublicKey, viewTag } }   (stealth: FEATURE_STEALTH_PAYOUTS)
+ *                                   stealth?: { ephemeralPublicKey, viewTag },      (FEATURE_STEALTH_PAYOUTS)
+ *                                   splits?: [{ recipient, stealth? }], splitMode? } (FEATURE_SPLIT_PAYOUTS)
+ *   GET  /quote ... [&splits=2..5&splitMode=random|equal]
  *                                 -> { id, deadline, salt, deadlineHash, vault }
  *                                 Keep `deadline` and `salt`: they unlock the escape hatch.
  *   GET  /intents/:id             status of your swap
@@ -14,7 +16,7 @@
  */
 import { getAddress, isAddress, type Address } from "viem";
 import type { Db } from "@curtain/db";
-import { createIntent, IntentError, MAX_DELAY_SECONDS } from "./intents";
+import { createIntent, IntentError, MAX_DELAY_SECONDS, MAX_SPLITS, minSplitShareBps } from "./intents";
 import type { Operator } from "./operator";
 
 export interface ApiConfig {
@@ -55,7 +57,11 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
 
       if (req.method === "GET" && pathname === "/config") {
         const stealth = cfg.operator.stealthInfo;
-        return json({ vault: cfg.vault, tokens: cfg.tokens, keeperFeeBps: cfg.keeperFeeBps, maxDelaySeconds: MAX_DELAY_SECONDS, ...(stealth ? { stealth } : {}) });
+        const split = cfg.operator.splitInfo;
+        return json({
+          vault: cfg.vault, tokens: cfg.tokens, keeperFeeBps: cfg.keeperFeeBps, maxDelaySeconds: MAX_DELAY_SECONDS,
+          ...(stealth ? { stealth } : {}), ...(split ? { split } : {}),
+        });
       }
 
       if (req.method === "GET" && pathname === "/quote") {
@@ -75,17 +81,39 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
           if (fee === null) return json({ error: "private address delivery isn't available for this token yet" }, 400);
           stealthFee = fee;
         }
-        return json(await cfg.operator.quoteForUser(getAddress(tokenIn), getAddress(tokenOut), BigInt(amountIn), slippage, stealthFee));
+        let split: { parts: number; minShareBps: number } | undefined;
+        const splitsParam = url.searchParams.get("splits");
+        if (splitsParam !== null) {
+          if (!cfg.operator.splitEnabled) return json({ error: "split payouts are not enabled" }, 400);
+          const parts = Number(splitsParam);
+          const mode = url.searchParams.get("splitMode") ?? "random";
+          if (!Number.isInteger(parts) || parts < 2 || parts > MAX_SPLITS) return json({ error: `a split needs 2 to ${MAX_SPLITS} recipients` }, 400);
+          if (mode !== "random" && mode !== "equal") return json({ error: "splitMode must be random or equal" }, 400);
+          split = { parts, minShareBps: minSplitShareBps(parts, mode) };
+        }
+        return json(await cfg.operator.quoteForUser(getAddress(tokenIn), getAddress(tokenOut), BigInt(amountIn), slippage, stealthFee, split));
       }
 
       if (req.method === "POST" && pathname === "/intents") {
         const body = (await req.json()) as Record<string, unknown>;
+        const asStealth = (v: unknown) => {
+          const st = v as Record<string, unknown>;
+          return { ephemeralPublicKey: String(st["ephemeralPublicKey"]), viewTag: String(st["viewTag"]) };
+        };
         let stealth: { ephemeralPublicKey: string; viewTag: string } | undefined;
+        let splits: { recipient: string; stealth?: { ephemeralPublicKey: string; viewTag: string } }[] | undefined;
+        if (body["splits"] !== undefined && body["splits"] !== null) {
+          if (!cfg.operator.splitEnabled) return json({ error: "split payouts are not enabled" }, 400);
+          if (!Array.isArray(body["splits"])) return json({ error: "splits must be a list" }, 400);
+          splits = (body["splits"] as unknown[]).map((raw) => {
+            const sp = (raw ?? {}) as Record<string, unknown>;
+            return { recipient: String(sp["recipient"]), ...(sp["stealth"] ? { stealth: asStealth(sp["stealth"]) } : {}) };
+          });
+        }
+        if (body["stealth"] !== undefined && body["stealth"] !== null) stealth = asStealth(body["stealth"]);
         let stealthFee: bigint | undefined;
-        if (body["stealth"] !== undefined && body["stealth"] !== null) {
+        if (stealth || splits?.some((sp) => sp.stealth)) {
           if (!cfg.operator.stealthEnabled) return json({ error: "stealth payouts are not enabled" }, 400);
-          const st = body["stealth"] as Record<string, unknown>;
-          stealth = { ephemeralPublicKey: String(st["ephemeralPublicKey"]), viewTag: String(st["viewTag"]) };
           const tokenOut = String(body["tokenOut"]);
           const fee = isAddress(tokenOut) ? await cfg.operator.stealthFee(getAddress(tokenOut)) : null;
           if (fee === null) return json({ error: "private address delivery isn't available for this token yet" }, 400);
@@ -99,9 +127,14 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
           depositor: String(body["depositor"]),
           minOut: String(body["minOut"]),
           delaySeconds: Number(body["delaySeconds"] ?? 0),
-          ...(stealth ? { stealth, stealthFee } : {}),
+          ...(stealth ? { stealth } : {}),
+          ...(stealthFee !== undefined ? { stealthFee } : {}),
+          ...(splits ? { splits, splitMode: body["splitMode"] === "equal" ? "equal" : "random" } : {}),
         }, allowed, cfg.vault, now());
-        return json({ id: intent.id, deadline: intent.deadline, salt: intent.salt, deadlineHash: intent.deadlineHash, vault: cfg.vault }, 201);
+        return json({
+          id: intent.id, deadline: intent.deadline, salt: intent.salt, deadlineHash: intent.deadlineHash, vault: cfg.vault,
+          ...(intent.splits ? { splits: intent.splits } : {}),
+        }, 201);
       }
 
       const m = pathname.match(/^\/intents\/([0-9a-f]{32})$/);

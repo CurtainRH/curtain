@@ -24,6 +24,8 @@ import {
   ROBINHOOD_CHAIN_TOKENS,
   TIERS,
   VAULT_ABI,
+  type SplitMode,
+  type StealthIntent,
   type StealthMetaAddress,
   type SwapQuote,
 } from "@curtain/sdk";
@@ -139,6 +141,26 @@ export default function Dashboard({ path }: { path: string }) {
   const [stealthInput, setStealthInput] = useState("");
   const [stealthMeta, setStealthMeta] = useState<StealthMetaAddress>();
   const [stealthNote, setStealthNote] = useState("");
+  // Split payouts: FEATURE_SPLIT_PAYOUTS on the server and on the operator.
+  const splitAvailable = features.splitPayouts && !!app.split;
+  const [splitOn, setSplitOn] = useState(false);
+  const useSplit = splitAvailable && splitOn;
+  const maxSplit = Math.min(5, app.split?.maxRecipients ?? 5);
+  const [splitTo, setSplitTo] = useState<string[]>(["", ""]);
+  const [splitMode, setSplitMode] = useState<SplitMode>("random");
+  /** Why the split recipients can't be used yet, or "" when they can. */
+  const splitProblem = (() => {
+    if (!useSplit) return "";
+    const entries = splitTo.map((r) => r.trim());
+    if (entries.some((r) => !r)) return "Fill in every recipient, or remove the empty ones.";
+    if (useStealth) return ""; // resolved when you swap
+    for (const r of entries)
+      if (!isAddress(r) || !address(r) || r.toLowerCase() === app.vault?.toLowerCase())
+        return "Every recipient must be a valid address other than the zero address or vault.";
+    if (new Set(entries.map((r) => r.toLowerCase())).size !== entries.length)
+      return "Each recipient must be a different address.";
+    return "";
+  })();
   const [delayed, setDelayed] = useState(false);
   const [delay, setDelay] = useState("3600");
   const [customDelay, setCustomDelay] = useState("3600");
@@ -222,7 +244,10 @@ export default function Dashboard({ path }: { path: string }) {
           output.address,
           rawAmount(amount, input.decimals),
           slippage,
-          { stealth: useStealth },
+          {
+            stealth: useStealth,
+            ...(useSplit ? { splits: splitTo.length, splitMode } : {}),
+          },
         );
         if (alive && number === requestNumber.current) {
           setQuote(q);
@@ -244,7 +269,18 @@ export default function Dashboard({ path }: { path: string }) {
       clearTimeout(first);
       clearInterval(timer);
     };
-  }, [input, output, amount, slippage, current.id, app.sdk, useStealth]);
+  }, [
+    input,
+    output,
+    amount,
+    slippage,
+    current.id,
+    app.sdk,
+    useStealth,
+    useSplit,
+    splitTo.length,
+    splitMode,
+  ]);
   function link(hash: string, label: string) {
     return (
       <a
@@ -284,7 +320,12 @@ export default function Dashboard({ path }: { path: string }) {
   }
   async function swap() {
     if (!input || !output || !app.vault || !quote?.available || quoting) return;
-    if (useStealth) {
+    if (useSplit) {
+      if (splitProblem) {
+        setMessage(splitProblem);
+        return;
+      }
+    } else if (useStealth) {
       if (!stealthMeta) {
         setMessage(stealthNote || "Enter the receiver's stealth meta-address.");
         return;
@@ -312,28 +353,53 @@ export default function Dashboard({ path }: { path: string }) {
       // Refresh immediately before signing so minimum output matches the current form.
       const fresh = await app.sdk.quote(input.address, output.address, raw, slippage, {
         stealth: useStealth,
+        ...(useSplit ? { splits: splitTo.length, splitMode } : {}),
       });
       setQuote(fresh);
       if (!fresh.available)
         throw new Error(
-          useStealth
-            ? "This amount is too small to deliver to a stealth address. Try a larger amount."
-            : "No liquidity for this pair right now",
+          useSplit && BigInt(fresh.marketOut) > 0n
+            ? "This amount is too small to split. Try a larger amount or fewer recipients."
+            : useStealth
+              ? "This amount is too small to deliver to a stealth address. Try a larger amount."
+              : "No liquidity for this pair right now",
         );
-      // A brand-new one-time address per swap, derived here in the browser. Only the receiver
-      // (with their keys) can find it from the operator's announcement and spend from it.
-      const pay = useStealth && stealthMeta ? generateStealthAddress(stealthMeta) : undefined;
-      const payTo = pay ? pay.stealthAddress : (recipient as Address);
+      // Stealth: a brand-new one-time address per recipient, derived here in the browser. Only
+      // the receiver (with their keys) can find it from the announcement and spend from it.
+      let splits: { recipient: Address; stealth?: StealthIntent }[] | undefined;
+      if (useSplit) {
+        const entries = splitTo.map((r) => r.trim());
+        if (useStealth) {
+          const metas = await Promise.all(entries.map((r) => resolveStealthRecipient(r)));
+          splits = metas.map((m) => {
+            const p = generateStealthAddress(m);
+            return {
+              recipient: p.stealthAddress,
+              stealth: { ephemeralPublicKey: p.ephemeralPublicKey, viewTag: p.viewTag },
+            };
+          });
+        } else {
+          splits = entries.map((r) => ({ recipient: r as Address }));
+        }
+      }
+      const pay =
+        !useSplit && useStealth && stealthMeta ? generateStealthAddress(stealthMeta) : undefined;
+      const payTo = splits
+        ? splits[0]!.recipient
+        : pay
+          ? pay.stealthAddress
+          : (recipient as Address);
       const fromBlock = await publicClient.getBlockNumber();
       const details = {
         createdAt: new Date().toISOString(),
         tokenIn: from,
         amountIn: formatUnits(raw, input.decimals),
         tokenOut: to,
-        recipient: payTo,
+        recipient: splits ? `${splits.length} recipients` : payTo,
         delaySeconds,
         chainId: chain.id,
-        ...(pay ? { stealth: true } : {}),
+        ...(pay || (splits && useStealth) ? { stealth: true } : {}),
+        ...(splits ? { split: splits.length } : {}),
       };
       let pendingId = "";
       const result = await app.sdk
@@ -348,6 +414,7 @@ export default function Dashboard({ path }: { path: string }) {
             ...(pay
               ? { stealth: { ephemeralPublicKey: pay.ephemeralPublicKey, viewTag: pay.viewTag } }
               : {}),
+            ...(splits ? { splits, splitMode } : {}),
           },
           {
             // Keep the ticket secrets before the wallet signs, so closing the tab mid-deposit
@@ -380,9 +447,11 @@ export default function Dashboard({ path }: { path: string }) {
       setLatest(row);
       setAmount("");
       setMessage(
-        pay
-          ? "Deposit confirmed. It will be delivered to a brand-new stealth address only the receiver can find. Save your escape ticket."
-          : "Deposit confirmed. Save your escape ticket.",
+        splits
+          ? `Deposit confirmed. It will be split between ${splits.length} recipients in one payout. Save your escape ticket.`
+          : pay
+            ? "Deposit confirmed. It will be delivered to a brand-new stealth address only the receiver can find. Save your escape ticket."
+            : "Deposit confirmed. Save your escape ticket.",
       );
       void app.refresh();
     });
@@ -1053,8 +1122,21 @@ export default function Dashboard({ path }: { path: string }) {
                 </div>
                 {picker("swap-to", to, "to")}
                 <label className="field-label" htmlFor="swap-recipient">
-                  Recipient
+                  {useSplit ? "Recipients" : "Recipient"}
                 </label>
+                {splitAvailable && (
+                  <div className="segmented">
+                    {[false, true].map((v) => (
+                      <button
+                        key={String(v)}
+                        aria-pressed={splitOn === v}
+                        onClick={() => setSplitOn(v)}
+                      >
+                        {v ? "Split between several" : "One recipient"}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {stealthAvailable && (
                   <div className="segmented">
                     {[false, true].map((v) => (
@@ -1068,7 +1150,71 @@ export default function Dashboard({ path }: { path: string }) {
                     ))}
                   </div>
                 )}
-                {useStealth ? (
+                {useSplit ? (
+                  <>
+                    {splitTo.map((value, k) => (
+                      <div key={k} className="v2-split-row">
+                        <input
+                          id={k === 0 ? "swap-recipient" : undefined}
+                          aria-label={`Recipient ${k + 1}`}
+                          value={value}
+                          onChange={(e) =>
+                            setSplitTo((list) => list.map((v, i) => (i === k ? e.target.value : v)))
+                          }
+                          placeholder={
+                            useStealth
+                              ? `Recipient ${k + 1}: st:eth:0x… or a wallet with stealth keys`
+                              : `Recipient ${k + 1}: 0x…`
+                          }
+                          spellCheck={false}
+                          autoComplete="off"
+                        />
+                        {splitTo.length > 2 && (
+                          <button
+                            className="text-button"
+                            aria-label={`Remove recipient ${k + 1}`}
+                            onClick={() => setSplitTo((list) => list.filter((_, i) => i !== k))}
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {splitTo.length < maxSplit && (
+                      <button
+                        className="text-button"
+                        onClick={() => setSplitTo((list) => [...list, ""])}
+                      >
+                        + Add recipient
+                      </button>
+                    )}
+                    <div className="segmented">
+                      {(["random", "equal"] as const).map((m) => (
+                        <button
+                          key={m}
+                          aria-pressed={splitMode === m}
+                          onClick={() => setSplitMode(m)}
+                        >
+                          {m === "random" ? "Random amounts" : "Equal amounts"}
+                        </button>
+                      ))}
+                    </div>
+                    {splitProblem && amount ? (
+                      <p role="alert" className="form-error">
+                        {splitProblem}
+                      </p>
+                    ) : null}
+                    <span className="field-help">
+                      {splitMode === "random"
+                        ? "Curtain picks a random share for each recipient, so none of the amounts matches your deposit."
+                        : "Each recipient gets the same share."}{" "}
+                      Everyone is paid in the same transaction.
+                      {useStealth
+                        ? " Each recipient gets their own brand-new stealth address, with its own small delivery fee."
+                        : ""}
+                    </span>
+                  </>
+                ) : useStealth ? (
                   <>
                     <input
                       id="swap-recipient"
@@ -1215,17 +1361,31 @@ export default function Dashboard({ path }: { path: string }) {
                       </div>
                       {quote.stealthFee && (
                         <div>
-                          <span>Stealth delivery fee</span>
+                          <span>
+                            Stealth delivery fee
+                            {quote.splitParts ? ` (×${quote.splitParts})` : ""}
+                          </span>
                           <span>
                             {formatUnits(BigInt(quote.stealthFee), output.decimals)} {to}
                           </span>
                         </div>
                       )}
+                      {quote.splitParts && (
+                        <div>
+                          <span>Split</span>
+                          <span>
+                            {quote.splitParts} recipients ·{" "}
+                            {splitMode === "random" ? "random amounts" : "equal amounts"}
+                          </span>
+                        </div>
+                      )}
                       {!quote.available && (
                         <p>
-                          {quote.stealthFee && BigInt(quote.marketOut) > 0n
-                            ? "This amount is too small to cover stealth delivery. Try a larger amount."
-                            : "No liquidity for this pair right now"}
+                          {quote.splitParts && BigInt(quote.marketOut) > 0n
+                            ? "This amount is too small to split. Try a larger amount or fewer recipients."
+                            : quote.stealthFee && BigInt(quote.marketOut) > 0n
+                              ? "This amount is too small to cover stealth delivery. Try a larger amount."
+                              : "No liquidity for this pair right now"}
                         </p>
                       )}
                     </>
@@ -1245,7 +1405,7 @@ export default function Dashboard({ path }: { path: string }) {
                     !quote?.available ||
                     quoting ||
                     app.offline ||
-                    (useStealth && !stealthMeta)
+                    (useSplit ? !!splitProblem : useStealth && !stealthMeta)
                   }
                   onClick={() => void swap()}
                 >

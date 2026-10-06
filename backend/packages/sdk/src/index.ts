@@ -55,6 +55,8 @@ export interface SwapQuote {
   /** Stealth delivery only: the gas-drop fee (output token units), already taken out of
    * expectedOut and minOutSuggested. */
   stealthFee?: string;
+  /** Split quotes only: number of recipients. */
+  splitParts?: number;
 }
 
 /** Operator /config. `stealth` is present only when the operator has stealth payouts on. */
@@ -64,7 +66,10 @@ export interface ServiceConfig {
   keeperFeeBps: number;
   maxDelaySeconds: number;
   stealth?: { enabled: boolean; schemeId: number; announcer: Address; gasDropWei: string };
+  split?: { enabled: boolean; maxRecipients: number };
 }
+
+export type SplitMode = "random" | "equal";
 
 /** What the operator needs to announce a stealth payout (ERC-5564) once it is paid. */
 export interface StealthIntent {
@@ -84,6 +89,10 @@ export interface SwapParams {
   delaySeconds: number;
   /** Set when `recipient` is a stealth address (see generateStealthAddress). */
   stealth?: StealthIntent;
+  /** Split payout to 2-5 recipients; `recipient` must equal `splits[0].recipient`. */
+  splits?: { recipient: Address; stealth?: StealthIntent }[];
+  /** "random" (default, more private) or "equal" shares. */
+  splitMode?: SplitMode;
 }
 
 /** Everything needed to reclaim a deposit through the escape hatch. Keep it private. */
@@ -144,9 +153,16 @@ export class CurtainClient {
   }
 
   /** Expected output for a swap right now, after fees. Use `minOutSuggested` as `minOut`. */
-  quote(tokenIn: Address, tokenOut: Address, amountIn: bigint, slippageBps = 100, opts: { stealth?: boolean } = {}) {
+  quote(
+    tokenIn: Address, tokenOut: Address, amountIn: bigint, slippageBps = 100,
+    opts: { stealth?: boolean; splits?: number; splitMode?: SplitMode } = {},
+  ) {
     const q = new URLSearchParams({ tokenIn, tokenOut, amountIn: amountIn.toString(), slippageBps: String(slippageBps) });
     if (opts.stealth) q.set("stealth", "1");
+    if (opts.splits) {
+      q.set("splits", String(opts.splits));
+      q.set("splitMode", opts.splitMode ?? "random");
+    }
     return this.api<SwapQuote>(`/quote?${q}`);
   }
 

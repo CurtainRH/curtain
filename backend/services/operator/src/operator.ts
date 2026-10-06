@@ -11,6 +11,9 @@
  *                   lands the whole settlement, so an unpaid deposit is always refundable in
  *                   its own token (audit H-01).
  * - `submitSettlements()` the operator's own keeper; anyone else can submit the same ones.
+ * - Split payouts (FEATURE_SPLIT_PAYOUTS): an intent may pay 2-5 recipients (intent_splits) in
+ *                   fixed shares. Every part is its own payout in the same settlement; part 0
+ *                   keeps the deposit's refund-challenge tag, the others get derived tags.
  * - `processStealth()` for paid stealth payouts (FEATURE_STEALTH_PAYOUTS): announces each one
  *                   on the ERC-5564 announcer (from the operator, so nothing links it to the
  *                   depositor) and drops a little ETH on the stealth address so the receiver can
@@ -87,7 +90,12 @@ export interface OperatorConfig {
   rescanBlocks?: bigint;
   /** Set only when FEATURE_STEALTH_PAYOUTS is on. */
   stealth?: StealthConfig;
+  /** FEATURE_SPLIT_PAYOUTS: accept intents that pay several recipients. */
+  splitPayouts?: boolean;
 }
+
+/** Most recipients one split payout may have. */
+export const MAX_SPLIT_RECIPIENTS = 5;
 
 interface DueIntent {
   id: string;
@@ -101,6 +109,15 @@ interface DueIntent {
   deposit_id: string;
   secret: Hex;
   stealth_fee: string | null;
+  /** Split payouts only, in position order (loaded from intent_splits). */
+  parts?: Part[];
+}
+
+/** One recipient's share of an intent's output. */
+interface Part {
+  recipient: Address;
+  shareBps: number;
+  stealthFee: bigint;
 }
 
 export interface PendingSettlement {
@@ -118,9 +135,9 @@ interface Fees {
 
 interface Built {
   swap: SwapStruct;
-  /** In settlement order: each intent's payout, then its stealth fee payout if any. */
+  /** In settlement order: per intent, each part's payout followed by its stealth fee payout. */
   payouts: PayoutStruct[];
-  rows: { intent: DueIntent; p: PayoutStruct; fee?: PayoutStruct }[];
+  rows: { intent: DueIntent; payouts: PayoutStruct[]; gross: bigint }[];
   deadline: bigint;
   nonce: bigint;
   signature: Hex;
@@ -296,6 +313,23 @@ export class Operator {
          ORDER BY pay_at FOR UPDATE SKIP LOCKED`,
         [nowSec, nowSec + this.margin],
       );
+      if (due.length) {
+        const splits = await tx.query<{ intent_id: string; recipient: Address; share_bps: number; stealth_fee: string | null }>(
+          `SELECT intent_id, recipient, share_bps, stealth_fee::text FROM intent_splits
+           WHERE intent_id = ANY($1) ORDER BY intent_id, position`,
+          [due.map((i) => i.id)],
+        );
+        const byIntent = new Map<string, Part[]>();
+        for (const sp of splits) {
+          byIntent.set(sp.intent_id, [...(byIntent.get(sp.intent_id) ?? []), {
+            recipient: getAddress(sp.recipient), shareBps: Number(sp.share_bps), stealthFee: sp.stealth_fee ? BigInt(sp.stealth_fee) : 0n,
+          }]);
+        }
+        for (const i of due) {
+          const parts = byIntent.get(i.id);
+          if (parts) i.parts = parts;
+        }
+      }
       const groups = new Map<string, DueIntent[]>();
       for (const i of due) {
         const k = `${i.token_in}:${i.token_out}`;
@@ -328,7 +362,9 @@ export class Operator {
 
     const kept: DueIntent[] = [];
     for (const i of intents) {
-      if (await probe(getAddress(i.recipient))) kept.push(i);
+      let ok = true;
+      for (const part of partsOf(i)) if (!(await probe(part.recipient))) ok = false;
+      if (ok) kept.push(i);
       else await this.markBlocked(tx, i, "output token refuses transfers to this recipient");
     }
     return kept;
@@ -385,24 +421,32 @@ export class Operator {
     let paid = 0n;
     for (const i of intents) {
       const gross = (minOut * BigInt(i.deposited_amount)) / totalIn;
-      // The stealth gas-drop fee comes off first; protocol and keeper fees apply to the rest,
-      // which is the recipient payout's own gross (the vault caps fees against that).
-      const stealthFee = stealthFeeOf(i);
-      const payoutGross = gross - stealthFee;
-      const protocolFee = (payoutGross * feeBps) / BPS;
-      const keeperFee = (payoutGross * keeperBps) / BPS;
-      const p: PayoutStruct = {
-        recipient: getAddress(i.recipient), amount: payoutGross - protocolFee - keeperFee, protocolFee, keeperFee,
-        tag: keccak256(encodeAbiParameters([{ type: "uint256" }, { type: "bytes32" }], [BigInt(i.deposit_id), i.secret])),
-      };
-      payouts.push(p);
-      // The gas-drop fee is its own payout to the operator, so the recipient's payout (and
-      // the refund-challenge tag) stay exactly as for a normal swap.
-      const fee: PayoutStruct | undefined = stealthFee > 0n
-        ? { recipient: this.account.address, amount: stealthFee, protocolFee: 0n, keeperFee: 0n, tag: stealthFeeTag(BigInt(i.deposit_id), i.secret) }
-        : undefined;
-      if (fee) payouts.push(fee);
-      rows.push(fee ? { intent: i, p, fee } : { intent: i, p });
+      const depositId = BigInt(i.deposit_id);
+      const parts = partsOf(i);
+      const grosses = splitGross(gross, parts);
+      const entries: PayoutStruct[] = [];
+      parts.forEach((part, k) => {
+        // The stealth gas-drop fee comes off first; protocol and keeper fees apply to the rest,
+        // which is the recipient payout's own gross (the vault caps fees against that).
+        const payoutGross = grosses[k]! - part.stealthFee;
+        const protocolFee = (payoutGross * feeBps) / BPS;
+        const keeperFee = (payoutGross * keeperBps) / BPS;
+        // Part 0 carries the deposit's refund-challenge tag; every other part gets its own.
+        entries.push({
+          recipient: part.recipient, amount: payoutGross - protocolFee - keeperFee, protocolFee, keeperFee,
+          tag: k === 0 ? payoutTag(depositId, i.secret) : derivedTag(depositId, i.secret, `curtain:split:${k}`),
+        });
+        // The gas-drop fee is its own payout to the operator, so recipient payouts stay as
+        // for a normal swap.
+        if (part.stealthFee > 0n) {
+          entries.push({
+            recipient: this.account.address, amount: part.stealthFee, protocolFee: 0n, keeperFee: 0n,
+            tag: k === 0 ? stealthFeeTag(depositId, i.secret) : derivedTag(depositId, i.secret, `curtain:stealth-fee:${k}`),
+          });
+        }
+      });
+      payouts.push(...entries);
+      rows.push({ intent: i, payouts: entries, gross });
       paid += gross;
     }
     const swap: SwapStruct = tokenIn === tokenOut
@@ -445,10 +489,10 @@ export class Operator {
       [b.nonce.toString(), b.swap.tokenIn, b.swap.tokenOut, b.swap.amountIn.toString(), b.swap.minOut.toString(), b.swap.router,
         b.swap.data, b.deadline.toString(), b.signature],
     );
-    // Positions follow the order of b.payouts (each payout, then its fee payout).
+    // Positions follow the order of b.payouts.
     let position = 0;
-    for (const { intent, p, fee } of b.rows) {
-      for (const q of fee ? [p, fee] : [p]) {
+    for (const { intent, payouts, gross } of b.rows) {
+      for (const q of payouts) {
         await tx.query(
           `INSERT INTO payouts (settlement_id, position, intent_id, recipient, amount, protocol_fee, keeper_fee, tag)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
@@ -456,7 +500,7 @@ export class Operator {
         );
       }
       await tx.query("UPDATE intents SET status = 'settling', settlement_id = $2, amount_out = $3, updated_at = now() WHERE id = $1", [
-        intent.id, s!.id, (p.amount + p.protocolFee + p.keeperFee + (fee?.amount ?? 0n)).toString(),
+        intent.id, s!.id, gross.toString(),
       ]);
     }
     return Number(s!.id);
@@ -466,11 +510,20 @@ export class Operator {
     await tx.query("UPDATE intents SET status = 'blocked', blocked_reason = $2, updated_at = now() WHERE id = $1 AND status = 'deposited'", [i.id, reason]);
   }
 
-  /** What the recipient would receive from `minOut` split pro rata, after fees. */
+  /**
+   * What the recipients would receive in total from `minOut` split pro rata, after fees.
+   * 0 if any part can't cover its own stealth fee: such an intent never settles.
+   */
   private netFor(i: DueIntent, minOut: bigint, totalIn: bigint, feeBps: bigint, keeperBps: bigint): bigint {
-    const gross = (minOut * BigInt(i.deposited_amount)) / totalIn - stealthFeeOf(i);
-    if (gross <= 0n) return 0n;
-    return gross - (gross * feeBps) / BPS - (gross * keeperBps) / BPS;
+    const parts = partsOf(i);
+    const grosses = splitGross((minOut * BigInt(i.deposited_amount)) / totalIn, parts);
+    let net = 0n;
+    for (const [k, part] of parts.entries()) {
+      const g = grosses[k]! - part.stealthFee;
+      if (g <= 0n) return 0n;
+      net += g - (g * feeBps) / BPS - (g * keeperBps) / BPS;
+    }
+    return net;
   }
 
   /** The intent's minimum, scaled if a different amount was deposited than requested. */
@@ -525,15 +578,22 @@ export class Operator {
    * slippage tolerance the settlement will. `minOutSuggested` leaves a further `userSlippageBps`
    * (default 100 = 1%) for the price to move before the user's deposit is settled.
    */
-  async quoteForUser(tokenIn: Address, tokenOut: Address, amountIn: bigint, userSlippageBps = 100, stealthFee?: bigint) {
+  async quoteForUser(
+    tokenIn: Address, tokenOut: Address, amountIn: bigint, userSlippageBps = 100, stealthFee?: bigint,
+    split?: { parts: number; minShareBps: number },
+  ) {
     const feeBps = BigInt(await this.feeBps());
     const keeperBps = BigInt(this.cfg.keeperFeeBps);
     const same = getAddress(tokenIn) === getAddress(tokenOut);
     const q: Quote = same ? { amountOut: amountIn } : await this.cfg.quote(getAddress(tokenIn), getAddress(tokenOut), amountIn);
     const total = same ? amountIn : (q.amountOut * (BPS - this.slippage)) / BPS;
-    // Same order as build(): the stealth fee first, then protocol and keeper fees on the rest.
-    const gross = total - (stealthFee ?? 0n);
-    const positive = gross > 0n;
+    // Same order as build(): stealth fees first (one per part), then protocol and keeper fees
+    // on the rest. Fees are charged per part, so splitting can round a few units differently.
+    const parts = BigInt(split?.parts ?? 1);
+    const gross = total - (stealthFee ?? 0n) * parts;
+    // Every part must cover its own stealth fee, the smallest share included.
+    const smallestOk = !split || (total * BigInt(split.minShareBps)) / BPS > (stealthFee ?? 0n);
+    const positive = gross > 0n && smallestOk;
     const protocolFee = positive ? (gross * feeBps) / BPS : 0n;
     const keeperFee = positive ? (gross * keeperBps) / BPS : 0n;
     const expectedOut = positive ? gross - protocolFee - keeperFee : 0n;
@@ -548,7 +608,16 @@ export class Operator {
       // A stealth fee larger than the output means the amount is too small to deliver.
       available: q.amountOut > 0n && expectedOut > 0n,
       ...(stealthFee !== undefined ? { stealthFee: stealthFee.toString() } : {}),
+      ...(split ? { splitParts: split.parts } : {}),
     };
+  }
+
+  get splitEnabled(): boolean {
+    return !!this.cfg.splitPayouts;
+  }
+
+  get splitInfo() {
+    return this.cfg.splitPayouts ? { enabled: true, maxRecipients: MAX_SPLIT_RECIPIENTS } : undefined;
   }
 
   // ---------------------------------------------------------------- stealth payouts
@@ -599,14 +668,27 @@ export class Operator {
     const st = this.cfg.stealth;
     if (!st) return 0;
     const { db, publicClient } = this.cfg;
-    const rows = await db.query<{ id: string; recipient: Address; eph: Hex; tag: Hex; announce: string | null; drop: string | null; tx_hash: Hex }>(
-      `SELECT i.id, i.recipient, i.stealth_ephemeral_pub AS eph, i.stealth_view_tag AS tag,
-              i.stealth_announce_tx AS announce, i.stealth_drop_tx AS drop, s.tx_hash
-       FROM intents i JOIN settlements s ON s.id = i.settlement_id AND s.status = 'confirmed'
-       WHERE i.status IN ('paid', 'challenged') AND i.stealth_ephemeral_pub IS NOT NULL
-         AND (i.stealth_announce_tx IS NULL OR i.stealth_drop_tx IS NULL)
-       ORDER BY i.updated_at LIMIT 25`,
+    // Single-recipient stealth intents (position -1) and stealth split recipients.
+    const rows = await db.query<{ id: string; position: number; recipient: Address; eph: Hex; tag: Hex; announce: string | null; drop: string | null; tx_hash: Hex }>(
+      `SELECT * FROM (
+         SELECT i.id, -1 AS position, i.recipient, i.stealth_ephemeral_pub AS eph, i.stealth_view_tag AS tag,
+                i.stealth_announce_tx AS announce, i.stealth_drop_tx AS drop, s.tx_hash, i.updated_at
+         FROM intents i JOIN settlements s ON s.id = i.settlement_id AND s.status = 'confirmed'
+         WHERE i.status IN ('paid', 'challenged') AND i.stealth_ephemeral_pub IS NOT NULL
+           AND (i.stealth_announce_tx IS NULL OR i.stealth_drop_tx IS NULL)
+         UNION ALL
+         SELECT i.id, sp.position, sp.recipient, sp.stealth_ephemeral_pub, sp.stealth_view_tag,
+                sp.stealth_announce_tx, sp.stealth_drop_tx, s.tx_hash, i.updated_at
+         FROM intent_splits sp JOIN intents i ON i.id = sp.intent_id
+           JOIN settlements s ON s.id = i.settlement_id AND s.status = 'confirmed'
+         WHERE i.status IN ('paid', 'challenged') AND sp.stealth_ephemeral_pub IS NOT NULL
+           AND (sp.stealth_announce_tx IS NULL OR sp.stealth_drop_tx IS NULL)
+       ) pending ORDER BY updated_at, position LIMIT 25`,
     );
+    const record = (r: { id: string; position: number }, column: "stealth_announce_tx" | "stealth_drop_tx", value: string) =>
+      r.position < 0
+        ? db.query(`UPDATE intents SET ${column} = $2, updated_at = now() WHERE id = $1`, [r.id, value])
+        : db.query(`UPDATE intent_splits SET ${column} = $3 WHERE intent_id = $1 AND position = $2`, [r.id, r.position, value]);
     let done = 0;
     for (const r of rows) {
       const stealthAddress = getAddress(r.recipient);
@@ -626,7 +708,7 @@ export class Operator {
             const rc = await publicClient.waitForTransactionReceipt({ hash });
             if (rc.status !== "success") throw new Error(`announce reverted: ${hash}`);
           }
-          await db.query("UPDATE intents SET stealth_announce_tx = $2, updated_at = now() WHERE id = $1", [r.id, hash]);
+          await record(r, "stealth_announce_tx", hash);
         }
         if (!r.drop) {
           let hash: string = "skipped";
@@ -637,11 +719,11 @@ export class Operator {
             const rc = await publicClient.waitForTransactionReceipt({ hash: hash as Hex });
             if (rc.status !== "success") throw new Error(`gas drop reverted: ${hash}`);
           }
-          await db.query("UPDATE intents SET stealth_drop_tx = $2, updated_at = now() WHERE id = $1", [r.id, hash]);
+          await record(r, "stealth_drop_tx", hash);
         }
         done++;
       } catch (e) {
-        console.error(`stealth follow-up for intent ${r.id} failed (retrying next tick):`, e instanceof Error ? e.message.split("\n")[0] : e);
+        console.error(`stealth follow-up for intent ${r.id}${r.position >= 0 ? ` part ${r.position}` : ""} failed (retrying next tick):`, e instanceof Error ? e.message.split("\n")[0] : e);
       }
     }
     return done;
@@ -679,8 +761,11 @@ export class Operator {
       ),
       db.query<{ n: string }>("SELECT count(*)::text AS n FROM settlements WHERE status = 'signed'"),
       db.query<{ n: string }>(
-        `SELECT count(*)::text AS n FROM intents WHERE status IN ('paid', 'challenged') AND stealth_ephemeral_pub IS NOT NULL
-           AND (stealth_announce_tx IS NULL OR stealth_drop_tx IS NULL) AND updated_at < now() - interval '10 minutes'`,
+        `SELECT ((SELECT count(*) FROM intents WHERE status IN ('paid', 'challenged') AND stealth_ephemeral_pub IS NOT NULL
+                   AND (stealth_announce_tx IS NULL OR stealth_drop_tx IS NULL) AND updated_at < now() - interval '10 minutes')
+               + (SELECT count(*) FROM intent_splits sp JOIN intents i ON i.id = sp.intent_id
+                   WHERE i.status IN ('paid', 'challenged') AND sp.stealth_ephemeral_pub IS NOT NULL
+                   AND (sp.stealth_announce_tx IS NULL OR sp.stealth_drop_tx IS NULL) AND i.updated_at < now() - interval '10 minutes'))::text AS n`,
       ),
     ]);
     const lagBlocks = cur[0] ? head - BigInt(cur[0].block) : head;
@@ -727,9 +812,36 @@ function stealthFeeOf(i: DueIntent): bigint {
   return i.stealth_fee ? BigInt(i.stealth_fee) : 0n;
 }
 
+/** An intent's recipients: its split parts, or the single recipient with the whole output. */
+function partsOf(i: DueIntent): Part[] {
+  return i.parts?.length ? i.parts : [{ recipient: getAddress(i.recipient), shareBps: 10_000, stealthFee: stealthFeeOf(i) }];
+}
+
+/** `gross` divided by share; the last part takes the rounding remainder so nothing is lost. */
+function splitGross(gross: bigint, parts: Part[]): bigint[] {
+  const out: bigint[] = [];
+  let used = 0n;
+  for (const [k, part] of parts.entries()) {
+    const g = k === parts.length - 1 ? gross - used : (gross * BigInt(part.shareBps)) / BPS;
+    out.push(g);
+    used += g;
+  }
+  return out;
+}
+
+/** The deposit's payout tag, keccak256(abi.encode(depositId, secret)): what a refund challenge proves. */
+export function payoutTag(depositId: bigint, secret: Hex): Hex {
+  return keccak256(encodeAbiParameters([{ type: "uint256" }, { type: "bytes32" }], [depositId, secret]));
+}
+
+/** A further payout tag for the same deposit, unique per label and never equal to payoutTag. */
+export function derivedTag(depositId: bigint, secret: Hex, label: string): Hex {
+  return keccak256(encodeAbiParameters([{ type: "uint256" }, { type: "bytes32" }, { type: "string" }], [depositId, secret, label]));
+}
+
 /** Tag for a stealth fee payout: unique per deposit and never equal to its payout tag. */
 export function stealthFeeTag(depositId: bigint, secret: Hex): Hex {
-  return keccak256(encodeAbiParameters([{ type: "uint256" }, { type: "bytes32" }, { type: "string" }], [depositId, secret, "curtain:stealth-fee"]));
+  return derivedTag(depositId, secret, "curtain:stealth-fee");
 }
 
 /** CurtainVault.settle() arguments from a pending settlement (JSON-safe strings -> bigints). */

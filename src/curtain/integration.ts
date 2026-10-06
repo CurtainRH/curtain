@@ -264,6 +264,8 @@ export interface SavedTicket {
   chainId?: number;
   /** Paid to a one-time stealth address (ERC-5564); `recipient` is that address. */
   stealth?: boolean;
+  /** Split payout: number of recipients; `recipient` is a summary. */
+  split?: number;
 }
 const storageKey = "curtain-tickets-v1";
 export function validTicket(value: unknown): value is EscapeTicket {

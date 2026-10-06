@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import type { Features } from "../lib/features";
 
-const OFF: Features = { stealthPayouts: false, stealthKeys: false, stealthInbox: false };
+const OFF: Features = {
+  stealthPayouts: false,
+  stealthKeys: false,
+  stealthInbox: false,
+  splitPayouts: false,
+};
 
 let loaded: Promise<Features> | undefined;
 

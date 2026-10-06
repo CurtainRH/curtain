@@ -2279,3 +2279,15 @@
     gap: 6px;
   }
 }
+
+/* Split payouts */
+.v2-split-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.v2-split-row input {
+  flex: 1;
+  min-width: 0;
+}
