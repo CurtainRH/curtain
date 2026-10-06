@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   guard:
+    if: github.repository == 'CurtainRH/curtain'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

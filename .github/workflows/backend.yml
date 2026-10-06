@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   frontend-test:
+    if: github.repository == 'CurtainRH/curtain'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +23,7 @@ jobs:
       - run: bun run build
 
   backend-test:
+    if: github.repository == 'CurtainRH/curtain'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -43,7 +45,7 @@ jobs:
 
   build-push:
     needs: [backend-test, frontend-test]
-    if: github.event_name == 'push' && (github.repository == 'CurtainRH/curtain' || github.repository == 'notadeveloper7/curtain')
+    if: github.repository == 'CurtainRH/curtain' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -69,7 +71,7 @@ jobs:
 
   deploy:
     needs: build-push
-    if: github.event_name == 'push' && (github.repository == 'CurtainRH/curtain' || github.repository == 'notadeveloper7/curtain')
+    if: github.repository == 'CurtainRH/curtain' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Trigger deploy hook
@@ -84,7 +86,7 @@ jobs:
 
   release:
     needs: [build-push, deploy]
-    if: github.event_name == 'push' && (github.repository == 'CurtainRH/curtain' || github.repository == 'notadeveloper7/curtain')
+    if: github.repository == 'CurtainRH/curtain' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
