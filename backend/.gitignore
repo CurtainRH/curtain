@@ -16,8 +16,8 @@ contracts/broadcast/*/31337/
 
 # Env / secrets
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 *.pem
 *.key
 docs/Curtain_Git.md

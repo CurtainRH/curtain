@@ -34,9 +34,11 @@ dist-ssr
 
 # Env / secrets
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 backend/.env
+backend/.env.*
+!backend/.env.example
 *.pem
 *.key
 docs/Curtain_Git.md
