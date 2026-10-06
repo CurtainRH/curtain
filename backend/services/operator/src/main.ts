@@ -16,6 +16,7 @@
  *   START_BLOCK            first block to index (default: current head on first run)
  */
 import { bunSqlDb, migrate } from "@curtain/db";
+import { DEFAULT_TOKENS } from "@curtain/sdk";
 import { createPublicClient, createWalletClient, defineChain, http, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { createApi } from "./api";
@@ -28,7 +29,11 @@ const env = (k: string, d?: string) => {
   return v;
 };
 
-function parseTokens(raw: string): Record<string, Address> {
+function parseTokens(raw?: string): Record<string, Address> {
+  if (!raw || !raw.trim()) {
+    console.log("No TOKENS env provided, using default Robinhood Chain token registry (45 tokens).");
+    return DEFAULT_TOKENS;
+  }
   let s = raw.trim();
   // Strip outer quotes if Render or shell wrapped the entire string
   if ((s.startsWith("'") && s.endsWith("'")) || (s.startsWith('"') && s.endsWith('"'))) {
@@ -54,8 +59,8 @@ function parseTokens(raw: string): Record<string, Address> {
         const res = fn();
         if (typeof res === "object" && res !== null) return res as Record<string, Address>;
       } catch {}
-      console.error("Failed to parse TOKENS env. Raw value received:\n", raw);
-      throw err;
+      console.warn("Failed to parse TOKENS env (likely truncated in UI). Falling back to default token registry. Raw value received:\n", raw);
+      return DEFAULT_TOKENS;
     }
   }
 }
@@ -89,7 +94,7 @@ const operator = new Operator({
 const server = Bun.serve({
   port: Number(process.env["PORT"] ?? env("OPERATOR_PORT", "3100")),
   fetch: createApi({
-    db, operator, vault, tokens: parseTokens(env("TOKENS")), keeperFeeBps,
+    db, operator, vault, tokens: parseTokens(process.env["TOKENS"]), keeperFeeBps,
     minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
   }),
 });

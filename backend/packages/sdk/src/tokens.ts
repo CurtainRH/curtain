@@ -72,3 +72,7 @@ export const ROBINHOOD_CHAIN_TOKENS: CurtainToken[] = [
   { symbol: "PFE", name: "Pfizer", address: "0x7066A64c24e4206CD62E83bf198c1E7EB361F51e", decimals: 18, logo: "/tokens/pfe.svg", stock: true, category: "bluechip" },
   { symbol: "UPS", name: "UPS", address: "0xf23250dac154D05Bb671CB0d0eBEf3c635c79CE2", decimals: 18, logo: "/tokens/ups.png", stock: true, category: "bluechip" },
 ];
+
+export const DEFAULT_TOKENS: Record<string, Address> = Object.fromEntries(
+  ROBINHOOD_CHAIN_TOKENS.map((t) => [t.symbol, t.address])
+);

@@ -65,7 +65,7 @@ In Render Dashboard: **New → Web Service → Existing Image**
   - `RPC_HTTP`: Dedicated Robinhood Chain RPC URL
   - `OPERATOR_PRIVATE_KEY`: The operator wallet private key
   - `VAULT_ADDR`: `vault` address from `deployments/4663.json`
-  - `TOKENS`: `tokens` map from `deployments/4663.json` (as JSON)
+  - `TOKENS`: *(Optional)* Custom token map as JSON. If omitted, defaults to all 45 verified Robinhood Chain tokens built into the SDK.
   - `DEX_ROUTER_ADDR`: `0xcaf681a66d020601342297493863e78c959e5cb2`
   - `UNISWAP_QUOTER_ADDR`: `0x33e885ed0ec9bf04ecfb19341582aadcb4c8a9e7`
   - `ROUTE`: `uniswap`
