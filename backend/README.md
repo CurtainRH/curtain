@@ -48,7 +48,7 @@ cd contracts && forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545
 
 ## Running
 
-Production runs on Render: see [docs/DEPLOY_RENDER.md](../docs/DEPLOY_RENDER.md) and `render.yaml` at the repo root. To run locally:
+Production runs on Render via the pre-built container image (`ghcr.io/curtainrh/curtain-operator`): see [docs/DEPLOY_RENDER.md](../docs/DEPLOY_RENDER.md). To run locally:
 
 ```bash
 docker compose up -d                                  # Postgres
@@ -69,7 +69,7 @@ cd services/keeper && bun run start                   # optional: anyone can run
 | Operator | Built; e2e on anvil covers settlement, keeper landing, expiry and re-settle, challenge, refund, delay, slippage, rescans |
 | Keeper | Built, e2e |
 | SDK | Built, e2e (swap, refund, staking) |
-| Deploy | `Deploy.s.sol` checks all addresses on 4663; Render Blueprint in `render.yaml`; not deployed yet |
+| Deploy | `Deploy.s.sol` checks all addresses on 4663; GHCR container image deployment; not deployed yet |
 | $CRTN | Not launched; staking waits for `setTokens` |
 | Lending (Morpho) | After launch |
 

@@ -1,6 +1,6 @@
 # Deploying Curtain (Robinhood Chain mainnet + Render)
 
-Two parts: deploy the contracts once from your machine, then run the operator, a keeper and Postgres on Render with the Blueprint in `render.yaml`.
+Two parts: deploy the contracts once from your machine, then run the operator, keeper bot and Postgres on Render using the pre-built GHCR Docker image (`ghcr.io/curtainrh/curtain-operator`).
 
 ## 0. Wallets you need
 
@@ -39,23 +39,59 @@ forge script script/Deploy.s.sol --rpc-url https://rpc.mainnet.chain.robinhood.c
 - Note the block number of the deployment transaction. That's `START_BLOCK` below.
 - If `ADMIN_ADDR` differs from the deployer, the script starts a two-step ownership transfer of the vault. The admin must call `acceptOwnership()` on the vault to finish it. Staking is owned by the admin from the start.
 
-## 2. Create the Render services
+## 2. Deploy using Container Images (Render)
 
-1. In Render: **New → Blueprint**, connect the GitHub repo, and pick `render.yaml`. It creates `curtain-db` (Postgres), `curtain-operator` (web service) and `curtain-keeper` (worker).
-2. Fill in the secrets Render asks for:
+Both the operator and keeper run from the unified Docker image published to GitHub Container Registry:
+```
+ghcr.io/curtainrh/curtain-operator:latest
+```
 
-   | Variable | Service | Value |
-   |---|---|---|
-   | `RPC_HTTP` | operator, keeper | A dedicated Robinhood Chain RPC URL (the public one is rate limited) |
-   | `OPERATOR_PRIVATE_KEY` | operator | The operator wallet's key |
-   | `KEEPER_PRIVATE_KEY` | keeper | The keeper wallet's key |
-   | `VAULT_ADDR` | operator, keeper | `vault` from `deployments/4663.json` |
-   | `TOKENS` | operator | `tokens` from `deployments/4663.json`, as JSON |
-   | `V4_ADAPTER_ADDR` | operator | `v4Adapter` from `deployments/4663.json` (enables Uniswap v4 routing) |
-   | `START_BLOCK` | operator | The vault's deployment block |
+### Step 1: Create Postgres Database
+In Render Dashboard: **New → PostgreSQL**
+- **Name**: `curtain-db`
+- **Database**: `curtain`
+- **User**: `curtain`
+- **Plan**: Starter or Standard (includes daily backups)
+- Copy the **Internal Database URL** (`postgres://...`).
 
-3. Deploy. The operator creates its database tables on start.
-4. Check `https://<operator>.onrender.com/health` returns `{"status":"ok"}`, and `/config` shows the right vault and tokens.
+### Step 2: Create Operator (Web Service)
+In Render Dashboard: **New → Web Service → Existing Image**
+- **Image URL**: `ghcr.io/curtainrh/curtain-operator:latest`
+- **Name**: `curtain-operator`
+- **Health Check Path**: `/health`
+- **Environment Variables**:
+  - `DATABASE_URL`: Internal Connection String from `curtain-db`
+  - `CHAIN_ID`: `4663`
+  - `RPC_HTTP`: Dedicated Robinhood Chain RPC URL
+  - `OPERATOR_PRIVATE_KEY`: The operator wallet private key
+  - `VAULT_ADDR`: `vault` address from `deployments/4663.json`
+  - `TOKENS`: `tokens` map from `deployments/4663.json` (as JSON)
+  - `DEX_ROUTER_ADDR`: `0xcaf681a66d020601342297493863e78c959e5cb2`
+  - `UNISWAP_QUOTER_ADDR`: `0x33e885ed0ec9bf04ecfb19341582aadcb4c8a9e7`
+  - `ROUTE`: `uniswap`
+  - `V4_ADAPTER_ADDR`: `v4Adapter` from `deployments/4663.json`
+  - `V4_QUOTER_ADDR`: `0x8dc178efb8111bb0973dd9d722ebeff267c98f94`
+  - `SLIPPAGE_BPS`: `50`
+  - `KEEPER_FEE_BPS`: `5`
+  - `TICK_MS`: `5000`
+  - `START_BLOCK`: Deployment block of the vault
+  - `MIN_OPERATOR_BALANCE_WEI`: `2000000000000000`
+
+### Step 3: Create Keeper (Background Worker)
+In Render Dashboard: **New → Background Worker → Existing Image**
+- **Image URL**: `ghcr.io/curtainrh/curtain-operator:latest`
+- **Name**: `curtain-keeper`
+- **Docker Command**: `bun run --cwd services/keeper start`
+- **Environment Variables**:
+  - `OPERATOR_API`: `http://curtain-operator:3100` (internal) or `https://<operator>.onrender.com`
+  - `CHAIN_ID`: `4663`
+  - `RPC_HTTP`: Dedicated Robinhood Chain RPC URL
+  - `KEEPER_PRIVATE_KEY`: The keeper wallet private key
+  - `VAULT_ADDR`: `vault` address from `deployments/4663.json`
+  - `KEEPER_TICK_MS`: `5000`
+
+### Step 4: Verification
+Check that `https://<operator>.onrender.com/health` returns `{"status":"ok"}`, and `/config` returns the deployed vault address and supported tokens.
 
 ## 3. Monitoring
 
