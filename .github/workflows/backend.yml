@@ -9,20 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  frontend-test:
-    if: github.repository == 'CurtainRH/curtain'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.4.2"
-      - run: bun install --frozen-lockfile
-      - run: bun run lint
-      - run: bun x tsc --noEmit
-      - run: bun run build
-
-  backend-test:
+  test:
     if: github.repository == 'CurtainRH/curtain'
     runs-on: ubuntu-latest
     defaults:
@@ -44,7 +31,7 @@ jobs:
         run: forge test
 
   build-push:
-    needs: [backend-test, frontend-test]
+    needs: test
     if: github.repository == 'CurtainRH/curtain' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
