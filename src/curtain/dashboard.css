@@ -2291,3 +2291,14 @@
   flex: 1;
   min-width: 0;
 }
+
+/* Round-number nudge */
+.v2-round-nudge {
+  margin: 6px 0 10px;
+}
+.v2-round-nudge > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 4px;
+}

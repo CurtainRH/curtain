@@ -7,6 +7,7 @@ const OFF: Features = {
   stealthInbox: false,
   splitPayouts: false,
   splitTiming: false,
+  roundNudge: false,
 };
 
 let loaded: Promise<Features> | undefined;

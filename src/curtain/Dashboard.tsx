@@ -54,6 +54,7 @@ import {
   publicClient,
   provider,
   resolveStealthRecipient,
+  roundSuggestions,
   stakeToken,
   staking,
   stakingBlock,
@@ -1179,6 +1180,38 @@ export default function Dashboard({ path }: { path: string }) {
                     Max
                   </button>
                 </div>
+                {(() => {
+                  // #6: pieces are random-sized on purpose, so the nudge doesn't apply there.
+                  if (!features.roundNudge || usePieces || !input) return null;
+                  let raw: bigint;
+                  try {
+                    raw = rawAmount(amount, input.decimals);
+                  } catch {
+                    return null;
+                  }
+                  const tip = roundSuggestions(raw, input.decimals, input.balance);
+                  if (!tip) return null;
+                  const label = (v: string) =>
+                    `${Number(v).toLocaleString(undefined, { maximumFractionDigits: input.decimals })} ${from}`;
+                  return (
+                    <div className="v2-round-nudge">
+                      <span className="field-help">
+                        Deposits are public, and an exact amount like this is easy to match to its
+                        payout. A round amount blends in with other swaps.
+                      </span>
+                      <div>
+                        <button className="text-button" onClick={() => setAmount(tip.lower)}>
+                          Use {label(tip.lower)}
+                        </button>
+                        {tip.higher && (
+                          <button className="text-button" onClick={() => setAmount(tip.higher!)}>
+                            Use {label(tip.higher)}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div className="field-header-row">
                   <label className="field-label" htmlFor="swap-to">
                     To (Recipient Asset)

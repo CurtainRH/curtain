@@ -7,6 +7,7 @@ import {
   decodeErrorResult,
   defineChain,
   erc20Abi,
+  formatUnits,
   http,
   isAddress,
   parseAbi,
@@ -458,4 +459,31 @@ export function pieceAmounts(raw: bigint, n: number): bigint[] {
   const out = weights.map((w) => floor + (spare * w) / total);
   out[n - 1] = out[n - 1]! + raw - out.reduce((a, b) => a + b, 0n);
   return out;
+}
+
+/**
+ * Round-number nudge: deposit amounts are public, so an amount with many significant digits
+ * (1,234.57) is easy to match to its payout, while round ones (1,200) blend in. Returns the
+ * round amounts just below and above, or null when the amount is already round enough: at most
+ * two significant digits, or three ending in 5 (1,250).
+ */
+export function roundSuggestions(
+  raw: bigint,
+  decimals: number,
+  balance?: bigint,
+): { lower: string; higher?: string } | null {
+  if (raw <= 0n) return null;
+  const digits = raw.toString();
+  const significant = digits.replace(/0+$/, "");
+  if (significant.length <= 2 || (significant.length === 3 && significant.endsWith("5")))
+    return null;
+  const unit = 10n ** BigInt(digits.length - 2);
+  const lower = (raw / unit) * unit;
+  const higher = lower + unit;
+  return {
+    lower: formatUnits(lower, decimals),
+    ...(balance === undefined || higher <= balance
+      ? { higher: formatUnits(higher, decimals) }
+      : {}),
+  };
 }
