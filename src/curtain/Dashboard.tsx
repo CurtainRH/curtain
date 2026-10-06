@@ -17,7 +17,15 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { formatUnits, isAddress, parseUnits, type Address } from "viem";
+import {
+  createWalletClient,
+  custom,
+  erc20Abi,
+  formatUnits,
+  isAddress,
+  parseUnits,
+  type Address,
+} from "viem";
 import {
   CHALLENGE_WINDOW_SECONDS,
   generateStealthAddress,
@@ -42,6 +50,7 @@ import {
   ensureChain,
   errorMessage,
   OFFLINE_MESSAGE,
+  pieceAmounts,
   publicClient,
   provider,
   resolveStealthRecipient,
@@ -49,6 +58,7 @@ import {
   staking,
   stakingBlock,
   trustedVault,
+  UserMessageError,
   validTicket,
   type SavedTicket,
 } from "./integration";
@@ -176,6 +186,13 @@ export default function Dashboard({ path }: { path: string }) {
   const input = app.tokens.find((t) => t.symbol === from);
   const output = app.tokens.find((t) => t.symbol === to);
   const delaySeconds = delayed ? Number(delay === "custom" ? customDelay : delay) : 0;
+  // Split timing (#5): the swap becomes 2-5 separate private swaps, each with its own escape
+  // ticket and its own random delivery time inside the delay window. Separate deposits keep
+  // every piece fully refundable on its own (one deposit paid in parts could not be).
+  const piecesAvailable = features.splitTiming && delayed && !useSplit;
+  const [piecesOn, setPiecesOn] = useState(false);
+  const usePieces = piecesAvailable && piecesOn;
+  const [pieceCount, setPieceCount] = useState(3);
 
   const [pickingTarget, setPickingTarget] = useState<"from" | "to" | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -350,111 +367,177 @@ export default function Dashboard({ path }: { path: string }) {
       const raw = rawAmount(amount, input.decimals);
       if (input.balance === undefined || raw > input.balance)
         throw new Error("Your token balance is too low for this swap.");
-      // Refresh immediately before signing so minimum output matches the current form.
-      const fresh = await app.sdk.quote(input.address, output.address, raw, slippage, {
+      const quoteOpts = {
         stealth: useStealth,
         ...(useSplit ? { splits: splitTo.length, splitMode } : {}),
-      });
-      setQuote(fresh);
-      if (!fresh.available)
-        throw new Error(
-          useSplit && BigInt(fresh.marketOut) > 0n
-            ? "This amount is too small to split. Try a larger amount or fewer recipients."
-            : useStealth
-              ? "This amount is too small to deliver to a stealth address. Try a larger amount."
-              : "No liquidity for this pair right now",
+      };
+      const tooSmall = (q: SwapQuote, what: string) =>
+        new Error(
+          BigInt(q.marketOut) > 0n
+            ? `This amount is too small ${what}. Try a larger amount.`
+            : "No liquidity for this pair right now",
         );
-      // Stealth: a brand-new one-time address per recipient, derived here in the browser. Only
-      // the receiver (with their keys) can find it from the announcement and spend from it.
-      let splits: { recipient: Address; stealth?: StealthIntent }[] | undefined;
-      if (useSplit) {
-        const entries = splitTo.map((r) => r.trim());
-        if (useStealth) {
-          const metas = await Promise.all(entries.map((r) => resolveStealthRecipient(r)));
-          splits = metas.map((m) => {
-            const p = generateStealthAddress(m);
-            return {
-              recipient: p.stealthAddress,
-              stealth: { ephemeralPublicKey: p.ephemeralPublicKey, viewTag: p.viewTag },
-            };
-          });
-        } else {
-          splits = entries.map((r) => ({ recipient: r as Address }));
-        }
+      const what = usePieces
+        ? `to deliver in ${pieceCount} pieces`
+        : useSplit
+          ? "to split"
+          : useStealth
+            ? "to deliver to a stealth address"
+            : "";
+
+      if (!usePieces) {
+        // Refresh immediately before signing so minimum output matches the current form.
+        const fresh = await app.sdk.quote(input.address, output.address, raw, slippage, quoteOpts);
+        setQuote(fresh);
+        if (!fresh.available) throw tooSmall(fresh, what);
+        const row = await depositOne(raw, fresh);
+        setLatest(row);
+        setAmount("");
+        setMessage(
+          row.split
+            ? `Deposit confirmed. It will be split between ${row.split} recipients in one payout. Save your escape ticket.`
+            : row.stealth
+              ? "Deposit confirmed. It will be delivered to a brand-new stealth address only the receiver can find. Save your escape ticket."
+              : "Deposit confirmed. Save your escape ticket.",
+        );
+        void app.refresh();
+        return;
       }
-      const pay =
-        !useSplit && useStealth && stealthMeta ? generateStealthAddress(stealthMeta) : undefined;
-      const payTo = splits
-        ? splits[0]!.recipient
-        : pay
-          ? pay.stealthAddress
-          : (recipient as Address);
-      const fromBlock = await publicClient.getBlockNumber();
-      const details = {
-        createdAt: new Date().toISOString(),
-        tokenIn: from,
-        amountIn: formatUnits(raw, input.decimals),
-        tokenOut: to,
-        recipient: splits ? `${splits.length} recipients` : payTo,
-        delaySeconds,
-        chainId: chain.id,
-        ...(pay || (splits && useStealth) ? { stealth: true } : {}),
-        ...(splits ? { split: splits.length } : {}),
-      };
-      let pendingId = "";
-      const result = await app.sdk
-        .swap(
-          {
-            tokenIn: input.address,
-            amountIn: raw,
-            tokenOut: output.address,
-            recipient: payTo,
-            minOut: BigInt(fresh.minOutSuggested),
-            delaySeconds,
-            ...(pay
-              ? { stealth: { ephemeralPublicKey: pay.ephemeralPublicKey, viewTag: pay.viewTag } }
-              : {}),
-            ...(splits ? { splits, splitMode } : {}),
-          },
-          {
-            // Keep the ticket secrets before the wallet signs, so closing the tab mid-deposit
-            // can't strand funds without a refund path.
-            onIntent: (pending) => {
-              pendingId = pending.intentId;
-              app.addPending({
-                ...details,
-                intentId: pending.intentId,
-                pending,
-                fromBlock: fromBlock.toString(),
-              });
-            },
-          },
-        )
-        .catch((e: unknown) => {
-          // A wallet cancellation means no deposit was sent, so there is nothing to recover.
-          if (pendingId && errorMessage(e).startsWith("You cancelled"))
-            app.removePending(pendingId);
-          throw e;
+
+      // Pieces: random sizes (each at least half an equal piece), quoted up front so nothing is
+      // deposited unless every piece can be delivered.
+      const amounts = pieceAmounts(raw, pieceCount);
+      const quotes: SwapQuote[] = [];
+      for (const piece of amounts) {
+        const q = await app.sdk.quote(input.address, output.address, piece, slippage, quoteOpts);
+        if (!q.available) throw tooSmall(q, what);
+        quotes.push(q);
+      }
+      // One approval for the whole amount, so each piece only needs its deposit confirmed.
+      const allowance = await publicClient.readContract({
+        address: input.address,
+        abi: erc20Abi,
+        functionName: "allowance",
+        args: [wallet as Address, app.vault!],
+      });
+      if (allowance < raw) {
+        const p = provider();
+        if (!p) throw new Error("Connect a browser wallet first.");
+        const hash = await createWalletClient({ chain, transport: custom(p) }).writeContract({
+          chain,
+          account: wallet as Address,
+          address: input.address,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [app.vault!, raw],
         });
-      const row: SavedTicket = {
-        ...details,
-        intentId: result.intentId,
-        ticket: result.ticket,
-        depositTx: result.depositTx,
-      };
-      app.addTicket(row);
-      app.removePending(result.intentId);
-      setLatest(row);
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        if (receipt.status !== "success")
+          throw new Error("The approval didn't go through, so nothing was deposited.");
+      }
+      let done = 0;
+      let last: SavedTicket | undefined;
+      try {
+        for (const [k, piece] of amounts.entries()) {
+          last = await depositOne(piece, quotes[k]!, `${k + 1}/${pieceCount}`);
+          done++;
+        }
+      } catch (e) {
+        if (last) setLatest(last);
+        if (done === 0) throw e;
+        throw new UserMessageError(
+          `${done} of ${pieceCount} pieces were deposited. Each one is a complete private swap with its own escape ticket in Activity. The rest stopped: ${errorMessage(e)}`,
+        );
+      } finally {
+        void app.refresh();
+      }
+      setLatest(last);
       setAmount("");
       setMessage(
-        splits
-          ? `Deposit confirmed. It will be split between ${splits.length} recipients in one payout. Save your escape ticket.`
-          : pay
-            ? "Deposit confirmed. It will be delivered to a brand-new stealth address only the receiver can find. Save your escape ticket."
-            : "Deposit confirmed. Save your escape ticket.",
+        `All ${pieceCount} pieces deposited. Each arrives at its own random time inside the delay window. Every piece has its own escape ticket in Activity.`,
       );
-      void app.refresh();
     });
+  }
+
+  /** Creates one intent and deposits it; returns its saved escape ticket. */
+  async function depositOne(raw: bigint, fresh: SwapQuote, piece?: string): Promise<SavedTicket> {
+    // Stealth: a brand-new one-time address per recipient and per piece, derived here in the
+    // browser. Only the receiver (with their keys) can find it and spend from it.
+    let splits: { recipient: Address; stealth?: StealthIntent }[] | undefined;
+    if (useSplit) {
+      const entries = splitTo.map((r) => r.trim());
+      if (useStealth) {
+        const metas = await Promise.all(entries.map((r) => resolveStealthRecipient(r)));
+        splits = metas.map((m) => {
+          const p = generateStealthAddress(m);
+          return {
+            recipient: p.stealthAddress,
+            stealth: { ephemeralPublicKey: p.ephemeralPublicKey, viewTag: p.viewTag },
+          };
+        });
+      } else {
+        splits = entries.map((r) => ({ recipient: r as Address }));
+      }
+    }
+    const pay =
+      !useSplit && useStealth && stealthMeta ? generateStealthAddress(stealthMeta) : undefined;
+    const payTo = splits ? splits[0]!.recipient : pay ? pay.stealthAddress : (recipient as Address);
+    const fromBlock = await publicClient.getBlockNumber();
+    const details = {
+      createdAt: new Date().toISOString(),
+      tokenIn: from,
+      amountIn: formatUnits(raw, input!.decimals),
+      tokenOut: to,
+      recipient: splits ? `${splits.length} recipients` : payTo,
+      delaySeconds,
+      chainId: chain.id,
+      ...(pay || (splits && useStealth) ? { stealth: true } : {}),
+      ...(splits ? { split: splits.length } : {}),
+      ...(piece ? { piece } : {}),
+    };
+    let pendingId = "";
+    const result = await app.sdk
+      .swap(
+        {
+          tokenIn: input!.address,
+          amountIn: raw,
+          tokenOut: output!.address,
+          recipient: payTo,
+          minOut: BigInt(fresh.minOutSuggested),
+          delaySeconds,
+          ...(pay
+            ? { stealth: { ephemeralPublicKey: pay.ephemeralPublicKey, viewTag: pay.viewTag } }
+            : {}),
+          ...(splits ? { splits, splitMode } : {}),
+        },
+        {
+          // Keep the ticket secrets before the wallet signs, so closing the tab mid-deposit
+          // can't strand funds without a refund path.
+          onIntent: (pending) => {
+            pendingId = pending.intentId;
+            app.addPending({
+              ...details,
+              intentId: pending.intentId,
+              pending,
+              fromBlock: fromBlock.toString(),
+            });
+          },
+        },
+      )
+      .catch((e: unknown) => {
+        // A wallet cancellation means no deposit was sent, so there is nothing to recover.
+        if (pendingId && errorMessage(e).startsWith("You cancelled")) app.removePending(pendingId);
+        throw e;
+      });
+    const row: SavedTicket = {
+      ...details,
+      intentId: result.intentId,
+      ticket: result.ticket,
+      depositTx: result.depositTx,
+    };
+    app.addTicket(row);
+    app.removePending(result.intentId);
+    return row;
   }
   async function importTicket(file: File) {
     try {
@@ -595,6 +678,7 @@ export default function Dashboard({ path }: { path: string }) {
                   {row.recipient.length > 16
                     ? `${row.recipient.slice(0, 6)}…${row.recipient.slice(-4)}`
                     : row.recipient}
+                  {row.piece ? ` · piece ${row.piece}` : ""}
                 </span>
                 <span className="pill">{text}</span>
                 {status?.blockedReason && <p>{status.blockedReason}</p>}
@@ -1315,6 +1399,46 @@ export default function Dashboard({ path }: { path: string }) {
                       Curtain pays out at a random time inside this window. Longer windows are more
                       private.
                     </span>
+                    {piecesAvailable && (
+                      <>
+                        <div className="segmented">
+                          {[false, true].map((v) => (
+                            <button
+                              key={String(v)}
+                              aria-pressed={piecesOn === v}
+                              onClick={() => setPiecesOn(v)}
+                            >
+                              {v ? "Deliver in pieces" : "One delivery"}
+                            </button>
+                          ))}
+                        </div>
+                        {usePieces && (
+                          <>
+                            <label className="field-label" htmlFor="piece-count">
+                              Pieces
+                            </label>
+                            <select
+                              id="piece-count"
+                              value={pieceCount}
+                              onChange={(e) => setPieceCount(Number(e.target.value))}
+                            >
+                              {[2, 3, 4, 5].map((n) => (
+                                <option key={n} value={n}>
+                                  {n} pieces
+                                </option>
+                              ))}
+                            </select>
+                            <span className="field-help">
+                              Your swap becomes {pieceCount} separate private swaps of random sizes,
+                              each delivered at its own random time in this window. Each piece has
+                              its own escape ticket, so every piece stays refundable on its own.
+                              Your wallet asks you to approve once and confirm {pieceCount}{" "}
+                              deposits.
+                            </span>
+                          </>
+                        )}
+                      </>
+                    )}
                   </>
                 )}
                 <label className="field-label" htmlFor="slippage">

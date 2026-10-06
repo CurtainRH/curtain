@@ -144,7 +144,11 @@ export function countdown(seconds: number) {
   const s = Math.max(0, Math.ceil(seconds));
   return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h ${Math.floor((s % 3600) / 60)}m ${s % 60}s`;
 }
+/** An error whose message is already written for the user and must be shown as is. */
+export class UserMessageError extends Error {}
+
 export function errorMessage(e: unknown): string {
+  if (e instanceof UserMessageError) return e.message;
   if (e instanceof BaseError) {
     const rejection = e.walk(
       (x) =>
@@ -266,6 +270,8 @@ export interface SavedTicket {
   stealth?: boolean;
   /** Split payout: number of recipients; `recipient` is a summary. */
   split?: number;
+  /** Delivered in pieces (split timing): this piece, e.g. "2/3". */
+  piece?: string;
 }
 const storageKey = "curtain-tickets-v1";
 export function validTicket(value: unknown): value is EscapeTicket {
@@ -436,5 +442,20 @@ export async function logsInChunks<T>(
       size /= 2n;
     }
   }
+  return out;
+}
+
+/**
+ * Splits `raw` into `n` random pieces for split timing: each at least half an equal piece, and
+ * together exactly `raw`.
+ */
+export function pieceAmounts(raw: bigint, n: number): bigint[] {
+  if (!Number.isInteger(n) || n < 2) throw new Error("Choose at least 2 pieces.");
+  const weights = Array.from(crypto.getRandomValues(new Uint32Array(n)), (w) => BigInt(w) + 1n);
+  const total = weights.reduce((a, b) => a + b, 0n);
+  const floor = raw / BigInt(2 * n);
+  const spare = raw - floor * BigInt(n);
+  const out = weights.map((w) => floor + (spare * w) / total);
+  out[n - 1] = out[n - 1]! + raw - out.reduce((a, b) => a + b, 0n);
   return out;
 }

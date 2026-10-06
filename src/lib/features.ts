@@ -13,6 +13,7 @@ export const FEATURE_ENV = {
   stealthKeys: "FEATURE_STEALTH_KEYS", // #3 set up and publish your stealth keys
   stealthInbox: "FEATURE_STEALTH_INBOX", // #2 find and withdraw stealth payments
   splitPayouts: "FEATURE_SPLIT_PAYOUTS", // #4 one swap paid to 2-5 recipients
+  splitTiming: "FEATURE_SPLIT_TIMING", // #5 one swap delivered in 2-5 pieces at random times
 } as const;
 
 export type FeatureName = keyof typeof FEATURE_ENV;

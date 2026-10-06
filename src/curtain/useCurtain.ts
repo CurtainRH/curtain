@@ -325,7 +325,9 @@ export function useCurtain(wallet: string) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, wallet]);
-  function addTicket(row: SavedTicket, current = tickets) {
+  // Builds on the newest list (the ref is updated right here, not on the next render), so
+  // several tickets saved in a row, like the pieces of a split-timing swap, all survive.
+  function addTicket(row: SavedTicket, current = ticketsRef.current) {
     const next = [
       row,
       ...current.filter(
@@ -334,7 +336,10 @@ export function useCurtain(wallet: string) {
           t.ticket.depositId !== row.ticket.depositId,
       ),
     ];
-    if (currentWallet.current === wallet) setTickets(next);
+    if (currentWallet.current === wallet) {
+      ticketsRef.current = next;
+      setTickets(next);
+    }
     if (!saveTickets(wallet, next))
       setStorageWarning(
         "Device storage is unavailable. Download your escape ticket now and keep the file before leaving this page.",
