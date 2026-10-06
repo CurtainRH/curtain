@@ -13,6 +13,7 @@
  *                                 Keep `deadline` and `salt`: they unlock the escape hatch.
  *   GET  /intents/:id             status of your swap
  *   GET  /settlements/pending     signed settlements any keeper may submit (keeper earns the fees)
+ *   GET  /pool                    deposits waiting to be paid, per input token (FEATURE_ANONYMITY_SET)
  */
 import { getAddress, isAddress, type Address } from "viem";
 import type { Db } from "@curtain/db";
@@ -61,6 +62,7 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         return json({
           vault: cfg.vault, tokens: cfg.tokens, keeperFeeBps: cfg.keeperFeeBps, maxDelaySeconds: MAX_DELAY_SECONDS,
           ...(stealth ? { stealth } : {}), ...(split ? { split } : {}),
+          ...(cfg.operator.anonymitySetEnabled ? { pool: { enabled: true } } : {}),
         });
       }
 
@@ -146,6 +148,11 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
           [m[1]],
         );
         return rows[0] ? json(rows[0]) : json({ error: "unknown intent" }, 404);
+      }
+
+      if (req.method === "GET" && pathname === "/pool") {
+        if (!cfg.operator.anonymitySetEnabled) return json({ error: "not found" }, 404);
+        return json(await cfg.operator.waitingDeposits());
       }
 
       if (req.method === "GET" && pathname === "/settlements/pending") {

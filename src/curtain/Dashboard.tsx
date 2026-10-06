@@ -33,6 +33,7 @@ import {
   TIERS,
   VAULT_ABI,
   type SplitMode,
+  type WaitingDeposits,
   type StealthIntent,
   type StealthMetaAddress,
   type SwapQuote,
@@ -232,6 +233,28 @@ export default function Dashboard({ path }: { path: string }) {
     setSideOpen(false);
     setMessage("");
   }, [path]);
+  // #8: deposits waiting to be paid, per input token, from the operator (refreshed every 30 s
+  // while the swap page is open).
+  const [waiting, setWaiting] = useState<WaitingDeposits>();
+  const showPool = features.anonymitySet && app.poolEnabled && current.id === "swap";
+  useEffect(() => {
+    if (!showPool) {
+      setWaiting(undefined);
+      return;
+    }
+    let alive = true;
+    const load = () =>
+      app.sdk
+        .waitingDeposits()
+        .then((w) => alive && setWaiting(w))
+        .catch(() => alive && setWaiting(undefined));
+    void load();
+    const timer = setInterval(() => void load(), 30_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [showPool, app.sdk]);
   // #7: what the privacy score knows about the recipient(s): stealth, the connected wallet
   // itself, a fresh address (no transactions, no ETH, no code, none of the output token) or
   // one with history.
@@ -1605,6 +1628,22 @@ export default function Dashboard({ path }: { path: string }) {
                     </p>
                   )}
                 </div>
+                {showPool && waiting && input && (
+                  <Note>
+                    {(() => {
+                      const key = Object.keys(waiting.byToken).find(
+                        (k) => k.toLowerCase() === input.address.toLowerCase(),
+                      ) as Address | undefined;
+                      const n = key ? waiting.byToken[key]! : 0;
+                      if (n === 0)
+                        return `No other ${from} deposits are waiting right now. A private delay gives others time to join, so your payout is harder to single out.`;
+                      const crowd = `${n} ${from} deposit${n === 1 ? " is" : "s are"} waiting to be paid out right now`;
+                      return delaySeconds > 0
+                        ? `${crowd}. Yours would join them until its random payout time.`
+                        : `${crowd}. Instant swaps pay out within seconds; a private delay lets your deposit hide among them.`;
+                    })()}
+                  </Note>
+                )}
                 {features.privacyScore && input && (
                   <PrivacyScore
                     delaySeconds={delaySeconds}

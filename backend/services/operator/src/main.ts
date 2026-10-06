@@ -21,6 +21,7 @@
  *   STEALTH_OVERHEAD_WEI      operator gas per stealth payout, charged in the fee, default 5000000000000
  *   WETH_ADDR                 optional; default: the router's WETH9()
  *   FEATURE_SPLIT_PAYOUTS     "true" lets one swap pay 2-5 recipients; anything else = off
+ *   FEATURE_ANONYMITY_SET     "true" serves GET /pool (deposits waiting, per token); anything else = off
  */
 import { bunSqlDb, migrate } from "@curtain/db";
 import { DEFAULT_TOKENS } from "@curtain/sdk";
@@ -119,6 +120,7 @@ const operator = new Operator({
   startBlock: process.env["START_BLOCK"] ? BigInt(process.env["START_BLOCK"]) : await publicClient.getBlockNumber(),
   ...(stealth ? { stealth } : {}),
   splitPayouts: process.env["FEATURE_SPLIT_PAYOUTS"]?.trim().toLowerCase() === "true",
+  anonymitySet: process.env["FEATURE_ANONYMITY_SET"]?.trim().toLowerCase() === "true",
 });
 if (operator.splitEnabled) console.log("split payouts ON");
 

@@ -67,6 +67,13 @@ export interface ServiceConfig {
   maxDelaySeconds: number;
   stealth?: { enabled: boolean; schemeId: number; announcer: Address; gasDropWei: string };
   split?: { enabled: boolean; maxRecipients: number };
+  pool?: { enabled: boolean };
+}
+
+/** Deposits received and not yet paid out, per input token (GET /pool). */
+export interface WaitingDeposits {
+  total: number;
+  byToken: Record<Address, number>;
 }
 
 export type SplitMode = "random" | "equal";
@@ -146,6 +153,11 @@ export class CurtainClient {
 
   config() {
     return this.api<ServiceConfig>("/config");
+  }
+
+  /** How many deposits are waiting to be paid, per input token. Only when the operator serves it. */
+  waitingDeposits() {
+    return this.api<WaitingDeposits>("/pool");
   }
 
   status(intentId: string) {

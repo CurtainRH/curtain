@@ -92,6 +92,8 @@ export interface OperatorConfig {
   stealth?: StealthConfig;
   /** FEATURE_SPLIT_PAYOUTS: accept intents that pay several recipients. */
   splitPayouts?: boolean;
+  /** FEATURE_ANONYMITY_SET: serve how many deposits are waiting, per input token. */
+  anonymitySet?: boolean;
 }
 
 /** Most recipients one split payout may have. */
@@ -610,6 +612,33 @@ export class Operator {
       ...(stealthFee !== undefined ? { stealthFee: stealthFee.toString() } : {}),
       ...(split ? { splitParts: split.parts } : {}),
     };
+  }
+
+  get anonymitySetEnabled(): boolean {
+    return !!this.cfg.anonymitySet;
+  }
+
+  private poolCache?: { at: number; value: { total: number; byToken: Record<Address, number> } };
+
+  /**
+   * Deposits received and not yet paid out, per input token: the crowd a new deposit of that
+   * token hides in. Only counts, never amounts or times; cached for 30 s.
+   */
+  async waitingDeposits(): Promise<{ total: number; byToken: Record<Address, number> }> {
+    if (this.poolCache && Date.now() - this.poolCache.at < 30_000) return this.poolCache.value;
+    const rows = await this.cfg.db.query<{ token_in: string; n: string }>(
+      "SELECT token_in, count(*)::text AS n FROM intents WHERE status IN ('deposited', 'settling') GROUP BY token_in",
+    );
+    const byToken: Record<Address, number> = {};
+    let total = 0;
+    for (const r of rows) {
+      const token = getAddress(r.token_in);
+      byToken[token] = (byToken[token] ?? 0) + Number(r.n);
+      total += Number(r.n);
+    }
+    const value = { total, byToken };
+    this.poolCache = { at: Date.now(), value };
+    return value;
   }
 
   get splitEnabled(): boolean {

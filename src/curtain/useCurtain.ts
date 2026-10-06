@@ -56,6 +56,8 @@ export function useCurtain(wallet: string) {
   const [stealth, setStealth] = useState<ServiceConfig["stealth"]>();
   /** Present only when the operator has split payouts switched on. */
   const [split, setSplit] = useState<ServiceConfig["split"]>();
+  /** True only when the operator serves the anonymity set (/pool). */
+  const [poolEnabled, setPoolEnabled] = useState(false);
   const [tickets, setTickets] = useState<SavedTicket[]>(() => readTickets(wallet));
   const [statuses, setStatuses] = useState<Record<string, SwapState>>({});
   const [deposits, setDeposits] = useState<Record<string, DepositState>>({});
@@ -102,6 +104,7 @@ export function useCurtain(wallet: string) {
       setMaxDelay(Math.min(15552000, config.maxDelaySeconds));
       setStealth(config.stealth?.enabled === true ? config.stealth : undefined);
       setSplit(config.split?.enabled === true ? config.split : undefined);
+      setPoolEnabled(config.pool?.enabled === true);
       const list = await Promise.all(
         ROBINHOOD_CHAIN_TOKENS.map(async (meta): Promise<TokenData | undefined> => {
           const token = address(config.tokens[meta.symbol]);
@@ -136,6 +139,7 @@ export function useCurtain(wallet: string) {
       setTokens([]);
       setStealth(undefined);
       setSplit(undefined);
+      setPoolEnabled(false);
       // Connectivity problems are already covered by the offline note; only show anything else.
       setError(isConnectivityError(e) ? "" : errorMessage(e));
     }
@@ -352,6 +356,7 @@ export function useCurtain(wallet: string) {
     maxDelay,
     stealth,
     split,
+    poolEnabled,
     tickets,
     statuses,
     deposits,
