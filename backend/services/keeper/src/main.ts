@@ -26,22 +26,20 @@ const keeper = new Keeper({
 });
 const tickMs = Number(env("KEEPER_TICK_MS", "5000"));
 
-const port = process.env["PORT"] ? Number(process.env["PORT"]) : undefined;
-if (port) {
-  Bun.serve({
-    port,
-    fetch(req) {
-      const url = new URL(req.url);
-      if (url.pathname === "/health") {
-        return new Response(JSON.stringify({ status: "ok", service: "keeper" }), {
-          headers: { "content-type": "application/json" },
-        });
-      }
-      return new Response("Curtain Keeper running\n");
-    },
-  });
-  console.log(`@curtain/keeper health server listening on :${port}`);
-}
+const port = Number(process.env["PORT"] ?? "10000");
+const server = Bun.serve({
+  port,
+  fetch(req) {
+    const url = new URL(req.url);
+    if (url.pathname === "/health") {
+      return new Response(JSON.stringify({ status: "ok", service: "keeper" }), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response("Curtain Keeper running\n");
+  },
+});
+console.log(`@curtain/keeper health server listening on :${server.port}`);
 
 console.log("@curtain/keeper running");
 for (;;) {
