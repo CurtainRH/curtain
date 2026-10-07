@@ -25,12 +25,24 @@
   top: 0;
   height: 100svh;
   max-height: 1100px;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), padding 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 .sidebar-caption {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin: 0 10px 28px;
+  min-height: 28px;
+  gap: 8px;
+}
+.sidebar-caption-text {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1;
+  min-width: 0;
 }
 .sidebar-caption .eyebrow {
   font-size: 0.6rem;
@@ -39,6 +51,26 @@
 .box-no {
   font: italic 1rem var(--serif);
   color: var(--gold);
+}
+.sidebar-retract-btn {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--gold);
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+.sidebar-retract-btn:hover {
+  background: #d2ae6f20;
+  border-color: var(--gold);
+  color: #fff;
 }
 .sidebar nav {
   display: flex;
@@ -55,9 +87,12 @@
   font-size: 0.79rem;
   color: #95a4b7;
   border: 1px solid transparent;
+  white-space: nowrap;
   transition:
     background 0.2s,
-    color 0.2s;
+    color 0.2s,
+    padding 0.2s,
+    border-color 0.2s;
 }
 .side-link:hover {
   background: #d2ae6f09;
@@ -68,6 +103,14 @@
   background: linear-gradient(90deg, #c9a66817, #c9a66805);
   border-color: #c9a66829;
 }
+.side-link.coming-soon {
+  opacity: 0.55;
+  cursor: default;
+}
+.side-link.coming-soon:hover {
+  background: transparent;
+  color: #95a4b7;
+}
 .nav-diamond {
   margin-left: auto;
   font-size: 0.5rem;
@@ -75,6 +118,7 @@
 .sidebar-bottom {
   margin-top: auto;
   padding: 38px 10px 0;
+  transition: padding 0.25s;
 }
 .side-motto {
   border-top: 1px solid var(--line);
@@ -93,9 +137,23 @@
 .sidebar .socials {
   gap: 8px;
 }
-.sidebar .socials button {
+.sidebar .socials button,
+.sidebar .socials a {
   width: 32px;
   height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  color: var(--gold);
+  border-radius: 2px;
+  text-decoration: none;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+.sidebar .socials button:hover,
+.sidebar .socials a:hover {
+  background: #d2ae6f20;
+  border-color: var(--gold);
+  color: #fff;
 }
 .side-legal {
   display: flex;
@@ -111,6 +169,77 @@
   gap: 12px;
   align-items: center;
   margin-top: 16px;
+  white-space: nowrap;
+}
+
+/* Retracted sidebar styles */
+.sidebar.retracted {
+  width: 72px;
+  padding: 24px 8px;
+  align-items: center;
+}
+.sidebar.retracted .sidebar-caption {
+  justify-content: center;
+  margin: 0 0 24px;
+  width: 100%;
+}
+.sidebar.retracted .sidebar-caption-text {
+  display: none;
+}
+.sidebar.retracted nav {
+  width: 100%;
+  align-items: center;
+}
+.sidebar.retracted .side-link {
+  justify-content: center;
+  padding: 11px 0;
+  width: 44px;
+  gap: 0;
+  border-radius: 4px;
+}
+.sidebar.retracted .side-link.selected {
+  border-color: var(--gold);
+}
+.sidebar.retracted .side-link .side-link-text {
+  display: none;
+}
+.sidebar.retracted .side-link .nav-diamond {
+  display: none;
+}
+.sidebar.retracted .sidebar-bottom {
+  padding: 20px 0 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.sidebar.retracted .side-motto {
+  padding-top: 16px;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+.sidebar.retracted .side-motto p {
+  display: none;
+}
+.sidebar.retracted .sidebar .socials,
+.sidebar.retracted .socials {
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.sidebar.retracted .side-legal {
+  display: none;
+}
+.sidebar.retracted .return-link {
+  justify-content: center;
+  padding: 8px 0;
+  margin-top: 12px;
+  gap: 0;
+}
+.sidebar.retracted .return-link .side-link-text {
+  display: none;
 }
 .app-content {
   flex: 1;
@@ -129,6 +258,11 @@
   display: flex;
   align-items: center;
   gap: 20px;
+}
+.topline-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 .breadcrumbs {
   display: flex;
@@ -1588,7 +1722,22 @@
   place-items: center;
 }
 .mobile-sidebar {
-  display: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--gold);
+  border-radius: 4px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+.mobile-sidebar:hover {
+  background: #d2ae6f20;
+  border-color: var(--gold);
 }
 .legal {
   padding-top: 175px;
@@ -1666,7 +1815,7 @@
   .dashboard-body {
     padding: 48px;
   }
-  .sidebar {
+  .sidebar:not(.retracted) {
     width: 250px;
   }
   .side-link {
@@ -1677,7 +1826,7 @@
   }
 }
 @media (max-width: 1200px) {
-  .sidebar {
+  .sidebar:not(.retracted) {
     width: 205px;
     padding: 25px 12px;
   }
@@ -1741,7 +1890,7 @@
   }
 }
 @media (max-width: 950px) {
-  .sidebar {
+  .sidebar:not(.retracted) {
     width: 185px;
   }
   .side-link {
@@ -1855,6 +2004,52 @@
   .sidebar.expanded {
     display: flex;
   }
+  .sidebar.retracted {
+    width: 235px;
+    padding: 24px 18px;
+    align-items: stretch;
+  }
+  .sidebar.retracted .sidebar-caption {
+    justify-content: space-between;
+    margin: 0 10px 28px;
+  }
+  .sidebar.retracted .sidebar-caption-text {
+    display: flex;
+  }
+  .sidebar.retracted nav {
+    align-items: stretch;
+  }
+  .sidebar.retracted .side-link {
+    justify-content: flex-start;
+    padding: 13px;
+    width: auto;
+    gap: 14px;
+  }
+  .sidebar.retracted .side-link .side-link-text {
+    display: inline;
+  }
+  .sidebar.retracted .side-motto p {
+    display: block;
+  }
+  .sidebar.retracted .socials {
+    flex-direction: row;
+  }
+  .sidebar.retracted .side-legal {
+    display: flex;
+  }
+  .sidebar.retracted .return-link {
+    justify-content: flex-start;
+    gap: 12px;
+  }
+  .sidebar.retracted .return-link .side-link-text {
+    display: inline;
+  }
+  .sidebar-retract-btn {
+    display: none;
+  }
+  .topline-left {
+    gap: 8px;
+  }
   .side-link {
     font-size: 0.85rem;
     min-height: 49px;
@@ -1870,9 +2065,6 @@
     height: 65px;
     padding: 0 14px;
     gap: 7px;
-  }
-  .app-topline > div {
-    margin-left: auto;
   }
   .breadcrumbs {
     font-size: 0;

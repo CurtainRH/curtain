@@ -72,11 +72,13 @@ export function RouteLink({
   to,
   children,
   className = "",
+  title,
   onAfter,
 }: {
   to: string;
   children: ReactNode;
   className?: string;
+  title?: string;
   onAfter?: () => void;
 }) {
   const { navigate } = useNav();
@@ -84,6 +86,7 @@ export function RouteLink({
     <a
       href={to}
       className={className}
+      title={title}
       onClick={(e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey) return;
         e.preventDefault();
@@ -99,17 +102,34 @@ export function Socials() {
   const { popup } = useNav();
   return (
     <div className="socials">
-      <button aria-label="Telegram" onClick={() => popup("Telegram")}>
+      <button
+        type="button"
+        aria-label="Telegram (Coming soon)"
+        title="Telegram (Coming soon)"
+        onClick={() => popup("Telegram")}
+      >
         <Send size={18} />
       </button>
-      <button aria-label="X" onClick={() => popup("X")}>
+      <a
+        href="https://x.com/curtainprivacy"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="X (formerly Twitter)"
+        title="X (@curtainprivacy)"
+      >
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
           <path d="M18.9 2H22l-6.8 7.8L23.2 22h-6.3L12 14.6 5.5 22H2.4l8.1-9.3L.8 2h6.5l4.5 6.8L18.9 2Zm-1.1 18h1.7L6.3 3.9H4.5L17.8 20Z" />
         </svg>
-      </button>
-      <button aria-label="GitHub" onClick={() => popup("GitHub")}>
+      </a>
+      <a
+        href="https://github.com/curtainrh/curtain"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="GitHub"
+        title="GitHub (curtainrh/curtain)"
+      >
         <Github size={19} />
-      </button>
+      </a>
     </div>
   );
 }

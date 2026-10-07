@@ -4,7 +4,9 @@ import {
   ArrowUpRight,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
+  Clock,
   Coins,
   Download,
   Inbox,
@@ -142,6 +144,28 @@ export default function Dashboard({ path }: { path: string }) {
   const current = navItems.find((n) => n.id === (path.split("/")[2] || "overview")) || navItems[0]!;
   useWorkspaceTools(current.id, navigate);
   const [sideOpen, setSideOpen] = useState(false);
+  const [retracted, setRetracted] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return localStorage.getItem("curtain_sidebar_retracted") === "true";
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  });
+
+  const toggleRetract = () => {
+    setRetracted((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("curtain_sidebar_retracted", String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [from, setFrom] = useState("USDG");
@@ -1083,10 +1107,21 @@ export default function Dashboard({ path }: { path: string }) {
   }
   return (
     <main id="main" className="app-layout">
-      <aside className={`sidebar ${sideOpen ? "expanded" : ""}`}>
+      <aside className={`sidebar ${sideOpen ? "expanded" : ""} ${retracted ? "retracted" : ""}`}>
         <div className="sidebar-caption">
-          <span className="eyebrow">YOUR PRIVATE BOX</span>
-          <span className="box-no">Nº 01</span>
+          <div className="sidebar-caption-text">
+            <span className="eyebrow">YOUR PRIVATE BOX</span>
+            <span className="box-no">Nº 01</span>
+          </div>
+          <button
+            type="button"
+            className="sidebar-retract-btn"
+            onClick={toggleRetract}
+            aria-label={retracted ? "Expand sidebar" : "Collapse sidebar"}
+            title={retracted ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {retracted ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+          </button>
         </div>
         <nav aria-label="Application navigation">
           {navItems.map((n) => (
@@ -1094,12 +1129,16 @@ export default function Dashboard({ path }: { path: string }) {
               key={n.id}
               to={n.path}
               className={`side-link ${n.id === current.id ? "selected" : ""}`}
+              title={n.name}
             >
               <n.icon size={18} />
-              {n.name}
+              <span className="side-link-text">{n.name}</span>
             </RouteLink>
           ))}
-          <span className="side-link">Lending — coming soon</span>
+          <span className="side-link coming-soon" title="Lending — coming soon">
+            <Clock size={18} />
+            <span className="side-link-text">Lending — coming soon</span>
+          </span>
         </nav>
         <div className="sidebar-bottom">
           <div className="side-motto">
@@ -1116,25 +1155,35 @@ export default function Dashboard({ path }: { path: string }) {
             <RouteLink to="/legal/privacy">Privacy</RouteLink>
             <RouteLink to="/legal/risk">Risks</RouteLink>
           </div>
-          <RouteLink to="/" className="return-link">
-            Back to the overture <ArrowUpRight size={13} />
+          <RouteLink to="/" className="return-link" title="Back to the overture">
+            <span className="side-link-text">Back to the overture</span>
+            <ArrowUpRight size={13} />
           </RouteLink>
         </div>
       </aside>
       <div className="app-content">
         <div className="app-topline">
-          <button
-            className="mobile-sidebar"
-            aria-label="Toggle application navigation"
-            aria-expanded={sideOpen}
-            onClick={() => setSideOpen((v) => !v)}
-          >
-            <Menu size={18} />
-          </button>
-          <span className="breadcrumbs">
-            PRIVATE BOX <ChevronRight size={12} />
-            {current.name}
-          </span>
+          <div className="topline-left">
+            <button
+              className="mobile-sidebar"
+              aria-label="Toggle application navigation"
+              aria-expanded={sideOpen}
+              onClick={() => {
+                if (typeof window !== "undefined" && window.innerWidth <= 700) {
+                  setSideOpen((v) => !v);
+                } else {
+                  toggleRetract();
+                }
+              }}
+              title={retracted ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              <Menu size={18} />
+            </button>
+            <span className="breadcrumbs">
+              PRIVATE BOX <ChevronRight size={12} />
+              {current.name}
+            </span>
+          </div>
           <button className="wallet-button" onClick={connect}>
             <Wallet size={16} />
             {wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : "Connect wallet"}
