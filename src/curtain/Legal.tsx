@@ -243,8 +243,8 @@ export default function Legal({ type }: { type: string }) {
                   integration; it does not imply endorsement or an active commercial partnership.
                 </p>
                 <p>
-                  Telegram, X, and GitHub controls currently display a coming-soon notice. They do
-                  not redirect to unofficial accounts.
+                  Official community channels include Telegram (@curtainsonRH), X (@curtainsprivacy),
+                  and GitHub (curtainrh/curtain). Never interact with unverified or unofficial accounts.
                 </p>
               </section>
               <section>

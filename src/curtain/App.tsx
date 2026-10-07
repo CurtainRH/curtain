@@ -104,23 +104,23 @@ export function RouteLink({
   );
 }
 export function Socials() {
-  const { popup } = useNav();
   return (
     <div className="socials">
-      <button
-        type="button"
-        aria-label="Telegram (Coming soon)"
-        title="Telegram (Coming soon)"
-        onClick={() => popup("Telegram")}
+      <a
+        href="https://t.me/curtainsonRH"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Telegram"
+        title="Telegram (@curtainsonRH)"
       >
         <Send size={18} />
-      </button>
+      </a>
       <a
-        href="https://x.com/curtainprivacy"
+        href="https://x.com/curtainsprivacy"
         target="_blank"
         rel="noopener noreferrer"
         aria-label="X (formerly Twitter)"
-        title="X (@curtainprivacy)"
+        title="X (@curtainsprivacy)"
       >
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
           <path d="M18.9 2H22l-6.8 7.8L23.2 22h-6.3L12 14.6 5.5 22H2.4l8.1-9.3L.8 2h6.5l4.5 6.8L18.9 2Zm-1.1 18h1.7L6.3 3.9H4.5L17.8 20Z" />
