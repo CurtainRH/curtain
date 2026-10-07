@@ -58,6 +58,7 @@ import {
   pieceAmounts,
   publicClient,
   provider,
+  recipientLinkWarnings,
   resolveStealthRecipient,
   roundSuggestions,
   type RecipientKind,
@@ -264,6 +265,23 @@ export default function Dashboard({ path }: { path: string }) {
     setSideOpen(false);
     setMessage("");
   }, [path]);
+  // #10: warnings when a plain recipient links back to the user (debounced; never blocks).
+  const [linkWarnings, setLinkWarnings] = useState<string[]>([]);
+  const linkKey = (useSplit ? splitTo : [recipient]).join(",");
+  useEffect(() => {
+    setLinkWarnings([]);
+    if (!features.sameWalletWarning || useStealth || !address(wallet)) return;
+    let alive = true;
+    const timer = setTimeout(() => {
+      recipientLinkWarnings(wallet, linkKey.split(","))
+        .then((w) => alive && setLinkWarnings(w))
+        .catch(() => alive && setLinkWarnings([]));
+    }, 600);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [features.sameWalletWarning, useStealth, linkKey, wallet]);
   // #8: deposits waiting to be paid, per input token, from the operator (refreshed every 30 s
   // while the swap page is open).
   const [waiting, setWaiting] = useState<WaitingDeposits>();
@@ -1520,6 +1538,18 @@ export default function Dashboard({ path }: { path: string }) {
                       Sending to a fresh address gives you the most privacy.
                     </span>
                   </>
+                )}
+                {linkWarnings.length > 0 && (
+                  <div role="alert" className="v2-link-warnings">
+                    {linkWarnings.map((w) => (
+                      <p key={w} className="form-error">
+                        {w}
+                      </p>
+                    ))}
+                    <span className="field-help">
+                      A fresh or stealth address keeps the payout separate from you.
+                    </span>
+                  </div>
                 )}
                 <p className="field-label">Timing</p>
                 <div className="segmented">

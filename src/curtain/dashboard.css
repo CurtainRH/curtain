@@ -2560,3 +2560,11 @@
   width: auto;
   margin-top: 2px;
 }
+
+/* Same-wallet warning */
+.v2-link-warnings {
+  margin: 6px 0 12px;
+}
+.v2-link-warnings .form-error {
+  margin: 0 0 4px;
+}

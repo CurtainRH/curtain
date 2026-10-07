@@ -18,6 +18,7 @@ export const FEATURE_ENV = {
   privacyScore: "FEATURE_PRIVACY_SCORE", // #7 1-5 privacy meter on the swap form
   anonymitySet: "FEATURE_ANONYMITY_SET", // #8 how many deposits of this token are waiting
   freshWallet: "FEATURE_FRESH_WALLET", // #9 create a new recipient wallet as an encrypted file
+  sameWalletWarning: "FEATURE_SAME_WALLET_WARNING", // #10 warn when a recipient links back to you
 } as const;
 
 export type FeatureName = keyof typeof FEATURE_ENV;

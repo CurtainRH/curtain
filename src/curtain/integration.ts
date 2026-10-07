@@ -581,3 +581,84 @@ export function privacyScore(s: {
   const total = factors.reduce((sum, f) => sum + f.points, 0);
   return { score: Math.max(1, Math.round(total * 2) / 2), factors };
 }
+
+/**
+ * #10 same-wallet warning: why paying these recipients would link the swap back to the user.
+ * Checks the connected wallet, wallets this browser has deposited from, addresses this wallet
+ * already paid through Curtain, and (on-chain) addresses that ever deposited into the vault.
+ * Returns one plain-language warning per problem found; empty when nothing links.
+ */
+export async function recipientLinkWarnings(
+  wallet: string,
+  recipients: string[],
+): Promise<string[]> {
+  const list = [
+    ...new Set(recipients.map((r) => r.trim().toLowerCase()).filter((r) => isAddress(r))),
+  ];
+  if (!list.length) return [];
+  const me = wallet.toLowerCase();
+  const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+  const warnings: string[] = [];
+  let ownWallets: string[] = [];
+  try {
+    const data: unknown = JSON.parse(localStorage.getItem(storageKey) || "{}");
+    if (data && typeof data === "object")
+      ownWallets = Object.keys(data).map((k) => k.toLowerCase());
+  } catch {
+    ownWallets = [];
+  }
+  const paidBefore = new Set(
+    (address(wallet) ? readTickets(wallet) : [])
+      .map((t) => t.recipient.toLowerCase())
+      .filter((r) => isAddress(r)),
+  );
+  const flagged = new Set<string>();
+  for (const r of list) {
+    if (r === me) {
+      warnings.push(
+        `${short(r)} is the wallet you're depositing from. The payout would land back where the deposit came from, so anyone can connect the two.`,
+      );
+      flagged.add(r);
+    } else if (ownWallets.includes(r)) {
+      warnings.push(
+        `${short(r)} has made Curtain deposits from this browser. Paying it links this swap to those deposits.`,
+      );
+      flagged.add(r);
+    } else if (paidBefore.has(r)) {
+      warnings.push(
+        `You've already paid ${short(r)} through Curtain. Reusing a recipient makes your swaps easier to connect.`,
+      );
+    }
+  }
+  // On-chain: an address that ever deposited is publicly tied to Curtain activity.
+  const unchecked = list.filter((r) => !flagged.has(r));
+  if (unchecked.length && fallbackVault) {
+    const head = await publicClient.getBlockNumber();
+    const deposits = await logsInChunks(stealthScanFromBlock, head, (fromBlock, toBlock) =>
+      publicClient.getLogs({
+        address: fallbackVault!,
+        event: DEPOSITED_EVENT,
+        args: { depositor: unchecked as Address[] },
+        fromBlock,
+        toBlock,
+      }),
+    );
+    for (const r of new Set(deposits.map((d) => d.args.depositor?.toLowerCase()).filter(Boolean)))
+      warnings.push(
+        `${short(r!)} has deposited into Curtain before, so it's publicly tied to Curtain. Payouts to it are easier to link.`,
+      );
+  }
+  return warnings;
+}
+
+const DEPOSITED_EVENT = {
+  type: "event",
+  name: "Deposited",
+  inputs: [
+    { name: "depositId", type: "uint256", indexed: true },
+    { name: "depositor", type: "address", indexed: true },
+    { name: "token", type: "address", indexed: true },
+    { name: "amount", type: "uint256", indexed: false },
+    { name: "deadlineHash", type: "bytes32", indexed: false },
+  ],
+} as const;

@@ -11,6 +11,7 @@ const OFF: Features = {
   privacyScore: false,
   anonymitySet: false,
   freshWallet: false,
+  sameWalletWarning: false,
 };
 
 let loaded: Promise<Features> | undefined;
