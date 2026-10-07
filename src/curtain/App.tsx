@@ -32,6 +32,8 @@ import { ensureChain, errorMessage, provider } from "./integration";
 import { useAccount } from "wagmi";
 import { useConnectModal, useAccountModal } from "@rainbow-me/rainbowkit";
 import Legal from "./Legal";
+import Whitepaper from "./Whitepaper";
+import Roadmap from "./Roadmap";
 import VelvetCards from "./VelvetCards";
 import { TheatreEntrance, SceneStory, ActProgramme, Soundscape } from "./StageExperience";
 
@@ -73,12 +75,14 @@ export function RouteLink({
   children,
   className = "",
   title,
+  style,
   onAfter,
 }: {
   to: string;
   children: ReactNode;
   className?: string;
   title?: string;
+  style?: React.CSSProperties;
   onAfter?: () => void;
 }) {
   const { navigate } = useNav();
@@ -87,6 +91,7 @@ export function RouteLink({
       href={to}
       className={className}
       title={title}
+      style={style}
       onClick={(e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey) return;
         e.preventDefault();
@@ -281,16 +286,16 @@ const menuItems = [
   },
   {
     n: "III",
-    title: "The protocol",
-    sub: "Understand the mechanics",
-    to: "/#protocol",
+    title: "Whitepaper",
+    sub: "Protocol architecture",
+    to: "/whitepaper",
     img: "/opening-act-clean.png",
   },
   {
     n: "IV",
-    title: "The fine print",
-    sub: "Terms & privacy",
-    to: "/legal/terms",
+    title: "The roadmap",
+    sub: "The five acts of Curtain",
+    to: "/roadmap",
     img: "/invitation-clean.png",
   },
 ];
@@ -344,7 +349,11 @@ export default function App() {
           ? "Curtain — Your private box"
           : target.startsWith("/legal")
             ? "Curtain — Legal"
-            : "Curtain — Where privacy takes center stage";
+            : target === "/whitepaper"
+              ? "Curtain — Protocol Whitepaper"
+              : target === "/roadmap"
+                ? "Curtain — Protocol Roadmap"
+                : "Curtain — Where privacy takes center stage";
         if (anchor) setTimeout(() => document.getElementById(anchor)?.scrollIntoView(), 60);
       };
       if (reduced()) {
@@ -510,6 +519,8 @@ export default function App() {
             <nav className="header-links" aria-label="Main navigation">
               <RouteLink to="/#experience">The experience</RouteLink>
               <RouteLink to="/#protocol">The protocol</RouteLink>
+              <RouteLink to="/whitepaper">Whitepaper</RouteLink>
+              <RouteLink to="/roadmap">Roadmap</RouteLink>
               <RouteLink to="/app">
                 Private box <ArrowUpRight size={13} />
               </RouteLink>
@@ -537,6 +548,10 @@ export default function App() {
             <Dashboard path={path} />
           ) : path.startsWith("/legal/") ? (
             <Legal type={path.split("/").pop() || "terms"} />
+          ) : path === "/whitepaper" ? (
+            <Whitepaper />
+          ) : path === "/roadmap" ? (
+            <Roadmap />
           ) : path === "/" ? (
             <Landing watch={(film) => setModal({ kind: "film", film })} />
           ) : (
@@ -915,7 +930,9 @@ export function Footer() {
       </div>
       <div className="footer-bottom">
         <span>© {new Date().getFullYear()} Curtain</span>
-        <nav aria-label="Legal navigation">
+        <nav aria-label="Footer navigation">
+          <RouteLink to="/whitepaper">Whitepaper</RouteLink>
+          <RouteLink to="/roadmap">Roadmap</RouteLink>
           <RouteLink to="/legal/privacy">Privacy</RouteLink>
           <RouteLink to="/legal/terms">Terms of use</RouteLink>
           <RouteLink to="/legal/risk">Risk disclosure</RouteLink>

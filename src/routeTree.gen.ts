@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
+import { Route as RoadmapRouteImport } from './routes/roadmap'
+import { Route as WhitepaperRouteImport } from './routes/whitepaper'
 import { Route as AppSplatRouteImport } from './routes/app.$'
 import { Route as LegalTypeRouteImport } from './routes/legal.$type'
 
@@ -22,6 +24,16 @@ const IndexRoute = IndexRouteImport.update({
 const AppRoute = AppRouteImport.update({
   id: '/app',
   path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RoadmapRoute = RoadmapRouteImport.update({
+  id: '/roadmap',
+  path: '/roadmap',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WhitepaperRoute = WhitepaperRouteImport.update({
+  id: '/whitepaper',
+  path: '/whitepaper',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppSplatRoute = AppSplatRouteImport.update({
@@ -38,12 +50,16 @@ const LegalTypeRoute = LegalTypeRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/roadmap': typeof RoadmapRoute
+  '/whitepaper': typeof WhitepaperRoute
   '/app/$': typeof AppSplatRoute
   '/legal/$type': typeof LegalTypeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/roadmap': typeof RoadmapRoute
+  '/whitepaper': typeof WhitepaperRoute
   '/app/$': typeof AppSplatRoute
   '/legal/$type': typeof LegalTypeRoute
 }
@@ -51,20 +67,32 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/roadmap': typeof RoadmapRoute
+  '/whitepaper': typeof WhitepaperRoute
   '/app/$': typeof AppSplatRoute
   '/legal/$type': typeof LegalTypeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/app' | '/app/$' | '/legal/$type'
+  fullPaths:
+    '/' | '/app' | '/roadmap' | '/whitepaper' | '/app/$' | '/legal/$type'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/app' | '/app/$' | '/legal/$type'
-  id: '__root__' | '/' | '/app' | '/app/$' | '/legal/$type'
+  to: '/' | '/app' | '/roadmap' | '/whitepaper' | '/app/$' | '/legal/$type'
+  id:
+    | '__root__'
+    | '/'
+    | '/app'
+    | '/roadmap'
+    | '/whitepaper'
+    | '/app/$'
+    | '/legal/$type'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  RoadmapRoute: typeof RoadmapRoute
+  WhitepaperRoute: typeof WhitepaperRoute
   LegalTypeRoute: typeof LegalTypeRoute
 }
 
@@ -82,6 +110,20 @@ declare module '@tanstack/react-router' {
       path: '/app'
       fullPath: '/app'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/roadmap': {
+      id: '/roadmap'
+      path: '/roadmap'
+      fullPath: '/roadmap'
+      preLoaderRoute: typeof RoadmapRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/whitepaper': {
+      id: '/whitepaper'
+      path: '/whitepaper'
+      fullPath: '/whitepaper'
+      preLoaderRoute: typeof WhitepaperRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app/$': {
@@ -114,6 +156,8 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  RoadmapRoute: RoadmapRoute,
+  WhitepaperRoute: WhitepaperRoute,
   LegalTypeRoute: LegalTypeRoute,
 }
 export const routeTree = rootRouteImport

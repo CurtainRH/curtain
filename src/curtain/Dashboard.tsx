@@ -1151,9 +1151,9 @@ export default function Dashboard({ path }: { path: string }) {
           </div>
           <Socials />
           <div className="side-legal">
+            <RouteLink to="/whitepaper">Whitepaper</RouteLink>
+            <RouteLink to="/roadmap">Roadmap</RouteLink>
             <RouteLink to="/legal/terms">Terms</RouteLink>
-            <RouteLink to="/legal/privacy">Privacy</RouteLink>
-            <RouteLink to="/legal/risk">Risks</RouteLink>
           </div>
           <RouteLink to="/" className="return-link" title="Back to the overture">
             <span className="side-link-text">Back to the overture</span>
