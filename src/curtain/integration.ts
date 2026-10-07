@@ -41,7 +41,15 @@ export const chain = defineChain({
     },
   },
 });
-export const publicClient = createPublicClient({ chain, transport: http() });
+export const publicClient = createPublicClient({
+  chain,
+  batch: { multicall: true },
+  transport: http(env["VITE_RPC_URL"] || "https://rpc.mainnet.chain.robinhood.com", {
+    batch: true,
+    retryCount: 3,
+    timeout: 12_000,
+  }),
+});
 export function address(value: unknown): Address | undefined {
   return typeof value === "string" && isAddress(value) && value.toLowerCase() !== zeroAddress
     ? value

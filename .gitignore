@@ -67,5 +67,8 @@ docs/FRONTEND-INTEGRATION-VERIFICATION.md
 technical-docs/
 *.pdf
 
+# Audit runs (raw tool output)
+.audit-grade/runs/
+
 # Lovable metadata
 .lovable/

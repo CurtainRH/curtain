@@ -109,15 +109,25 @@ export function useCurtain(wallet: string) {
         ROBINHOOD_CHAIN_TOKENS.map(async (meta): Promise<TokenData | undefined> => {
           const token = address(config.tokens[meta.symbol]);
           if (!token) return undefined;
-          const d = await decimals(token);
-          const balance = address(wallet)
-            ? await publicClient.readContract({
+          let d = 18;
+          try {
+            d = await decimals(token);
+          } catch {
+            d = 18;
+          }
+          let balance: bigint | undefined;
+          if (address(wallet)) {
+            try {
+              balance = await publicClient.readContract({
                 address: token,
                 abi: erc20Abi,
                 functionName: "balanceOf",
                 args: [wallet as Address],
-              })
-            : undefined;
+              });
+            } catch {
+              balance = 0n;
+            }
+          }
           return {
             symbol: meta.symbol,
             name: meta.name,

@@ -75,7 +75,7 @@ export function getOperatorUrl(env?: unknown): string {
       if (typeof p[key] === "string" && p[key]) return p[key]!.replace(/\/$/, "");
     }
   }
-  return "";
+  return "https://operator.curtainrh.com";
 }
 
 function getVaultAddress(env?: unknown): string {
@@ -141,7 +141,7 @@ export async function handleCurtainApiProxy(
         const headers = new Headers();
         for (const [k, v] of request.headers.entries()) {
           const lower = k.toLowerCase();
-          if (!["host", "connection", "content-length", "cookie", "authorization"].includes(lower)) {
+          if (!["host", "connection", "content-length", "cookie", "authorization", "accept-encoding"].includes(lower)) {
             headers.set(k, v);
           }
         }
@@ -160,6 +160,11 @@ export async function handleCurtainApiProxy(
         }
         const resHeaders = new Headers(upstream.headers);
         resHeaders.set("access-control-allow-origin", "*");
+        // Strip compression & hop-by-hop headers: fetch() decompresses the body in memory
+        resHeaders.delete("content-encoding");
+        resHeaders.delete("content-length");
+        resHeaders.delete("transfer-encoding");
+        resHeaders.delete("connection");
 
         // Prevent reflected HTML / XSS on Curtain origin
         const cType = resHeaders.get("content-type") || "";
@@ -170,7 +175,8 @@ export async function handleCurtainApiProxy(
           });
         }
 
-        return new Response(upstream.body, {
+        const bodyData = await upstream.arrayBuffer();
+        return new Response(bodyData, {
           status: upstream.status,
           statusText: upstream.statusText,
           headers: resHeaders,

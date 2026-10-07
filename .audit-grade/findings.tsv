@@ -1,0 +1,4 @@
+#audit-grade v2	id	status	severity	lane	location	title	first_seen	last_seen
+audit-grade	supply-chain|docker-compose|redis-cve-2025-49844	open	low	supply-chain-ci	backend/docker-compose.yml:23	Unpinned Redis 7 alpine image vulnerable to CVE-2025-49844	2026-10-07	2026-10-07
+audit-grade	supply-chain|package-json|floating-viem-pin	open	low	supply-chain-ci	backend/package.json:21	Floating carets on security-critical library viem	2026-10-07	2026-10-07
+audit-grade	ci|backend-yml|unpinned-actions-no-scanner	open	low	repo-hygiene	.github/workflows/backend.yml:19	GitHub Actions use tag pins without SHA and lack Gitleaks in CI	2026-10-07	2026-10-07
