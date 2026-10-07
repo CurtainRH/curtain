@@ -61,15 +61,27 @@ jobs:
     if: github.repository == 'CurtainRH/curtain' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger deploy hook
+      - name: Trigger operator deploy hook
         env:
-          DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL || secrets.DEPLOY_HOOK_URL }}
+          OPERATOR_DEPLOY_HOOK_URL: ${{ secrets.RENDER_OPERATOR_DEPLOY_HOOK_URL || secrets.RENDER_DEPLOY_HOOK_URL || secrets.DEPLOY_HOOK_URL }}
         run: |
-          if [ -z "$DEPLOY_HOOK_URL" ]; then
-            echo "DEPLOY_HOOK_URL not set, skipping deploy"
-            exit 0
+          if [ -z "$OPERATOR_DEPLOY_HOOK_URL" ]; then
+            echo "Operator deploy hook not set (RENDER_OPERATOR_DEPLOY_HOOK_URL / RENDER_DEPLOY_HOOK_URL), skipping."
+          else
+            echo "Triggering operator deploy hook on Render..."
+            curl -fsS -X POST "$OPERATOR_DEPLOY_HOOK_URL" || echo "operator deploy hook unreachable, continuing"
           fi
-          curl -fsS -X POST "$DEPLOY_HOOK_URL" || echo "deploy hook unreachable, continuing"
+
+      - name: Trigger keeper deploy hook
+        env:
+          KEEPER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_KEEPER_DEPLOY_HOOK_URL || secrets.KEEPER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$KEEPER_DEPLOY_HOOK_URL" ]; then
+            echo "Keeper deploy hook not set (RENDER_KEEPER_DEPLOY_HOOK_URL / KEEPER_DEPLOY_HOOK_URL), skipping."
+          else
+            echo "Triggering keeper deploy hook on Render..."
+            curl -fsS -X POST "$KEEPER_DEPLOY_HOOK_URL" || echo "keeper deploy hook unreachable, continuing"
+          fi
 
   release:
     needs: [build-push, deploy]

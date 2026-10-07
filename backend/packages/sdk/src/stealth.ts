@@ -117,6 +117,10 @@ export function metaAddressFromKeys(spendingPrivateKey: Hex, viewingPrivateKey: 
 export const STEALTH_REGISTRY_ABI = [
   { type: "function", name: "stealthMetaAddressOf", stateMutability: "view", inputs: [{ name: "registrant", type: "address" }, { name: "schemeId", type: "uint256" }], outputs: [{ type: "bytes" }] },
   { type: "function", name: "registerKeys", stateMutability: "nonpayable", inputs: [{ name: "schemeId", type: "uint256" }, { name: "stealthMetaAddress", type: "bytes" }], outputs: [] },
+  { type: "function", name: "registerKeysOnBehalf", stateMutability: "nonpayable", inputs: [{ name: "registrant", type: "address" }, { name: "schemeId", type: "uint256" }, { name: "signature", type: "bytes" }, { name: "stealthMetaAddress", type: "bytes" }], outputs: [] },
+  { type: "function", name: "incrementNonce", stateMutability: "nonpayable", inputs: [], outputs: [] },
+  { type: "function", name: "nonceOf", stateMutability: "view", inputs: [{ name: "registrant", type: "address" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "DOMAIN_SEPARATOR", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] },
 ] as const;
 
 export const STEALTH_ANNOUNCEMENT_EVENT = {

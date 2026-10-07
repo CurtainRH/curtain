@@ -179,7 +179,13 @@ export class Operator {
     const head = await publicClient.getBlockNumber();
     if (from > head) return { challenged: [] };
 
-    const raw = await publicClient.getLogs({ address: vault, fromBlock: from, toBlock: head });
+    const CHUNK = 2000n;
+    const raw: any[] = [];
+    for (let b = from; b <= head; b += CHUNK) {
+      const to = b + CHUNK - 1n > head ? head : b + CHUNK - 1n;
+      const chunk = await publicClient.getLogs({ address: vault, fromBlock: b, toBlock: to });
+      raw.push(...chunk);
+    }
     const toChallenge: bigint[] = [];
 
     await db.transaction(async (tx) => {
@@ -254,7 +260,7 @@ export class Operator {
         await this.challenge(depositId);
         challenged.push(depositId);
       } catch (e) {
-        console.error(`challenge for deposit ${depositId} failed:`, e);
+        console.error(`challenge for deposit ${depositId} failed:`, redactLog(e));
       }
     }
     return { challenged };
@@ -379,7 +385,23 @@ export class Operator {
    */
   private async settleGroup(tx: Db, intents: DueIntent[], nowSec: number, fees: Fees): Promise<number[]> {
     const built = await this.build(intents, nowSec, fees);
-    if (!built) return [];
+    if (!built) {
+      if (intents.length === 1) {
+        const single = intents[0]!;
+        const tokenIn = getAddress(single.token_in);
+        const tokenOut = getAddress(single.token_out);
+        const amountIn = BigInt(single.deposited_amount);
+        try {
+          const q = tokenIn === tokenOut ? { amountOut: amountIn } : await this.cfg.quote(tokenIn, tokenOut, amountIn);
+          if (q.amountOut === 0n) {
+            await this.markBlocked(tx, single, "deposit amount yields zero swap output");
+          }
+        } catch (e) {
+          await this.markBlocked(tx, single, `unroutable swap: ${e instanceof Error ? e.message.slice(0, 80) : "quote failed"}`);
+        }
+      }
+      return [];
+    }
     const outcome = await this.simulate(built);
     if (outcome === "ok") return [await this.store(tx, built)];
     if (outcome === "price") return []; // price moved: retry next tick with a fresh quote
@@ -567,7 +589,7 @@ export class Operator {
       try {
         sent.push(await this.send("settle", settleArgs(s)));
       } catch (e) {
-        console.error(`settlement ${s.nonce} failed:`, e instanceof Error ? e.message.split("\n")[0] : e);
+        console.error(`settlement ${s.nonce} failed:`, redactLog(e instanceof Error ? e.message.split("\n")[0] : e));
       }
     }
     return sent;
@@ -826,6 +848,14 @@ export class Operator {
     return bps;
   }
 
+  /** Transitions unbacked awaiting_deposit intents older than 15 minutes to expired. */
+  async cleanupExpiredIntents(): Promise<number> {
+    const rows = await this.cfg.db.query<{ id: string }>(
+      "UPDATE intents SET status = 'expired', updated_at = now() WHERE status = 'awaiting_deposit' AND created_at < now() - INTERVAL '15 minutes' RETURNING id",
+    );
+    return rows.length;
+  }
+
   private async send(functionName: "challengeRefund" | "settle", args: readonly unknown[]): Promise<Hex> {
     const hash = await this.cfg.walletClient.writeContract({
       chain: this.cfg.walletClient.chain, account: this.account, address: this.cfg.vault, abi: VAULT_ABI,
@@ -835,6 +865,19 @@ export class Operator {
     if (r.status !== "success") throw new Error(`${functionName} reverted: ${hash}`);
     return hash;
   }
+}
+
+/** Redacts sensitive query parameters such as API keys from logged error URLs. */
+export function redactLog(err: unknown): string {
+  const str = err instanceof Error ? err.message : String(err);
+  return str.replace(/https?:\/\/[^\s"'<>]+/gi, (url) => {
+    try {
+      const u = new URL(url);
+      return `${u.protocol}//${u.host}${u.pathname}`;
+    } catch {
+      return "[REDACTED_URL]";
+    }
+  });
 }
 
 function stealthFeeOf(i: DueIntent): bigint {

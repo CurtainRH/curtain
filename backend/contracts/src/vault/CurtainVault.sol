@@ -37,7 +37,7 @@ contract CurtainVault is Ownable2Step, ReentrancyGuard, EIP712 {
     using SafeERC20 for IERC20;
 
     uint64 public constant REFUND_DELAY = 3 minutes; // after the depositor's deadline
-    uint64 public constant CHALLENGE_WINDOW = 10 minutes;
+    uint64 public constant CHALLENGE_WINDOW = 1 hours;
     uint16 public constant MAX_FEE_BPS = 100; // protocol fee cap: 1%
     uint16 public constant MAX_KEEPER_FEE_BPS = 100; // keeper fee cap: 1%
     uint256 private constant BPS = 10_000;
@@ -80,6 +80,14 @@ contract CurtainVault is Ownable2Step, ReentrancyGuard, EIP712 {
         uint256 protocolFee; // to the treasury
         uint256 keeperFee; // to whoever submits the settlement
         bytes32 tag; // keccak256(abi.encode(depositId, secret))
+    }
+
+    struct SettleTotals {
+        uint256 paid;
+        uint256 keeperTotal;
+        uint256 protocolTotal;
+        uint256 userTotal;
+        uint256 distributedSurplus;
     }
 
     address public operator;
@@ -135,6 +143,7 @@ contract CurtainVault is Ownable2Step, ReentrancyGuard, EIP712 {
     error ChallengeClosed();
     error NotPaid();
     error FeeTooHigh();
+    error AlreadyPaid();
     error ZeroAddress();
 
     constructor(address admin, address operator_, address treasury_) Ownable(admin) EIP712("CurtainVault", "1") {
@@ -244,9 +253,7 @@ contract CurtainVault is Ownable2Step, ReentrancyGuard, EIP712 {
         uint256 amountOut = _swap(s);
 
         IERC20 token = IERC20(s.tokenOut);
-        uint256 paid;
-        uint256 keeperTotal;
-        uint256 protocolTotal;
+        SettleTotals memory t;
         for (uint256 i = 0; i < payouts.length; i++) {
             Payout calldata p = payouts[i];
             if (p.recipient == address(0) || p.recipient == address(this)) revert BadRecipient(p.recipient);
@@ -255,18 +262,31 @@ contract CurtainVault is Ownable2Step, ReentrancyGuard, EIP712 {
 
             uint256 gross = p.amount + p.protocolFee + p.keeperFee;
             if (p.protocolFee * BPS > gross * feeBps || p.keeperFee * BPS > gross * MAX_KEEPER_FEE_BPS) revert FeeAboveCap();
-            paid += gross;
-            protocolTotal += p.protocolFee;
-            keeperTotal += p.keeperFee;
-
-            if (p.amount > 0) token.safeTransfer(p.recipient, p.amount);
-            emit PaidOut(p.tag, p.recipient, s.tokenOut, p.amount, p.protocolFee, p.keeperFee, msg.sender);
+            t.paid += gross;
+            t.protocolTotal += p.protocolFee;
+            t.keeperTotal += p.keeperFee;
+            t.userTotal += p.amount;
         }
-        if (paid > amountOut) revert PaysMoreThanSwapped(paid, amountOut);
-        if (protocolTotal > 0) token.safeTransfer(treasury, protocolTotal);
-        if (keeperTotal > 0) token.safeTransfer(msg.sender, keeperTotal);
+        if (t.paid > amountOut) revert PaysMoreThanSwapped(t.paid, amountOut);
 
-        emit Settled(nonce, s.tokenIn, s.amountIn, s.tokenOut, amountOut, paid, msg.sender);
+        uint256 surplus = amountOut - t.paid;
+        for (uint256 i = 0; i < payouts.length; i++) {
+            Payout calldata p = payouts[i];
+            uint256 toSend = p.amount;
+            if (surplus > 0 && t.userTotal > 0 && p.amount > 0) {
+                uint256 extra = (surplus * p.amount) / t.userTotal;
+                toSend += extra;
+                t.distributedSurplus += extra;
+            }
+            if (toSend > 0) token.safeTransfer(p.recipient, toSend);
+            emit PaidOut(p.tag, p.recipient, s.tokenOut, toSend, p.protocolFee, p.keeperFee, msg.sender);
+        }
+
+        uint256 finalTreasury = t.protocolTotal + (surplus - t.distributedSurplus);
+        if (finalTreasury > 0) token.safeTransfer(treasury, finalTreasury);
+        if (t.keeperTotal > 0) token.safeTransfer(msg.sender, t.keeperTotal);
+
+        emit Settled(nonce, s.tokenIn, s.amountIn, s.tokenOut, amountOut, amountOut, msg.sender);
     }
 
     /// @dev Swaps through an allowlisted router; the output must land here, the router may pull
@@ -298,11 +318,27 @@ contract CurtainVault is Ownable2Step, ReentrancyGuard, EIP712 {
 
     // ---- escape hatch ----
 
+    /// @notice Request refund with legacy (deadline, salt) preimage.
     function requestRefund(uint256 depositId, uint256 deadline, bytes32 salt) external {
+        requestRefund(depositId, deadline, salt, bytes32(0));
+    }
+
+    /// @notice Request refund with (deadline, salt, tag) preimage. If the tag was already used in a payout, reverts immediately.
+    function requestRefund(uint256 depositId, uint256 deadline, bytes32 salt, bytes32 tag) public {
         Deposit storage d = deposits[depositId];
         if (msg.sender != d.depositor) revert NotDepositor();
         if (d.status != Status.Active) revert WrongStatus(d.status);
-        if (keccak256(abi.encode(deadline, salt)) != d.deadlineHash) revert WrongDeadline();
+
+        bytes32 hash2 = keccak256(abi.encode(deadline, salt));
+        bytes32 hash3 = keccak256(abi.encode(deadline, salt, tag));
+
+        if (hash3 == d.deadlineHash) {
+            // Tag was committed in deposit: verified directly on-chain!
+            if (tagUsed[tag]) revert AlreadyPaid();
+        } else if (hash2 != d.deadlineHash) {
+            revert WrongDeadline();
+        }
+
         if (block.timestamp < deadline + REFUND_DELAY) revert TooEarly(deadline + REFUND_DELAY);
 
         d.status = Status.RefundRequested;
@@ -322,15 +358,21 @@ contract CurtainVault is Ownable2Step, ReentrancyGuard, EIP712 {
         emit RefundChallenged(depositId);
     }
 
-    function finalizeRefund(uint256 depositId) external nonReentrant {
+    function finalizeRefund(uint256 depositId) external {
+        finalizeRefundTo(depositId, address(0));
+    }
+
+    /// @notice Finalizes a refund, optionally routing tokens to an unblocked recipient address (audit L-02).
+    function finalizeRefundTo(uint256 depositId, address recipient) public nonReentrant {
         Deposit storage d = deposits[depositId];
         if (d.status != Status.RefundRequested) revert WrongStatus(d.status);
         uint256 availableAt = uint256(d.refundRequestedAt) + CHALLENGE_WINDOW;
         if (block.timestamp <= availableAt) revert TooEarly(availableAt + 1);
 
         d.status = Status.Refunded;
-        IERC20(d.token).safeTransfer(d.depositor, d.amount);
-        emit Refunded(depositId, d.depositor, d.token, d.amount);
+        address to = (recipient != address(0) && msg.sender == d.depositor) ? recipient : d.depositor;
+        IERC20(d.token).safeTransfer(to, d.amount);
+        emit Refunded(depositId, to, d.token, d.amount);
     }
 
     /// @notice keccak256(abi.encode(depositId, secret)) — the tag a payout for this deposit carries.

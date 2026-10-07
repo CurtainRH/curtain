@@ -103,7 +103,7 @@ contract VaultFuzz is Test {
         vm.warp(deadline + 3 minutes);
         vault.requestRefund(id, deadline, salt);
         vm.stopPrank();
-        vm.warp(vm.getBlockTimestamp() + 10 minutes + 1);
+        vm.warp(vm.getBlockTimestamp() + vault.CHALLENGE_WINDOW() + 1);
         vault.finalizeRefund(id);
         assertEq(usdg.balanceOf(user), amount);
         assertEq(usdg.balanceOf(address(vault)), 0);

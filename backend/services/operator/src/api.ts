@@ -37,6 +37,25 @@ const json = (body: unknown, status = 200) =>
     headers: { "content-type": "application/json", "access-control-allow-origin": "*" },
   });
 
+/** In-memory rate limiting map (IP -> request bucket). */
+const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+function checkRate(key: string, limit: number, windowMs = 60_000): boolean {
+  const now = Date.now();
+  if (rateBuckets.size > 10_000) {
+    for (const [k, v] of rateBuckets) {
+      if (now > v.resetAt) rateBuckets.delete(k);
+    }
+  }
+  const entry = rateBuckets.get(key);
+  if (!entry || now > entry.resetAt) {
+    rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (entry.count >= limit) return false;
+  entry.count++;
+  return true;
+}
+
 export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
   const now = cfg.now ?? (() => Math.floor(Date.now() / 1000));
   const allowed = new Set(Object.values(cfg.tokens).map((t) => getAddress(t))); // config casing must not matter
@@ -44,6 +63,8 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
   return async (req) => {
     const url = new URL(req.url);
     const pathname = url.pathname.replace(/\/+/g, "/");
+    const clientIp = req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "ip:default";
+
     try {
       if (req.method === "OPTIONS") {
         return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST", "access-control-allow-headers": "content-type" } });
@@ -67,6 +88,9 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
       }
 
       if (req.method === "GET" && pathname === "/quote") {
+        if (!checkRate(`quote:${clientIp}`, 120)) {
+          return json({ error: "Too many quote requests. Please wait a moment." }, 429);
+        }
         const tokenIn = url.searchParams.get("tokenIn") ?? "";
         const tokenOut = url.searchParams.get("tokenOut") ?? "";
         const amountIn = url.searchParams.get("amountIn") ?? "";
@@ -97,6 +121,13 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
       }
 
       if (req.method === "POST" && pathname === "/intents") {
+        if (!checkRate(`intent:${clientIp}`, 30)) {
+          return json({ error: "Too many intent submissions. Please wait a moment." }, 429);
+        }
+        const cl = Number(req.headers.get("content-length") ?? 0);
+        if (cl > 32_768) {
+          return json({ error: "Payload too large (max 32KB)" }, 413);
+        }
         const body = (await req.json()) as Record<string, unknown>;
         const asStealth = (v: unknown) => {
           const st = v as Record<string, unknown>;

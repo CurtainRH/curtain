@@ -90,7 +90,7 @@ function getVaultAddress(env?: unknown): string {
     if (p["VITE_VAULT_ADDR"]) return p["VITE_VAULT_ADDR"];
     if (p["VAULT_ADDR"]) return p["VAULT_ADDR"];
   }
-  return "0x72D3820D386b887c93A09766dbecA9BC80e224C0";
+  return "0xF9381841e982648c178E762116A437Ecbcf12Bbd";
 }
 
 export async function handleCurtainApiProxy(
@@ -98,7 +98,8 @@ export async function handleCurtainApiProxy(
   env?: unknown,
 ): Promise<Response | null> {
   const url = new URL(request.url);
-  if (!url.pathname.startsWith("/api/curtain")) {
+  // Only match /api/curtain exactly or subpaths under /api/curtain/ (prevent /api/curtain.attacker.com)
+  if (url.pathname !== "/api/curtain" && !url.pathname.startsWith("/api/curtain/")) {
     return null;
   }
 
@@ -114,42 +115,69 @@ export async function handleCurtainApiProxy(
     });
   }
 
-  const subpath = url.pathname.replace(/^\/api\/curtain/, "") || "/";
+  let subpath = url.pathname.slice("/api/curtain".length);
+  if (!subpath || !subpath.startsWith("/")) {
+    subpath = "/" + subpath;
+  }
   const operatorUrl = getOperatorUrl(env);
 
   // If operator URL is configured, forward request to the backend operator
   if (operatorUrl) {
-    const target = `${operatorUrl}${subpath}${url.search}`;
+    let targetUrl: URL | null = null;
     try {
-      const headers = new Headers();
-      for (const [k, v] of request.headers.entries()) {
-        const lower = k.toLowerCase();
-        if (!["host", "connection", "content-length", "cookie", "authorization"].includes(lower)) {
-          headers.set(k, v);
-        }
+      const opBase = new URL(operatorUrl);
+      const cleanBasePath = opBase.pathname.replace(/\/+$/, "");
+      targetUrl = new URL(cleanBasePath + subpath + url.search, opBase.origin);
+      // Strictly prevent origin escape / SSRF
+      if (targetUrl.origin !== opBase.origin) {
+        targetUrl = null;
       }
-      const init: RequestInit = {
-        method: request.method,
-        headers,
-        signal: AbortSignal.timeout(10000),
-      };
-      if (request.method !== "GET" && request.method !== "HEAD") {
-        init.body = await request.arrayBuffer();
-      }
+    } catch {
+      targetUrl = null;
+    }
 
-      const upstream = await fetch(target, init);
-      if (upstream.status >= 500 && (subpath === "/config" || subpath === "/health")) {
-        throw new Error(`operator returned ${upstream.status}`);
+    if (targetUrl) {
+      try {
+        const headers = new Headers();
+        for (const [k, v] of request.headers.entries()) {
+          const lower = k.toLowerCase();
+          if (!["host", "connection", "content-length", "cookie", "authorization"].includes(lower)) {
+            headers.set(k, v);
+          }
+        }
+        const init: RequestInit = {
+          method: request.method,
+          headers,
+          signal: AbortSignal.timeout(10000),
+        };
+        if (request.method !== "GET" && request.method !== "HEAD") {
+          init.body = await request.arrayBuffer();
+        }
+
+        const upstream = await fetch(targetUrl.toString(), init);
+        if (upstream.status >= 500 && (subpath === "/config" || subpath === "/health")) {
+          throw new Error(`operator returned ${upstream.status}`);
+        }
+        const resHeaders = new Headers(upstream.headers);
+        resHeaders.set("access-control-allow-origin", "*");
+
+        // Prevent reflected HTML / XSS on Curtain origin
+        const cType = resHeaders.get("content-type") || "";
+        if (cType.toLowerCase().includes("text/html") || cType.toLowerCase().includes("application/xhtml")) {
+          return new Response(JSON.stringify({ error: "Disallowed upstream content type" }), {
+            status: 502,
+            headers: { "content-type": "application/json", "access-control-allow-origin": "*" },
+          });
+        }
+
+        return new Response(upstream.body, {
+          status: upstream.status,
+          statusText: upstream.statusText,
+          headers: resHeaders,
+        });
+      } catch (err) {
+        console.warn(`Upstream operator request to ${targetUrl.toString()} failed:`, err);
       }
-      const resHeaders = new Headers(upstream.headers);
-      resHeaders.set("access-control-allow-origin", "*");
-      return new Response(upstream.body, {
-        status: upstream.status,
-        statusText: upstream.statusText,
-        headers: resHeaders,
-      });
-    } catch (err) {
-      console.warn(`Upstream operator request to ${target} failed:`, err);
     }
   }
 

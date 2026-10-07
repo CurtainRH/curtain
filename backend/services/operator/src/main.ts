@@ -139,13 +139,14 @@ for (;;) {
   const now = Math.floor(started / 1000);
   try {
     await operator.syncChain();
+    await operator.cleanupExpiredIntents();
     await operator.processDue(now);
     await operator.submitSettlements(now);
     await operator.syncChain();
     await operator.processStealth();
     operator.markTick();
   } catch (e) {
-    console.error("operator tick failed:", e);
+    console.error("operator tick failed:", e instanceof Error ? e.message.split("\n")[0] : e);
   }
   await Bun.sleep(Math.max(0, tickMs - (Date.now() - started)));
 }

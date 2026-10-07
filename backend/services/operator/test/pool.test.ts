@@ -7,7 +7,7 @@ import { Operator } from "../src/operator";
 
 const USDG = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168" as Address;
 const NVDA = "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC" as Address;
-const VAULT = "0x72D3820D386b887c93A09766dbecA9BC80e224C0" as Address;
+const VAULT = "0xF9381841e982648c178E762116A437Ecbcf12Bbd" as Address;
 
 async function setup(anonymitySet: boolean) {
   const db = await pgliteDb();

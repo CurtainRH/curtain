@@ -19,7 +19,7 @@ export * from "./tokens";
 export * from "./stealth";
 
 export const REFUND_DELAY_SECONDS = 180;
-export const CHALLENGE_WINDOW_SECONDS = 600;
+export const CHALLENGE_WINDOW_SECONDS = 3600;
 export const TIERS = [
   { tier: 0, days: 30, multiplier: 1 },
   { tier: 1, days: 90, multiplier: 1.5 },
@@ -34,7 +34,7 @@ export type IntentStatus =
   | "paid"             // output delivered to the recipient
   | "blocked"          // the output token refuses this recipient: refund via the escape hatch
   | "expired"          // deposit didn't match the intent (wrong token): refund via the escape hatch
-  | "refund_requested" // escape hatch started; finalize after 10 minutes
+  | "refund_requested" // escape hatch started; finalize after 1 hour
   | "refunded"         // deposit returned
   | "challenged";      // a refund was requested for a deposit that had already been paid
 
@@ -108,6 +108,7 @@ export interface EscapeTicket {
   depositId: string;
   deadline: string;
   salt: Hex;
+  tag?: Hex;
 }
 
 /** An escape ticket before its deposit has landed (no deposit id yet). See `onIntent`. */
@@ -240,18 +241,31 @@ export class CurtainClient {
   async requestRefund(t: EscapeTicket): Promise<Hex> {
     this.checkVault(t.vault);
     const w = this.wallet;
+    if (t.tag) {
+      return this.sendTx(await w.writeContract({
+        chain: w.chain, account: w.account!, address: t.vault, abi: VAULT_ABI, functionName: "requestRefund",
+        args: [BigInt(t.depositId), BigInt(t.deadline), t.salt, t.tag],
+      }));
+    }
     return this.sendTx(await w.writeContract({
       chain: w.chain, account: w.account!, address: t.vault, abi: VAULT_ABI, functionName: "requestRefund",
       args: [BigInt(t.depositId), BigInt(t.deadline), t.salt],
     }));
   }
 
-  /** Callable by anyone once the 10-minute challenge window has passed; pays the depositor. */
-  async finalizeRefund(t: EscapeTicket): Promise<Hex> {
+  /** Callable by anyone once the 1-hour challenge window has passed; pays the depositor or custom recipient. */
+  async finalizeRefund(t: EscapeTicket, recipient?: Address): Promise<Hex> {
     this.checkVault(t.vault);
     const w = this.wallet;
+    if (recipient) {
+      return this.sendTx(await w.writeContract({
+        chain: w.chain, account: w.account!, address: t.vault, abi: VAULT_ABI, functionName: "finalizeRefundTo",
+        args: [BigInt(t.depositId), recipient],
+      }));
+    }
     return this.sendTx(await w.writeContract({
-      chain: w.chain, account: w.account!, address: t.vault, abi: VAULT_ABI, functionName: "finalizeRefund", args: [BigInt(t.depositId)],
+      chain: w.chain, account: w.account!, address: t.vault, abi: VAULT_ABI, functionName: "finalizeRefund",
+      args: [BigInt(t.depositId)],
     }));
   }
 

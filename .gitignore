@@ -52,7 +52,7 @@ build/
 # Contracts (Foundry)
 backend/contracts/out/
 backend/contracts/cache/
-backend/contracts/broadcast/*/31337/
+backend/contracts/broadcast/
 
 # Public-sync working branch artifacts
 .sync-public/
@@ -62,6 +62,10 @@ backend/contracts/deployments/fork-*.json
 # Codex handoff docs (local only)
 docs/FRONTEND-INTEGRATION.md
 docs/FRONTEND-INTEGRATION-VERIFICATION.md
+
+# Technical docs (local only)
+technical-docs/
+*.pdf
 
 # Lovable metadata
 .lovable/

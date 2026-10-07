@@ -100,9 +100,9 @@ contract UniswapV4AdapterTest is Test {
 
         vault.settle(s, ps, deadline, 1, abi.encodePacked(r, sg, v));
 
-        assertEq(nvda.balanceOf(address(0xB0B)), minOut - protocolFee);
+        assertGe(nvda.balanceOf(address(0xB0B)), minOut - protocolFee, "recipient receives at least minOut");
         assertEq(usdg.balanceOf(address(vault)), 0);
         assertEq(IERC20(address(usdg)).allowance(address(vault), address(adapter)), 0);
-        assertGt(nvda.balanceOf(address(vault)), 0, "positive slippage above minOut stays in the vault");
+        assertEq(nvda.balanceOf(address(vault)), 0, "no swap surplus is stranded in the vault");
     }
 }

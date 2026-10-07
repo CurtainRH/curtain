@@ -90,7 +90,14 @@ In Render Dashboard: **New → Background Worker → Existing Image**
   - `VAULT_ADDR`: `vault` address from `deployments/4663.json`
   - `KEEPER_TICK_MS`: `5000`
 
-### Step 4: Verification
+### Step 4: GitHub Actions Auto-Deploy Hooks (Optional)
+In your GitHub Repository **Settings → Secrets and variables → Actions**, add:
+- `RENDER_DEPLOY_HOOK_URL` (or `RENDER_OPERATOR_DEPLOY_HOOK_URL`): Deploy hook URL from `curtain-operator` Settings in Render.
+- `RENDER_KEEPER_DEPLOY_HOOK_URL` (or `KEEPER_DEPLOY_HOOK_URL`): Deploy hook URL from `curtain-keeper` Settings in Render.
+
+When code is pushed to `main`, GitHub Actions will build the container image and trigger both deploy hooks automatically.
+
+### Step 5: Verification
 Check that `https://<operator>.onrender.com/health` returns `{"status":"ok"}`, and `/config` returns the deployed vault address and supported tokens.
 
 ## 3. Monitoring

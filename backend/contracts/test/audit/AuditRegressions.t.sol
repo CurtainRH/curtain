@@ -29,7 +29,7 @@ contract VaultAuditRegressions is VaultBase {
 
         vm.prank(alice);
         vault.requestRefund(id, deadline, SALT);
-        vm.warp(vm.getBlockTimestamp() + 10 minutes + 1);
+        vm.warp(vm.getBlockTimestamp() + vault.CHALLENGE_WINDOW() + 1);
         vault.finalizeRefund(id);
         assertEq(usdg.balanceOf(alice), 10_000 ether, "full deposit back");
     }

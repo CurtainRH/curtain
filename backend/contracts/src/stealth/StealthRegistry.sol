@@ -20,8 +20,18 @@ contract StealthRegistry {
     bytes32 public constant ERC6538REGISTRY_ENTRY_TYPE_HASH =
         keccak256("Erc6538RegistryEntry(uint256 schemeId,bytes stealthMetaAddress,uint256 nonce)");
 
+    /// @notice Increments the caller's nonce to invalidate pending registerKeysOnBehalf signatures (ERC-6538).
+    function incrementNonce() external {
+        unchecked {
+            nonceOf[msg.sender]++;
+        }
+    }
+
     /// @notice Registers a stealth meta-address for `msg.sender` under `schemeId`.
     function registerKeys(uint256 schemeId, bytes memory stealthMetaAddress) external {
+        unchecked {
+            nonceOf[msg.sender]++;
+        }
         stealthMetaAddressOf[msg.sender][schemeId] = stealthMetaAddress;
         emit StealthMetaAddressSet(msg.sender, schemeId, stealthMetaAddress);
     }

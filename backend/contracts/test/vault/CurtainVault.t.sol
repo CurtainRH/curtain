@@ -246,7 +246,7 @@ contract CurtainVaultTest is VaultBase {
         vm.expectPartialRevert(CurtainVault.TooEarly.selector);
         vault.finalizeRefund(id);
 
-        vm.warp(vm.getBlockTimestamp() + 10 minutes + 1);
+        vm.warp(vm.getBlockTimestamp() + vault.CHALLENGE_WINDOW() + 1);
         vault.finalizeRefund(id);
         assertEq(usdg.balanceOf(alice), 10_000 ether);
 
@@ -299,7 +299,7 @@ contract CurtainVaultTest is VaultBase {
         vm.warp(deadline + 3 minutes);
         vm.prank(alice);
         vault.requestRefund(id, deadline, SALT);
-        vm.warp(vm.getBlockTimestamp() + 10 minutes + 1);
+        vm.warp(vm.getBlockTimestamp() + vault.CHALLENGE_WINDOW() + 1);
         vm.expectRevert(CurtainVault.ChallengeClosed.selector);
         vault.challengeRefund(id, SECRET);
     }

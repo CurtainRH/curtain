@@ -58,13 +58,13 @@ export const stealthAnnouncer = address(
 /** No announcement or payout can be older than the vault's first block. */
 export const stealthScanFromBlock = /^\d+$/.test(env["VITE_STEALTH_FROM_BLOCK"] || "")
   ? BigInt(env["VITE_STEALTH_FROM_BLOCK"])
-  : 80903085n;
+  : 82381998n;
 /** ERC-6538 registry where receivers publish stealth meta-addresses (deployments/4663.json). */
 export const stealthRegistry = address(
-  env["VITE_STEALTH_REGISTRY_ADDR"] || "0x2143162F34BdE1fAc92544461d0850d3c4e89a9D",
+  env["VITE_STEALTH_REGISTRY_ADDR"] || "0xeA4cE314503AdC39E7a6a01B0A45AB167Fbb7625",
 );
 export const fallbackVault = address(
-  env["VITE_VAULT_ADDR"] || "0x72D3820D386b887c93A09766dbecA9BC80e224C0",
+  env["VITE_VAULT_ADDR"] || "0xF9381841e982648c178E762116A437Ecbcf12Bbd",
 );
 export const stakingBlock = /^\d+$/.test(env["VITE_STAKING_FROM_BLOCK"] || "")
   ? BigInt(env["VITE_STAKING_FROM_BLOCK"])

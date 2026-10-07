@@ -78,6 +78,21 @@ contract StealthRegistryTest is Test {
         registry.registerKeysOnBehalf(registrant, 1, signature, metaAddress);
     }
 
+    function test_incrementNonce_invalidatesSignature() public {
+        bytes memory metaAddress = hex"0203040506";
+        uint256 nonce = registry.nonceOf(registrant);
+        bytes32 digest = _entryDigest(1, metaAddress, nonce);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(REGISTRANT_PK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        vm.prank(registrant);
+        registry.incrementNonce();
+        assertEq(registry.nonceOf(registrant), nonce + 1);
+
+        vm.expectRevert(StealthRegistry.StealthRegistry__InvalidSignature.selector);
+        registry.registerKeysOnBehalf(registrant, 1, signature, metaAddress);
+    }
+
     function _entryDigest(uint256 schemeId, bytes memory metaAddress, uint256 nonce) internal view returns (bytes32) {
         return keccak256(
             abi.encodePacked(

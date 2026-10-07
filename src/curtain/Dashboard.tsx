@@ -478,13 +478,14 @@ export default function Dashboard({ path }: { path: string }) {
         if (!fresh.available) throw tooSmall(fresh, what);
         const row = await depositOne(raw, fresh);
         setLatest(row);
+        download(row);
         setAmount("");
         setMessage(
           row.split
-            ? `Deposit confirmed. It will be split between ${row.split} recipients in one payout. Save your escape ticket.`
+            ? `Deposit confirmed. It will be split between ${row.split} recipients in one payout. Escape ticket downloaded.`
             : row.stealth
-              ? "Deposit confirmed. It will be delivered to a brand-new stealth address only the receiver can find. Save your escape ticket."
-              : "Deposit confirmed. Save your escape ticket.",
+              ? "Deposit confirmed. It will be delivered to a brand-new stealth address only the receiver can find. Escape ticket downloaded."
+              : "Deposit confirmed. Your escape ticket has been downloaded.",
         );
         void app.refresh();
         return;
@@ -537,10 +538,13 @@ export default function Dashboard({ path }: { path: string }) {
       } finally {
         void app.refresh();
       }
-      setLatest(last);
+      if (last) {
+        setLatest(last);
+        download(last);
+      }
       setAmount("");
       setMessage(
-        `All ${pieceCount} pieces deposited. Each arrives at its own random time inside the delay window. Every piece has its own escape ticket in Activity.`,
+        `All ${pieceCount} pieces deposited. Each arrives at its own random time inside the delay window. Escape tickets downloaded & available in Activity.`,
       );
     });
   }
