@@ -167,6 +167,12 @@ paths:
                     recipient: { $ref: "#/components/schemas/Address" }
                     bps: { type: integer, minimum: 0, maximum: 100 }
                 delaySeconds: { type: integer, minimum: 0, maximum: 15552000, default: 0 }
+                orderType: { type: string, enum: [market, limit], default: market }
+                expiresInSeconds:
+                  type: integer
+                  minimum: 60
+                  maximum: 15552000
+                  description: Required for limit orders; the order waits for minOut until this expiry.
       responses:
         "201":
           description: Intent created; nothing has been broadcast
@@ -213,6 +219,8 @@ paths:
                         refunded,
                         challenged,
                       ]
+                  orderType: { type: string, enum: [market, limit] }
+                  deadline: { type: string }
                   depositId: { type: string, nullable: true }
                   amountOut: { type: string, nullable: true }
                   payoutTx: { type: string, nullable: true }

@@ -34,6 +34,8 @@ The existing operator serves `/developer/*` for wallet-signature key management 
 API keys use the main database; V2 and V3 intent ownership maps live with their respective
 operator databases.
 `007_integrator_fees.sql` adds the optional Developer API integrator-fee fields to intents.
+`008_limit_orders.sql` adds explicit limit-order intent metadata; limit orders reuse the existing
+on-chain `minOut` settlement guard and accept `orderType: "limit"` plus `expiresInSeconds`.
 No new operator, keeper, or main frontend environment variables are required.
 Deploy the backend before the main dashboard. The keeper and vault contracts are unchanged.
 

@@ -97,6 +97,10 @@ export interface SwapParams {
   minOut: bigint;
   /** 0 = instant; otherwise a random delay window in seconds, capped at 180 days by the operator service. */
   delaySeconds: number;
+  /** Market (default) or a limit order that waits until minOut is met. */
+  orderType?: "market" | "limit";
+  /** How long a limit order may wait before its escape hatch opens. */
+  expiresInSeconds?: number;
   /** Set when `recipient` is a stealth address (see generateStealthAddress). */
   stealth?: StealthIntent;
   /** Split payout to 2-5 recipients; `recipient` must equal `splits[0].recipient`. */
@@ -184,7 +188,7 @@ export class CurtainClient {
   }
 
   status(intentId: string) {
-    return this.api<{ status: IntentStatus; depositId: string | null; amountOut: string | null; payoutTx: string | null; blockedReason: string | null }>(`/intents/${intentId}`);
+    return this.api<{ status: IntentStatus; orderType: "market" | "limit"; deadline: string; depositId: string | null; amountOut: string | null; payoutTx: string | null; blockedReason: string | null }>(`/intents/${intentId}`);
   }
 
   /** Expected output for a swap right now, after fees. Use `minOutSuggested` as `minOut`. */

@@ -322,6 +322,8 @@ export function createDeveloperApi(root: ApiConfig) {
     const body = await bodyOf(req);
     if (body.stealth !== undefined || body.splits !== undefined)
       throw new ApiError(400, "This API currently supports single-recipient intents only");
+    if (body.orderType !== undefined && body.orderType !== "market" && body.orderType !== "limit")
+      throw new ApiError(400, "orderType must be market or limit");
     const params = {
       tokenIn: tokenAddress(body.tokenIn, "tokenIn"),
       tokenOut: tokenAddress(body.tokenOut, "tokenOut"),
@@ -330,6 +332,8 @@ export function createDeveloperApi(root: ApiConfig) {
       amountIn: units(body.amountIn, "amountIn"),
       minOut: units(body.minOut, "minOut"),
       delaySeconds: body.delaySeconds ?? 0,
+      orderType: body.orderType === "limit" ? ("limit" as const) : ("market" as const),
+      ...(body.expiresInSeconds !== undefined ? { expiresInSeconds: Number(body.expiresInSeconds) } : {}),
     };
     const route = contextFor(body.privacyRoute, params.tokenIn, params.amountIn);
     const fee = integratorFee(body.integratorFee, route.context.vault);
@@ -472,7 +476,7 @@ export function createDeveloperApi(root: ApiConfig) {
             : []),
         ]) {
           const rows = await route.context.db.query(
-            `SELECT i.id, i.status, i.deposit_id::text AS "depositId", i.amount_out::text AS "amountOut", s.tx_hash AS "payoutTx", i.blocked_reason AS "blockedReason"
+            `SELECT i.id, i.status, i.order_type AS "orderType", i.deadline::text AS deadline, i.deposit_id::text AS "depositId", i.amount_out::text AS "amountOut", s.tx_hash AS "payoutTx", i.blocked_reason AS "blockedReason"
             FROM ${route.table} d JOIN intents i ON i.id = d.intent_id LEFT JOIN settlements s ON s.id = i.settlement_id AND s.status = 'confirmed'
             WHERE d.key_id = $1 AND i.id = $2`,
             [keyId, intentId],

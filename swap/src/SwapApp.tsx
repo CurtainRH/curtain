@@ -26,6 +26,9 @@ function SwapExperience() {
   const [amount, setAmount] = useState("");
   const [recipient, setRecipient] = useState("");
   const [delay, setDelay] = useState("0");
+  const [orderType, setOrderType] = useState<"market" | "limit">("market");
+  const [limitOut, setLimitOut] = useState("");
+  const [limitExpiry, setLimitExpiry] = useState("86400");
   const [quote, setQuote] = useState<string>();
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteRefresh, setQuoteRefresh] = useState(0);
@@ -58,6 +61,10 @@ function SwapExperience() {
     setQuote(undefined);
     setError("");
   }, [from, to, amount]);
+
+  useEffect(() => {
+    if (quote && orderType === "market") setLimitOut(quote);
+  }, [quote, orderType]);
 
   useEffect(() => {
     let active = true;
@@ -156,14 +163,20 @@ function SwapExperience() {
         throw new Error("Your wallet balance is too low for this swap.");
       const result = await app.sdk.quote(input.address, output.address, raw, 100);
       if (!result.available) throw new Error("No quote is available for this pair right now.");
+      const target = orderType === "limit"
+        ? rawAmount(limitOut, output.decimals)
+        : BigInt(result.minOutSuggested);
+      if (target <= 0n) throw new Error("Enter a minimum received amount for the limit order.");
       setBusy("Confirm in your wallet");
       const saved = await app.sdk.swap({
         tokenIn: input.address,
         amountIn: raw,
         tokenOut: output.address,
         recipient: recipientAddress as Address,
-        minOut: BigInt(result.minOutSuggested),
-        delaySeconds: Number(delay),
+        minOut: target,
+        delaySeconds: orderType === "limit" ? 0 : Number(delay),
+        orderType,
+        ...(orderType === "limit" ? { expiresInSeconds: Number(limitExpiry) } : {}),
       });
       const ticket: SavedTicket = {
         createdAt: new Date().toISOString(),
@@ -229,9 +242,27 @@ function SwapExperience() {
                   </span>
                   <TokenSelect label="To token" onOpen={() => setPicker("to")} token={output} />
                 </div>
-                <div className="swap-card-foot"><span role="status">{quoteLoading ? "Getting your quote…" : quote ? "Estimated minimum received" : "Enter an amount to preview"}</span></div>
+                <div className="swap-card-foot"><span role="status">{quoteLoading ? "Getting your quote…" : quote ? (orderType === "limit" ? "Current estimate" : "Estimated minimum received") : "Enter an amount to preview"}</span></div>
               </div>
             </div>
+            <div className="swap-private-panel">
+              <div><span className="swap-private-title"><Clock size={16} /> Order type</span><span className="swap-private-copy">Market now, or wait for your target price.</span></div>
+              <select className="swap-private-select" value={orderType} onChange={(e) => setOrderType(e.target.value as "market" | "limit")} aria-label="Order type">
+                <option value="market">Market swap</option>
+                <option value="limit">Limit order</option>
+              </select>
+            </div>
+            {orderType === "limit" ? (
+              <div className="swap-limit-fields">
+                <label className="swap-label" htmlFor="simple-limit-out">Minimum received <small>{to}</small></label>
+                <input id="simple-limit-out" className="swap-input" inputMode="decimal" placeholder={quote || "0"} value={limitOut} onChange={(e) => setLimitOut(e.target.value)} />
+                <label className="swap-label" htmlFor="simple-limit-expiry">Order expires</label>
+                <select id="simple-limit-expiry" className="swap-private-select" value={limitExpiry} onChange={(e) => setLimitExpiry(e.target.value)} aria-label="Limit order expiry">
+                  <option value="3600">In 1 hour</option><option value="21600">In 6 hours</option><option value="86400">In 1 day</option><option value="604800">In 7 days</option><option value="2592000">In 30 days</option>
+                </select>
+                <p className="swap-help">Your payout is released only when the current quote meets this minimum. If it does not, you can refund after expiry.</p>
+              </div>
+            ) : (
             <div className="swap-private-panel">
               <div><span className="swap-private-title"><Clock size={16} /> Delivery time</span><span className="swap-private-copy">Choose when your payout arrives.</span></div>
               <select id="simple-delay" className="swap-private-select" value={delay} onChange={(e) => setDelay(e.target.value)} aria-label="Delivery timing">
@@ -241,10 +272,11 @@ function SwapExperience() {
                 <option value="604800">Within 7 days</option>
               </select>
             </div>
+            )}
             <label className="swap-label" htmlFor="simple-recipient">Recipient <small>optional</small></label>
             <input id="simple-recipient" className="swap-input" placeholder={`${wallet.slice(0, 6)}…${wallet.slice(-4)} (your wallet)`} value={recipient} onChange={(e) => setRecipient(e.target.value)} />
             <p className="swap-help">Leave this blank to send the result to your connected wallet.</p>
-            {quote && <p className="swap-quote">Minimum received: <strong>{quote} {to}</strong></p>}
+            {quote && <p className="swap-quote">{orderType === "limit" ? "Current estimate" : "Minimum received"}: <strong>{orderType === "limit" && limitOut ? limitOut : quote} {to}</strong></p>}
             {error && <div className="swap-error" role="alert">{error}</div>}
             {success ? (
               <div className="swap-success" role="status"><Check size={19} /><div><strong>Swap submitted.</strong><span>Your escape ticket was downloaded. Keep it safe until delivery.</span></div></div>

@@ -253,6 +253,9 @@ export default function Dashboard({ path }: { path: string }) {
     return "";
   })();
   const [delayed, setDelayed] = useState(false);
+  const [orderType, setOrderType] = useState<"market" | "limit">("market");
+  const [limitMinOut, setLimitMinOut] = useState("");
+  const [limitExpiry, setLimitExpiry] = useState("86400");
   const [delay, setDelay] = useState("3600");
   const [customDelay, setCustomDelay] = useState("3600");
   const [slippage, setSlippage] = useState(100);
@@ -285,6 +288,7 @@ export default function Dashboard({ path }: { path: string }) {
     : usePresets
       ? Math.min(presetSeconds, app.maxDelay)
       : Number(delay === "custom" ? customDelay : delay);
+  const limitOrder = orderType === "limit";
   // Split timing (#5): the swap becomes 2-5 separate private swaps, each with its own escape
   // ticket and its own random delivery time inside the delay window. Separate deposits keep
   // every piece fully refundable on its own (one deposit paid in parts could not be).
@@ -584,6 +588,18 @@ export default function Dashboard({ path }: { path: string }) {
       setAlertMessage(`Choose a delay between 0 and ${app.maxDelay} seconds.`);
       return;
     }
+    if (limitOrder) {
+      if (!Number.isInteger(Number(limitExpiry)) || Number(limitExpiry) < 60 || Number(limitExpiry) > app.maxDelay) {
+        setAlertMessage("Choose a limit order expiry between 1 minute and the service maximum.");
+        return;
+      }
+      try {
+        if (!output || parseUnits(limitMinOut, output.decimals) <= 0n) throw new Error();
+      } catch {
+        setAlertMessage(`Enter a minimum received amount in ${to}.`);
+        return;
+      }
+    }
     await run("Swap", async () => {
       const raw = rawAmount(amount, input.decimals);
       if (input.balance === undefined || raw > input.balance)
@@ -714,7 +730,9 @@ export default function Dashboard({ path }: { path: string }) {
       amountIn: formatUnits(raw, input!.decimals),
       tokenOut: to,
       recipient: splits ? `${splits.length} recipients` : payTo,
-      delaySeconds,
+      delaySeconds: limitOrder ? 0 : delaySeconds,
+      orderType,
+      ...(limitOrder ? { expiresInSeconds: Number(limitExpiry) } : {}),
       chainId: chain.id,
       ...(pay || (splits && useStealth) ? { stealth: true } : {}),
       ...(splits ? { split: splits.length } : {}),
@@ -728,8 +746,10 @@ export default function Dashboard({ path }: { path: string }) {
           amountIn: raw,
           tokenOut: output!.address,
           recipient: payTo,
-          minOut: BigInt(fresh.minOutSuggested),
-          delaySeconds,
+          minOut: limitOrder ? parseUnits(limitMinOut, output!.decimals) : BigInt(fresh.minOutSuggested),
+          delaySeconds: limitOrder ? 0 : delaySeconds,
+          orderType,
+          ...(limitOrder ? { expiresInSeconds: Number(limitExpiry) } : {}),
           ...(pay
             ? { stealth: { ephemeralPublicKey: pay.ephemeralPublicKey, viewTag: pay.viewTag } }
             : {}),
@@ -821,6 +841,8 @@ export default function Dashboard({ path }: { path: string }) {
           ? { depositTx: source.depositTx }
           : {}),
         ...(typeof source.delaySeconds === "number" ? { delaySeconds: source.delaySeconds } : {}),
+        ...(source.orderType === "limit" ? { orderType: "limit" as const } : {}),
+        ...(typeof source.expiresInSeconds === "number" ? { expiresInSeconds: source.expiresInSeconds } : {}),
       });
       setMessage("Ticket imported. Refunds use the vault directly.");
     } catch (e) {
@@ -876,7 +898,9 @@ export default function Dashboard({ path }: { path: string }) {
                 : requested
                   ? statusCopy.refund_requested
                   : status
-                    ? status.status === "deposited" && row.delaySeconds
+                    ? status.status === "deposited" && row.orderType === "limit"
+                      ? "Waiting for target price"
+                      : status.status === "deposited" && row.delaySeconds
                       ? "Scheduled (private delay)"
                       : statusCopy[status.status]
                     : "Service unavailable — ticket ready";
@@ -1675,6 +1699,28 @@ export default function Dashboard({ path }: { path: string }) {
                       </span>
                     </div>
                   )}
+                  <p className="field-label">Order type</p>
+                  <div className="segmented">
+                    {(["market", "limit"] as const).map((kind) => (
+                      <button key={kind} aria-pressed={orderType === kind} onClick={() => {
+                        setOrderType(kind);
+                        if (kind === "limit") setDelayed(false);
+                      }}>
+                        {kind === "market" ? "Market swap" : "Limit order"}
+                      </button>
+                    ))}
+                  </div>
+                  {limitOrder ? (
+                    <>
+                      <label className="field-label" htmlFor="limit-min-out">Minimum received ({to})</label>
+                      <input id="limit-min-out" inputMode="decimal" placeholder={quote ? formatUnits(BigInt(quote.minOutSuggested), output?.decimals ?? 18) : "0"} value={limitMinOut} onChange={(e) => setLimitMinOut(e.target.value)} />
+                      <label className="field-label" htmlFor="limit-expiry">Order expires</label>
+                      <select id="limit-expiry" value={limitExpiry} onChange={(e) => setLimitExpiry(e.target.value)}>
+                        <option value="3600">In 1 hour</option><option value="21600">In 6 hours</option><option value="86400">In 1 day</option><option value="604800">In 7 days</option><option value="2592000">In 30 days</option>
+                      </select>
+                      <span className="field-help">Curtain waits until the current quote meets your minimum. If it does not, your escape ticket remains refundable after expiry.</span>
+                    </>
+                  ) : <>
                   <p className="field-label">Timing</p>
                   <div className="segmented">
                     {[false, true].map((v) => (
@@ -1801,6 +1847,7 @@ export default function Dashboard({ path }: { path: string }) {
                       )}
                     </>
                   )}
+                  </>}
                   <label className="field-label" htmlFor="slippage">
                     Slippage
                   </label>

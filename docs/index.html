@@ -272,6 +272,10 @@
                   <td><code>delaySeconds</code></td>
                   <td>Optional integer; defaults to 0. Maximum 15,552,000 (180 days).</td>
                 </tr>
+                <tr>
+                  <td><code>orderType / expiresInSeconds</code></td>
+                  <td>Use <code>orderType: "limit"</code> with an explicit <code>minOut</code> and expiry from 60 seconds to 180 days. The operator waits for a qualifying quote.</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -279,6 +283,12 @@
             Zero means no intentional delay; confirmations and operator processing still take time.
             A positive value allows a randomized payout time inside that window. The operator
             enforces the 180-day cap.
+          </p>
+          <p>
+            Limit orders do not use a delivery delay. Set <code>orderType: "limit"</code> and
+            <code>expiresInSeconds</code>; settlement starts when the live quote can satisfy
+            <code>minOut</code>. If the target is not reached, the escape ticket can be used after
+            expiry.
           </p>
           <div class="code">
             <div class="code-title">

@@ -147,6 +147,8 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
           return json({ error: "Payload too large (max 32KB)" }, 413);
         }
         const body = (await req.json()) as Record<string, unknown>;
+        if (body["orderType"] !== undefined && body["orderType"] !== "market" && body["orderType"] !== "limit")
+          return json({ error: "orderType must be market or limit" }, 400);
         const asStealth = (v: unknown) => {
           const st = v as Record<string, unknown>;
           return { ephemeralPublicKey: String(st["ephemeralPublicKey"]), viewTag: String(st["viewTag"]) };
@@ -178,6 +180,8 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
           depositor: String(body["depositor"]),
           minOut: String(body["minOut"]),
           delaySeconds: Number(body["delaySeconds"] ?? 0),
+          orderType: body["orderType"] === "limit" ? "limit" : "market",
+          ...(body["expiresInSeconds"] !== undefined ? { expiresInSeconds: Number(body["expiresInSeconds"]) } : {}),
           ...(stealth ? { stealth } : {}),
           ...(stealthFee !== undefined ? { stealthFee } : {}),
           ...(splits ? { splits, splitMode: body["splitMode"] === "equal" ? "equal" : "random" } : {}),
@@ -191,7 +195,7 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
       const m = pathname.match(/^\/intents\/([0-9a-f]{32})$/);
       if (req.method === "GET" && m) {
         const rows = await active.db.query<Record<string, unknown>>(
-          `SELECT i.status, i.deposit_id::text AS "depositId", i.amount_out::text AS "amountOut", s.tx_hash AS "payoutTx",
+          `SELECT i.status, i.order_type AS "orderType", i.deadline::text AS deadline, i.deposit_id::text AS "depositId", i.amount_out::text AS "amountOut", s.tx_hash AS "payoutTx",
                   i.blocked_reason AS "blockedReason"
            FROM intents i LEFT JOIN settlements s ON s.id = i.settlement_id AND s.status = 'confirmed' WHERE i.id = $1
            AND NOT EXISTS (SELECT 1 FROM developer_intents d WHERE d.intent_id = i.id)

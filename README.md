@@ -27,6 +27,7 @@ V3 supports fixed whole-token denominations: 1, 10, and 100 units for supported 
 |---|---|
 | Private swap | Deposit token X into the Curtain vault; token Y arrives at the address you choose. The vault does not store a direct deposit-to-recipient mapping, but public amounts can allow statistical correlation in low-volume batches. |
 | Instant or delayed | Paid right away, or at a random time inside a window you pick (up to 180 days). The maximum delay is enforced by the operator service, not by the vault contract. |
+| Limit orders | Set a minimum received amount and expiry; the operator waits for a qualifying quote, while the existing escape hatch protects the deposit if the target is not reached. |
 | Escape hatch | If a swap isn't paid by its deadline, you can take your deposit back 3 minutes later. |
 | Open keepers | Anyone can submit signed payouts and earn a small fee. |
 | Stake-to-earn | Lock for 30 / 90 / 180 days to earn emissions at 1× / 1.5× / 2×. |

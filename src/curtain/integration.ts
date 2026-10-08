@@ -289,6 +289,8 @@ export interface SavedTicket {
   recipient: string;
   depositTx?: string;
   delaySeconds?: number;
+  orderType?: "market" | "limit";
+  expiresInSeconds?: number;
   chainId?: number;
   /** Paid to a one-time stealth address (ERC-5564); `recipient` is that address. */
   stealth?: boolean;

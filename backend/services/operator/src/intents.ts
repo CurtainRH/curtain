@@ -16,6 +16,7 @@ export const MAX_INTEGRATOR_FEE_BPS = 100;
 export const INSTANT_DEADLINE_SECONDS = 600;
 /** Delayed swaps: time after the latest scheduled payout before the deadline. */
 export const DELAYED_GRACE_SECONDS = 600;
+export const MIN_LIMIT_EXPIRY_SECONDS = 60;
 
 export interface IntentRequest {
   tokenIn: string;
@@ -27,6 +28,10 @@ export interface IntentRequest {
   minOut: string | bigint;
   /** 0 = instant; otherwise the maximum random delay in seconds, capped here at 180 days. */
   delaySeconds: number;
+  /** Market (default) or a limit order that waits until minOut is met. */
+  orderType?: "market" | "limit";
+  /** How long a limit order may wait before its escape hatch opens. */
+  expiresInSeconds?: number;
   /** Stealth payout: `recipient` is a one-time stealth address (ERC-5564). */
   stealth?: { ephemeralPublicKey: string; viewTag: string };
   /** Gas-drop fee in tokenOut units; required with `stealth` (and per stealth split). */
@@ -156,10 +161,16 @@ export async function createIntent(db: Db, req: IntentRequest, allowedTokens: Se
   }
   const delay = Math.floor(req.delaySeconds);
   if (!(delay >= 0 && delay <= MAX_DELAY_SECONDS)) throw new IntentError(`delaySeconds must be 0..${MAX_DELAY_SECONDS}`);
-
-  const instant = delay === 0;
-  const payAt = BigInt(nowSec + (instant ? 0 : randomUpTo(delay)));
-  const deadline = BigInt(nowSec + (instant ? INSTANT_DEADLINE_SECONDS : delay + DELAYED_GRACE_SECONDS));
+  const orderType = req.orderType ?? "market";
+  if (orderType !== "market" && orderType !== "limit") throw new IntentError("orderType must be market or limit");
+  const expiry = req.expiresInSeconds;
+  if (orderType === "limit" && (!Number.isInteger(expiry) || expiry! < MIN_LIMIT_EXPIRY_SECONDS || expiry! > MAX_DELAY_SECONDS)) {
+    throw new IntentError(`expiresInSeconds must be an integer from ${MIN_LIMIT_EXPIRY_SECONDS} to ${MAX_DELAY_SECONDS}`);
+  }
+  if (orderType === "limit" && delay !== 0) throw new IntentError("limit orders do not use a delivery delay");
+  const instant = orderType === "market" && delay === 0;
+  const payAt = BigInt(nowSec + (orderType === "limit" ? 0 : (instant ? 0 : randomUpTo(delay))));
+  const deadline = BigInt(nowSec + (orderType === "limit" ? expiry! + DELAYED_GRACE_SECONDS : (instant ? INSTANT_DEADLINE_SECONDS : delay + DELAYED_GRACE_SECONDS)));
   const salt = hex32();
   const secret = hex32();
   const tag = v3 ? keccak256(secret) : undefined;
@@ -176,8 +187,8 @@ export async function createIntent(db: Db, req: IntentRequest, allowedTokens: Se
   const insertIntent = async (tx: Db) => {
     await tx.query(
       `INSERT INTO intents (id, deadline_hash, deadline, salt, pay_at, mode, token_in, amount_in, token_out, recipient, min_out, secret, depositor,
-                            stealth_ephemeral_pub, stealth_view_tag, stealth_fee, integrator_fee_recipient, integrator_fee_bps)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`, intentParams,
+                            stealth_ephemeral_pub, stealth_view_tag, stealth_fee, integrator_fee_recipient, integrator_fee_bps, order_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`, [...intentParams, orderType],
     );
     for (const [position, sp] of (splits ?? []).entries()) {
       await tx.query(
