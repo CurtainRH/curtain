@@ -3,7 +3,7 @@ info:
   title: Curtain Developer API
   version: 1.0.0
   description: >-
-    V2-only private swap preparation on Robinhood Chain. Call from your server.
+    V2 or V3 private swap preparation on Robinhood Chain. Call from your server.
     API keys do not sign or broadcast transactions. Users retain wallet custody.
     Obtain a key in https://curtainrh.com/app/developer.
 servers:
@@ -16,7 +16,7 @@ paths:
       operationId: getConfig
       summary: Network, vault, token addresses, and limits
       responses:
-        '200':
+        "200":
           description: V2 configuration
           content:
             application/json:
@@ -24,24 +24,51 @@ paths:
                 type: object
                 properties:
                   chainId: { type: integer, example: 4663 }
-                  privacyRoutes: { type: array, items: { type: string, enum: [v2] } }
-                  vault: { $ref: '#/components/schemas/Address' }
-                  tokens: { type: object, additionalProperties: { $ref: '#/components/schemas/Address' } }
+                  privacyRoutes: { type: array, items: { type: string, enum: [v2, v3] } }
+                  vault: { $ref: "#/components/schemas/Address" }
+                  vaults:
+                    { type: object, additionalProperties: { $ref: "#/components/schemas/Address" } }
+                  tokens:
+                    { type: object, additionalProperties: { $ref: "#/components/schemas/Address" } }
                   maxDelaySeconds: { type: integer, example: 15552000 }
                   rateLimitPerMinute: { type: integer, example: 60 }
-        default: { $ref: '#/components/responses/Error' }
+        default: { $ref: "#/components/responses/Error" }
   /quote:
     get:
       operationId: getQuote
       summary: Quote a V2 swap in raw token units
       parameters:
-        - { name: privacyRoute, in: query, required: true, schema: { type: string, enum: [v2] } }
-        - { name: tokenIn, in: query, required: true, schema: { $ref: '#/components/schemas/Address' } }
-        - { name: tokenOut, in: query, required: true, schema: { $ref: '#/components/schemas/Address' } }
-        - { name: amountIn, in: query, required: true, schema: { $ref: '#/components/schemas/PositiveUnits' } }
-        - { name: slippageBps, in: query, schema: { type: integer, minimum: 0, maximum: 5000, default: 100 } }
+        - {
+            name: privacyRoute,
+            in: query,
+            required: true,
+            schema: { type: string, enum: [v2, v3] },
+          }
+        - {
+            name: tokenIn,
+            in: query,
+            required: true,
+            schema: { $ref: "#/components/schemas/Address" },
+          }
+        - {
+            name: tokenOut,
+            in: query,
+            required: true,
+            schema: { $ref: "#/components/schemas/Address" },
+          }
+        - {
+            name: amountIn,
+            in: query,
+            required: true,
+            schema: { $ref: "#/components/schemas/PositiveUnits" },
+          }
+        - {
+            name: slippageBps,
+            in: query,
+            schema: { type: integer, minimum: 0, maximum: 5000, default: 100 },
+          }
       responses:
-        '200':
+        "200":
           description: Check available before using minOutSuggested; quotes do not reserve a price
           content:
             application/json:
@@ -56,7 +83,7 @@ paths:
                   protocolFee: { type: string }
                   keeperFee: { type: string }
                   venue: { type: string }
-        default: { $ref: '#/components/responses/Error' }
+        default: { $ref: "#/components/responses/Error" }
   /intents:
     post:
       operationId: createIntent
@@ -69,7 +96,7 @@ paths:
         - name: Idempotency-Key
           in: header
           required: true
-          schema: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.:-]+$' }
+          schema: { type: string, minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9_.:-]+$" }
       requestBody:
         required: true
         content:
@@ -78,34 +105,39 @@ paths:
               type: object
               required: [privacyRoute, tokenIn, tokenOut, amountIn, minOut, depositor, recipient]
               properties:
-                privacyRoute: { type: string, enum: [v2] }
-                tokenIn: { $ref: '#/components/schemas/Address' }
-                tokenOut: { $ref: '#/components/schemas/Address' }
-                amountIn: { $ref: '#/components/schemas/PositiveUnits' }
-                minOut: { $ref: '#/components/schemas/PositiveUnits' }
-                depositor: { $ref: '#/components/schemas/Address' }
-                recipient: { $ref: '#/components/schemas/Address' }
+                privacyRoute: { type: string, enum: [v2, v3] }
+                tokenIn: { $ref: "#/components/schemas/Address" }
+                tokenOut: { $ref: "#/components/schemas/Address" }
+                amountIn: { $ref: "#/components/schemas/PositiveUnits" }
+                minOut: { $ref: "#/components/schemas/PositiveUnits" }
+                depositor: { $ref: "#/components/schemas/Address" }
+                recipient: { $ref: "#/components/schemas/Address" }
                 delaySeconds: { type: integer, minimum: 0, maximum: 15552000, default: 0 }
       responses:
-        '201':
+        "201":
           description: Intent created; nothing has been broadcast
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/PreparedIntent' }
-        '200':
+              schema: { $ref: "#/components/schemas/PreparedIntent" }
+        "200":
           description: Existing intent returned for an identical retry
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/PreparedIntent' }
-        default: { $ref: '#/components/responses/Error' }
+              schema: { $ref: "#/components/schemas/PreparedIntent" }
+        default: { $ref: "#/components/responses/Error" }
   /intents/{id}:
     get:
       operationId: getIntent
       summary: Track an intent created by this API key
       parameters:
-        - { name: id, in: path, required: true, schema: { type: string, pattern: '^[a-f0-9]{32}$' } }
+        - {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, pattern: "^[a-f0-9]{32}$" },
+          }
       responses:
-        '200':
+        "200":
           description: Current intent state; fields may be null until available
           content:
             application/json:
@@ -115,12 +147,23 @@ paths:
                   id: { type: string }
                   status:
                     type: string
-                    enum: [awaiting_deposit, deposited, settling, paid, blocked, expired, refund_requested, refunded, challenged]
+                    enum:
+                      [
+                        awaiting_deposit,
+                        deposited,
+                        settling,
+                        paid,
+                        blocked,
+                        expired,
+                        refund_requested,
+                        refunded,
+                        challenged,
+                      ]
                   depositId: { type: string, nullable: true }
                   amountOut: { type: string, nullable: true }
                   payoutTx: { type: string, nullable: true }
                   blockedReason: { type: string, nullable: true }
-        default: { $ref: '#/components/responses/Error' }
+        default: { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     bearerAuth:
@@ -147,39 +190,40 @@ components:
   schemas:
     Address:
       type: string
-      pattern: '^0x[a-fA-F0-9]{40}$'
+      pattern: "^0x[a-fA-F0-9]{40}$"
     PositiveUnits:
       type: string
-      pattern: '^[1-9][0-9]{0,77}$'
+      pattern: "^[1-9][0-9]{0,77}$"
       description: Positive uint256 decimal string, less than 2^256
     Transaction:
       type: object
       required: [chainId, from, to, data, value]
       properties:
         chainId: { type: integer }
-        from: { $ref: '#/components/schemas/Address' }
-        to: { $ref: '#/components/schemas/Address' }
-        data: { type: string, pattern: '^0x[a-fA-F0-9]*$' }
-        value: { type: string, enum: ['0'] }
+        from: { $ref: "#/components/schemas/Address" }
+        to: { $ref: "#/components/schemas/Address" }
+        data: { type: string, pattern: "^0x[a-fA-F0-9]*$" }
+        value: { type: string, enum: ["0"] }
     PreparedIntent:
       type: object
       required: [id, privacyRoute, chainId, vault, escapeTicket, transactions]
       properties:
         id: { type: string }
-        privacyRoute: { type: string, enum: [v2] }
+        privacyRoute: { type: string, enum: [v2, v3] }
         chainId: { type: integer }
-        vault: { $ref: '#/components/schemas/Address' }
+        vault: { $ref: "#/components/schemas/Address" }
         escapeTicket:
           type: object
           required: [vault, deadline, salt, deadlineHash]
-          description: Save before deposit; append depositId from the Deposited event afterward
+          description: Save before deposit; append depositId from the Deposited event afterward. V3 includes tag.
           properties:
-            vault: { $ref: '#/components/schemas/Address' }
+            vault: { $ref: "#/components/schemas/Address" }
             deadline: { type: string }
             salt: { type: string }
             deadlineHash: { type: string }
+            tag: { type: string, nullable: true, description: Required by the V3 refund function }
         transactions:
           type: object
           properties:
-            approval: { $ref: '#/components/schemas/Transaction' }
-            deposit: { $ref: '#/components/schemas/Transaction' }
+            approval: { $ref: "#/components/schemas/Transaction" }
+            deposit: { $ref: "#/components/schemas/Transaction" }

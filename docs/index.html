@@ -1,83 +1,231 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#07111e" />
-  <meta name="description" content="Build with Curtain. V2 private swap APIs, wallet transaction preparation, and integration guides for Robinhood Chain." />
-  <title>Curtain — Developer documentation</title>
-  <link rel="stylesheet" href="/src/style.css" />
-</head>
-<body>
-  <a class="skip-link" href="#main">Skip to documentation</a>
-  <header><a class="brand" href="https://curtainrh.com">Curtain<span>/ developers</span></a><a class="dashboard-link" href="https://curtainrh.com/app/developer">Get an API key <span aria-hidden="true">↗</span></a></header>
-  <div class="layout">
-    <aside>
-      <div class="nav-label">BUILD WITH CURTAIN</div>
-      <nav aria-label="Documentation">
-        <a href="#overview">Introduction</a><a href="#quickstart">Quickstart</a><a href="#authentication">Authentication</a>
-        <a href="#config">Configuration</a><a href="#quotes">Quotes</a><a href="#intents">Create an intent</a>
-        <a href="#transactions">Wallet transactions</a><a href="#status">Track delivery</a><a href="#refunds">Escape tickets &amp; refunds</a>
-        <a href="#errors">Errors &amp; limits</a><a href="#privacy">Privacy model</a>
-      </nav>
-      <a class="spec-link" href="/openapi.yaml" download>Download OpenAPI specification ↓</a>
-      <div class="network"><span></span> Robinhood Chain<br /><small>Chain ID 4663 · V2 API</small></div>
-    </aside>
-    <main id="main">
-      <section id="overview" class="hero">
-        <p class="eyebrow">CURTAIN DEVELOPER PLATFORM</p>
-        <h1>Private swaps.<br /><em>Your application.</em></h1>
-        <p class="lead">A small API for a complete swap journey. Quote an amount, prepare a deposit, and follow its delivery. Your users keep control of their wallets.</p>
-        <div class="badges"><span>V2 · flexible amounts</span><span>Server-side API keys</span><span>Unsigned transactions</span></div>
-        <div class="base-url"><span>BASE URL</span><code>https://operator.curtainrh.com/v1</code></div>
-        <div class="flow"><div><b>01</b><strong>Quote</strong><p>Choose tokens and a minimum output.</p></div><div><b>02</b><strong>Deposit</strong><p>The user signs in their own wallet.</p></div><div><b>03</b><strong>Deliver</strong><p>Track the intent until payout.</p></div></div>
-        <p>The first release supports <code>privacyRoute: "v2"</code> only. V3, split payouts, and stealth-address delivery are not part of this developer API yet. There is no automatic route selection in this API.</p>
-      </section>
-      <section id="quickstart">
-        <p class="eyebrow">FIRST REQUEST</p><h2>Start with a key.</h2>
-        <ol><li>Open <a href="https://curtainrh.com/app/developer">Dashboard → Developer</a> and connect an EOA wallet.</li><li>Sign the access message, then name and create a key. Save it when it appears: it is only shown once.</li><li>Store it in your server’s secret manager as <code>CURTAIN_API_KEY</code>. Call Curtain from your backend.</li></ol>
-        <div class="code"><div class="code-title">Terminal <button type="button" class="copy">Copy</button></div><pre><code>curl https://operator.curtainrh.com/v1/config \
-  -H "Authorization: Bearer $CURTAIN_API_KEY"</code></pre></div>
-        <p>Read token addresses from configuration. Amounts are decimal strings in the token’s smallest units: for USDG (6 decimals), <code>"10000000"</code> means 10 USDG. Never use floating-point arithmetic to construct token amounts.</p>
-      </section>
-      <section id="authentication">
-        <h2>Keys for your server.<br />Signatures for your users.</h2>
-        <p>Authenticate every <code>/v1/*</code> request with <code>Authorization: Bearer &lt;your-key&gt;</code>. Keys authorize API access, not spending. They cannot sign or broadcast a wallet transaction.</p>
-        <div class="callout">Never embed an API key in frontend JavaScript, a mobile app bundle, a URL, analytics, or a public repository. Your frontend calls your own backend; that backend calls Curtain.</div>
-        <p>Dashboard key management requires a wallet signature for each action. Challenges expire after five minutes and can only be used once for the exact signed action. This release supports EOA wallets; contract-wallet signatures are not supported.</p>
-        <p>You can have up to 10 active keys per wallet. Revocation blocks new API requests immediately. A new key cannot access intents belonging to an old key. Save your intent IDs and escape tickets; revocation does not cancel funded swaps or remove their on-chain refund rights.</p>
-      </section>
-      <section id="config">
-        <div class="endpoint"><span>GET</span><code>/v1/config</code></div><h2>Discover the network.</h2>
-        <p>Returns <code>chainId</code>, <code>privacyRoutes</code>, the V2 <code>vault</code>, a <code>tokens</code> map keyed by symbol, <code>maxDelaySeconds</code>, and <code>rateLimitPerMinute</code>.</p>
-        <p>Use the returned addresses for quoting, and independently verify the configured chain and vault in your integration. The current V2 vault is <code>0xF9381841e982648c178E762116A437Ecbcf12Bbd</code>.</p>
-      </section>
-      <section id="quotes">
-        <div class="endpoint"><span>GET</span><code>/v1/quote</code></div><h2>Get a quote.</h2>
-        <p>Supply <code>privacyRoute=v2</code>, <code>tokenIn</code>, <code>tokenOut</code>, and <code>amountIn</code>. Optional <code>slippageBps</code> defaults to 100 (1%) and accepts integers from 0 to 5000.</p>
-        <div class="code"><div class="code-title">10 USDG → NVDA <button type="button" class="copy">Copy</button></div><pre><code>curl --get https://operator.curtainrh.com/v1/quote \
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#07111e" />
+    <meta
+      name="description"
+      content="Build with Curtain. V2 private swap APIs, wallet transaction preparation, and integration guides for Robinhood Chain."
+    />
+    <title>Curtain — Developer documentation</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to documentation</a>
+    <header>
+      <a class="brand" href="https://curtainrh.com">Curtain<span>/ developers</span></a
+      ><a class="dashboard-link" href="https://curtainrh.com/app/developer"
+        >Get an API key <span aria-hidden="true">↗</span></a
+      >
+    </header>
+    <div class="layout">
+      <aside>
+        <div class="nav-label">BUILD WITH CURTAIN</div>
+        <nav aria-label="Documentation">
+          <a href="#overview">Introduction</a><a href="#quickstart">Quickstart</a
+          ><a href="#authentication">Authentication</a> <a href="#config">Configuration</a
+          ><a href="#quotes">Quotes</a><a href="#intents">Create an intent</a>
+          <a href="#transactions">Wallet transactions</a><a href="#status">Track delivery</a
+          ><a href="#refunds">Escape tickets &amp; refunds</a>
+          <a href="#errors">Errors &amp; limits</a><a href="#privacy">Privacy model</a>
+        </nav>
+        <a class="spec-link" href="/openapi.yaml" download>Download OpenAPI specification ↓</a>
+        <div class="network">
+          <span></span> Robinhood Chain<br /><small>Chain ID 4663 · V2 + V3 API</small>
+        </div>
+      </aside>
+      <main id="main">
+        <section id="overview" class="hero">
+          <p class="eyebrow">CURTAIN DEVELOPER PLATFORM</p>
+          <h1>Private swaps.<br /><em>Your application.</em></h1>
+          <p class="lead">
+            A small API for a complete swap journey. Quote an amount, prepare a deposit, and follow
+            its delivery. Your users keep control of their wallets.
+          </p>
+          <div class="badges">
+            <span>V2 · flexible amounts</span><span>V3 · fixed denominations</span
+            ><span>Server-side API keys</span><span>Unsigned transactions</span>
+          </div>
+          <div class="base-url">
+            <span>BASE URL</span><code>https://operator.curtainrh.com/v1</code>
+          </div>
+          <div class="flow">
+            <div>
+              <b>01</b><strong>Quote</strong>
+              <p>Choose tokens and a minimum output.</p>
+            </div>
+            <div>
+              <b>02</b><strong>Deposit</strong>
+              <p>The user signs in their own wallet.</p>
+            </div>
+            <div>
+              <b>03</b><strong>Deliver</strong>
+              <p>Track the intent until payout.</p>
+            </div>
+          </div>
+          <p>
+            Choose <code>privacyRoute: "v2"</code> for flexible amounts or <code>"v3"</code> for
+            approved fixed denominations. The API never switches routes silently. Split payouts and
+            stealth-address delivery are not part of this release.
+          </p>
+        </section>
+        <section id="quickstart">
+          <p class="eyebrow">FIRST REQUEST</p>
+          <h2>Start with a key.</h2>
+          <ol>
+            <li>
+              Open <a href="https://curtainrh.com/app/developer">Dashboard → Developer</a> and
+              connect an EOA wallet.
+            </li>
+            <li>
+              Sign the access message, then name and create a key. Save it when it appears: it is
+              only shown once.
+            </li>
+            <li>
+              Store it in your server’s secret manager as <code>CURTAIN_API_KEY</code>. Call Curtain
+              from your backend.
+            </li>
+          </ol>
+          <div class="code">
+            <div class="code-title">Terminal <button type="button" class="copy">Copy</button></div>
+            <pre><code>curl https://operator.curtainrh.com/v1/config \
+  -H "Authorization: Bearer $CURTAIN_API_KEY"</code></pre>
+          </div>
+          <p>
+            Read token addresses from configuration. Amounts are decimal strings in the token’s
+            smallest units: for USDG (6 decimals), <code>"10000000"</code> means 10 USDG. Never use
+            floating-point arithmetic to construct token amounts.
+          </p>
+        </section>
+        <section id="authentication">
+          <h2>Keys for your server.<br />Signatures for your users.</h2>
+          <p>
+            Authenticate every <code>/v1/*</code> request with
+            <code>Authorization: Bearer &lt;your-key&gt;</code>. Keys authorize API access, not
+            spending. They cannot sign or broadcast a wallet transaction.
+          </p>
+          <div class="callout">
+            Never embed an API key in frontend JavaScript, a mobile app bundle, a URL, analytics, or
+            a public repository. Your frontend calls your own backend; that backend calls Curtain.
+          </div>
+          <p>
+            Dashboard key management requires a wallet signature for each action. Challenges expire
+            after five minutes and can only be used once for the exact signed action. This release
+            supports EOA wallets; contract-wallet signatures are not supported.
+          </p>
+          <p>
+            You can have up to 10 active keys per wallet. Revocation blocks new API requests
+            immediately. A new key cannot access intents belonging to an old key. Save your intent
+            IDs and escape tickets; revocation does not cancel funded swaps or remove their on-chain
+            refund rights.
+          </p>
+        </section>
+        <section id="config">
+          <div class="endpoint"><span>GET</span><code>/v1/config</code></div>
+          <h2>Discover the network.</h2>
+          <p>
+            Returns <code>chainId</code>, <code>privacyRoutes</code>, <code>vaults</code>, a
+            <code>tokens</code> map keyed by symbol, <code>maxDelaySeconds</code>, and
+            <code>rateLimitPerMinute</code>. When V3 is enabled, it also returns
+            <code>v3FixedAmounts</code> as token/amount pairs in raw units.
+          </p>
+          <p>
+            Use the returned addresses for quoting. V2 is
+            <code>0xF9381841e982648c178E762116A437Ecbcf12Bbd</code>; V3 is
+            <code>0xBF643c56D6f1775f9ABe97b7B7e89b0265D6c67a</code>.
+          </p>
+        </section>
+        <section id="quotes">
+          <div class="endpoint"><span>GET</span><code>/v1/quote</code></div>
+          <h2>Get a quote.</h2>
+          <p>
+            Supply <code>privacyRoute=v2</code> or <code>privacyRoute=v3</code>,
+            <code>tokenIn</code>, <code>tokenOut</code>, and <code>amountIn</code>. Optional
+            <code>slippageBps</code> defaults to 100 (1%) and accepts integers from 0 to 5000. V3
+            quotes are valid only for approved token denominations.
+          </p>
+          <div class="code">
+            <div class="code-title">
+              10 USDG → NVDA <button type="button" class="copy">Copy</button>
+            </div>
+            <pre><code>curl --get https://operator.curtainrh.com/v1/quote \
   -H "Authorization: Bearer $CURTAIN_API_KEY" \
   --data-urlencode 'privacyRoute=v2' \
   --data-urlencode 'tokenIn=0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168' \
   --data-urlencode 'tokenOut=0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC' \
   --data-urlencode 'amountIn=10000000' \
-  --data-urlencode 'slippageBps=100'</code></pre></div>
-        <p>The response includes <code>available</code>, <code>marketOut</code>, <code>expectedOut</code>, <code>minOutSuggested</code>, <code>protocolFee</code>, <code>keeperFee</code>, and <code>venue</code>. All token amounts are raw-unit strings. Check <code>available</code> before continuing, and use a fresh <code>minOutSuggested</code> when creating an intent.</p>
-        <p>A quote is an estimate, not a price reservation. A delayed swap may wait if the market cannot satisfy its minimum output.</p>
-      </section>
-      <section id="intents">
-        <div class="endpoint"><span class="post">POST</span><code>/v1/intents</code></div><h2>Prepare the swap.</h2>
-        <p>Create an intent on your server. Send <code>Content-Type: application/json</code> and a unique <code>Idempotency-Key</code> for each logical swap. Keep that key when retrying the same request.</p>
-        <div class="table-wrap"><table><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody>
-          <tr><td><code>privacyRoute</code></td><td>Required. Exactly <code>"v2"</code>.</td></tr>
-          <tr><td><code>tokenIn / tokenOut</code></td><td>Supported token contract addresses.</td></tr>
-          <tr><td><code>amountIn / minOut</code></td><td>Positive uint256 decimal strings in raw token units.</td></tr>
-          <tr><td><code>depositor</code></td><td>The wallet that will sign and fund the deposit.</td></tr>
-          <tr><td><code>recipient</code></td><td>The address receiving the output. Required; there is no implicit default.</td></tr>
-          <tr><td><code>delaySeconds</code></td><td>Optional integer; defaults to 0. Maximum 15,552,000 (180 days).</td></tr>
-        </tbody></table></div>
-        <p>Zero means no intentional delay; confirmations and operator processing still take time. A positive value allows a randomized payout time inside that window. The operator enforces the 180-day cap.</p>
-        <div class="code"><div class="code-title">Your backend · JavaScript <button type="button" class="copy">Copy</button></div><pre><code>const base = "https://operator.curtainrh.com/v1";
+  --data-urlencode 'slippageBps=100'</code></pre>
+          </div>
+          <p>
+            The response includes <code>available</code>, <code>marketOut</code>,
+            <code>expectedOut</code>, <code>minOutSuggested</code>, <code>protocolFee</code>,
+            <code>keeperFee</code>, and <code>venue</code>. All token amounts are raw-unit strings.
+            Check <code>available</code> before continuing, and use a fresh
+            <code>minOutSuggested</code> when creating an intent.
+          </p>
+          <p>
+            A quote is an estimate, not a price reservation. A delayed swap may wait if the market
+            cannot satisfy its minimum output.
+          </p>
+        </section>
+        <section id="intents">
+          <div class="endpoint"><span class="post">POST</span><code>/v1/intents</code></div>
+          <h2>Prepare the swap.</h2>
+          <p>
+            Create an intent on your server. Send <code>Content-Type: application/json</code> and a
+            unique <code>Idempotency-Key</code> for each logical swap. Keep that key when retrying
+            the same request.
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>Meaning</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>privacyRoute</code></td>
+                  <td>
+                    Required. <code>"v2"</code> for flexible amounts or <code>"v3"</code> for an
+                    approved fixed denomination.
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>tokenIn / tokenOut</code></td>
+                  <td>Supported token contract addresses.</td>
+                </tr>
+                <tr>
+                  <td><code>amountIn / minOut</code></td>
+                  <td>Positive uint256 decimal strings in raw token units.</td>
+                </tr>
+                <tr>
+                  <td><code>depositor</code></td>
+                  <td>The wallet that will sign and fund the deposit.</td>
+                </tr>
+                <tr>
+                  <td><code>recipient</code></td>
+                  <td>The address receiving the output. Required; there is no implicit default.</td>
+                </tr>
+                <tr>
+                  <td><code>delaySeconds</code></td>
+                  <td>Optional integer; defaults to 0. Maximum 15,552,000 (180 days).</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            Zero means no intentional delay; confirmations and operator processing still take time.
+            A positive value allows a randomized payout time inside that window. The operator
+            enforces the 180-day cap.
+          </p>
+          <div class="code">
+            <div class="code-title">
+              Your backend · JavaScript <button type="button" class="copy">Copy</button>
+            </div>
+            <pre><code>const base = "https://operator.curtainrh.com/v1";
 const headers = {
   Authorization: `Bearer ${process.env.CURTAIN_API_KEY}`,
   "Content-Type": "application/json",
@@ -108,15 +256,62 @@ async function prepareSwap({ depositor, recipient, requestId }) {
       amountIn, minOut: quote.minOutSuggested,
       depositor, recipient, delaySeconds: 0 }),
   });
-}</code></pre></div>
-        <p>New intents return <code>201</code>; identical retries return <code>200</code>. Retrying with the same key and different parameters returns <code>409</code>. Persist the original body for retries, including <code>minOut</code>; do not fetch a new quote and reuse an old idempotency key. Retries do not renew the original deadline.</p>
-        <p>The response contains <code>id</code>, <code>privacyRoute</code>, <code>chainId</code>, <code>vault</code>, <code>escapeTicket</code>, and <code>transactions.approval</code> / <code>transactions.deposit</code>. Each transaction contains <code>chainId</code>, <code>from</code>, <code>to</code>, <code>data</code>, and <code>value: "0"</code>. No transaction is broadcast by this endpoint.</p>
-      </section>
-      <section id="transactions">
-        <h2>Hand off to the wallet.</h2>
-        <ol><li>Save the intent ID and escape ticket <em>before</em> asking the user to deposit. Provide the ticket to the user so recovery does not depend on your server.</li><li>Verify that the connected account matches <code>depositor</code> and switch to the returned chain ID.</li><li>Read the token’s allowance for the vault. If it is insufficient, request the returned approval transaction and wait for a successful receipt. Some tokens require setting an existing nonzero allowance to zero first.</li><li>Ask the user to sign the deposit transaction. Wait for its receipt, verify success, and decode the vault’s <code>Deposited</code> event to obtain the <code>depositId</code>.</li><li>Add <code>depositId</code> and the deposit transaction hash to your saved ticket. Start polling the intent.</li></ol>
-        <p>Validate the returned transaction addresses, calldata, chain, and escape-ticket hash before presenting them to the wallet. Use the verified V2 vault ABI in the <a href="https://github.com/CurtainRH/curtain/tree/main/backend/packages/sdk">Curtain SDK source</a>. A wallet estimates gas and supplies its own nonce.</p>
-        <div class="code"><div class="code-title">Browser · an already configured wallet client <button type="button" class="copy">Copy</button></div><pre><code>// prepared came from YOUR backend. No API key in this code.
+}</code></pre>
+          </div>
+          <p>
+            New intents return <code>201</code>; identical retries return <code>200</code>. Retrying
+            with the same key and different parameters returns <code>409</code>. Persist the
+            original body for retries, including <code>minOut</code>; do not fetch a new quote and
+            reuse an old idempotency key. Retries do not renew the original deadline.
+          </p>
+          <p>
+            The response contains <code>id</code>, the selected <code>privacyRoute</code>,
+            <code>chainId</code>, the selected <code>vault</code>, <code>escapeTicket</code>, and
+            <code>transactions.approval</code> / <code>transactions.deposit</code>. V3 tickets
+            include a <code>tag</code> and must use the V3 refund function. Each transaction
+            contains <code>chainId</code>, <code>from</code>, <code>to</code>, <code>data</code>,
+            and <code>value: "0"</code>. No transaction is broadcast by this endpoint.
+          </p>
+        </section>
+        <section id="transactions">
+          <h2>Hand off to the wallet.</h2>
+          <ol>
+            <li>
+              Save the intent ID and escape ticket <em>before</em> asking the user to deposit.
+              Provide the ticket to the user so recovery does not depend on your server.
+            </li>
+            <li>
+              Verify that the connected account matches <code>depositor</code> and switch to the
+              returned chain ID.
+            </li>
+            <li>
+              Read the token’s allowance for the vault. If it is insufficient, request the returned
+              approval transaction and wait for a successful receipt. Some tokens require setting an
+              existing nonzero allowance to zero first.
+            </li>
+            <li>
+              Ask the user to sign the deposit transaction. Wait for its receipt, verify success,
+              and decode the vault’s <code>Deposited</code> event to obtain the
+              <code>depositId</code>.
+            </li>
+            <li>
+              Add <code>depositId</code> and the deposit transaction hash to your saved ticket.
+              Start polling the intent.
+            </li>
+          </ol>
+          <p>
+            Validate the returned transaction addresses, calldata, chain, and escape-ticket hash
+            before presenting them to the wallet. Use the verified V2 vault ABI in the
+            <a href="https://github.com/CurtainRH/curtain/tree/main/backend/packages/sdk"
+              >Curtain SDK source</a
+            >. A wallet estimates gas and supplies its own nonce.
+          </p>
+          <div class="code">
+            <div class="code-title">
+              Browser · an already configured wallet client
+              <button type="button" class="copy">Copy</button>
+            </div>
+            <pre><code>// prepared came from YOUR backend. No API key in this code.
 const tx = prepared.transactions.deposit;
 // First verify the chain, connected account, vault and calldata.
 const depositHash = await walletClient.sendTransaction({
@@ -130,43 +325,146 @@ const receipt = await publicClient.waitForTransactionReceipt({
   hash: depositHash,
 });
 if (receipt.status !== "success") throw new Error("Deposit reverted");
-// Decode Deposited from the expected vault and save its depositId.</code></pre></div>
-      </section>
-      <section id="status">
-        <div class="endpoint"><span>GET</span><code>/v1/intents/{id}</code></div><h2>Follow delivery.</h2>
-        <p>Use the same API key that created the intent. The response includes <code>id</code>, <code>status</code>, <code>depositId</code>, <code>amountOut</code>, <code>payoutTx</code>, and <code>blockedReason</code>. Fields are null until available. Unknown intents and intents owned by another key return <code>404</code>.</p>
-        <div class="code"><div class="code-title">Terminal <button type="button" class="copy">Copy</button></div><pre><code>curl "https://operator.curtainrh.com/v1/intents/$INTENT_ID" \
-  -H "Authorization: Bearer $CURTAIN_API_KEY"</code></pre></div>
-        <p>Typical progression: <code>awaiting_deposit → deposited → settling → paid</code>. Other states include <code>blocked</code>, <code>expired</code>, <code>refund_requested</code>, <code>refunded</code>, and <code>challenged</code>. <code>expired</code> is not proof of an on-chain refund; check the deposit and retain the ticket.</p>
-        <p>Poll from your server with backoff, starting around every 5–10 seconds. Share a single poll across your app’s clients, reduce frequency for delayed delivery, and stop once paid, refunded, or challenged. All polling shares the key’s request budget.</p>
-      </section>
-      <section id="refunds">
-        <h2>Keep the escape ticket.</h2>
-        <p>The intent response supplies <code>vault</code>, <code>deadline</code>, <code>salt</code>, and <code>deadlineHash</code>. After deposit, retain the on-chain <code>depositId</code> too. Store the ticket securely and make it recoverable by the user; do not put it into logs or analytics.</p>
-        <p>For V2, verify <code>deadlineHash = keccak256(abi.encode(uint256 deadline, bytes32 salt))</code>. The V2 vault permits an unpaid deposit’s owner to call <code>requestRefund(depositId, deadline, salt)</code> after the deadline plus 180 seconds. A 3,600-second challenge window follows. If the refund is not challenged, the depositor can call <code>finalizeRefund(depositId)</code>.</p>
-        <div class="callout">Refunds are on-chain wallet transactions, not API calls. Read the deposit’s current state before acting. Already-paid deposits can be challenged; an escape ticket does not entitle a user to both a payout and a refund.</div>
-        <p>Revoking an API key does not change these contract rules. Your integration should offer recovery even when its API key or the operator is unavailable.</p>
-      </section>
-      <section id="errors">
-        <h2>Predictable errors. Clear limits.</h2>
-        <p>Errors return JSON: <code>{ "error": "Description" }</code>. Successful responses and errors are marked <code>Cache-Control: no-store</code>.</p>
-        <div class="table-wrap"><table><thead><tr><th>Status</th><th>What to do</th></tr></thead><tbody>
-          <tr><td>400</td><td>Correct invalid input or unsupported privacy route.</td></tr><tr><td>401</td><td>Check your bearer key; it may be invalid or revoked.</td></tr>
-          <tr><td>404</td><td>Check the endpoint, intent ID, and the key that created it.</td></tr><tr><td>409</td><td>An idempotency key was reused with different parameters, or the wallet has 10 active keys.</td></tr>
-          <tr><td>413</td><td>Reduce the JSON request body to at most 16 KB.</td></tr><tr><td>429</td><td>Back off according to <code>Retry-After</code>. Each key allows 60 requests per minute across all API endpoints.</td></tr>
-          <tr><td>503</td><td>Retry with backoff and the original idempotency key/body. Do not assume a timed-out creation failed.</td></tr>
-        </tbody></table></div>
-        <p>Never automatically broadcast the same deposit again after an API or wallet timeout. Check for an existing receipt and reconcile the intent first. The API’s idempotency guarantee covers intent creation, not repeated on-chain transactions.</p>
-      </section>
-      <section id="privacy">
-        <h2>Understand the privacy model.</h2>
-        <p>Curtain V2 supports flexible amounts and randomized delivery windows. The operator knows the intended recipient and swap details. On-chain deposits and payouts are public, and amounts or timing can allow observers to correlate them. V2 does not guarantee anonymity or unlinkability.</p>
-        <p>Sending back to the depositor’s address or reusing a recipient can make correlation easier. Explain these tradeoffs to your users, preserve their refund material, and never describe the API as hiding all transaction history.</p>
-        <a class="dashboard-link" href="https://curtainrh.com/app/developer">Build your first integration ↗</a>
-      </section>
-      <footer>Curtain developer documentation <span>V2 · Robinhood Chain</span></footer>
-    </main>
-  </div>
-  <script type="module" src="/src/main.js"></script>
-</body>
+// Decode Deposited from the expected vault and save its depositId.</code></pre>
+          </div>
+        </section>
+        <section id="status">
+          <div class="endpoint"><span>GET</span><code>/v1/intents/{id}</code></div>
+          <h2>Follow delivery.</h2>
+          <p>
+            Use the same API key that created the intent. The response includes <code>id</code>,
+            <code>status</code>, <code>depositId</code>, <code>amountOut</code>,
+            <code>payoutTx</code>, and <code>blockedReason</code>. Fields are null until available.
+            Unknown intents and intents owned by another key return <code>404</code>.
+          </p>
+          <div class="code">
+            <div class="code-title">Terminal <button type="button" class="copy">Copy</button></div>
+            <pre><code>curl "https://operator.curtainrh.com/v1/intents/$INTENT_ID" \
+  -H "Authorization: Bearer $CURTAIN_API_KEY"</code></pre>
+          </div>
+          <p>
+            Typical progression: <code>awaiting_deposit → deposited → settling → paid</code>. Other
+            states include <code>blocked</code>, <code>expired</code>,
+            <code>refund_requested</code>, <code>refunded</code>, and <code>challenged</code>.
+            <code>expired</code> is not proof of an on-chain refund; check the deposit and retain
+            the ticket.
+          </p>
+          <p>
+            Poll from your server with backoff, starting around every 5–10 seconds. Share a single
+            poll across your app’s clients, reduce frequency for delayed delivery, and stop once
+            paid, refunded, or challenged. All polling shares the key’s request budget.
+          </p>
+        </section>
+        <section id="refunds">
+          <h2>Keep the escape ticket.</h2>
+          <p>
+            The intent response supplies <code>vault</code>, <code>deadline</code>,
+            <code>salt</code>, and <code>deadlineHash</code>. After deposit, retain the on-chain
+            <code>depositId</code> too. Store the ticket securely and make it recoverable by the
+            user; do not put it into logs or analytics.
+          </p>
+          <p>
+            For V2, verify
+            <code>deadlineHash = keccak256(abi.encode(uint256 deadline, bytes32 salt))</code>. For
+            V3, verify
+            <code
+              >deadlineHash = keccak256(abi.encode(uint256 deadline, bytes32 salt, bytes32
+              tag))</code
+            >. The V2 refund call is <code>requestRefund(depositId, deadline, salt)</code>; V3 uses
+            <code>requestRefund(depositId, deadline, salt, tag)</code>. Both open after the deadline
+            plus 180 seconds and have a 3,600-second challenge window.
+          </p>
+          <div class="callout">
+            Refunds are on-chain wallet transactions, not API calls. Read the deposit’s current
+            state before acting. Already-paid deposits can be challenged; an escape ticket does not
+            entitle a user to both a payout and a refund.
+          </div>
+          <p>
+            Revoking an API key does not change these contract rules. Your integration should offer
+            recovery even when its API key or the operator is unavailable.
+          </p>
+        </section>
+        <section id="errors">
+          <h2>Predictable errors. Clear limits.</h2>
+          <p>
+            Errors return JSON: <code>{ "error": "Description" }</code>. Successful responses and
+            errors are marked <code>Cache-Control: no-store</code>.
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>What to do</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>400</td>
+                  <td>Correct invalid input or unsupported privacy route.</td>
+                </tr>
+                <tr>
+                  <td>401</td>
+                  <td>Check your bearer key; it may be invalid or revoked.</td>
+                </tr>
+                <tr>
+                  <td>404</td>
+                  <td>Check the endpoint, intent ID, and the key that created it.</td>
+                </tr>
+                <tr>
+                  <td>409</td>
+                  <td>
+                    An idempotency key was reused with different parameters, or the wallet has 10
+                    active keys.
+                  </td>
+                </tr>
+                <tr>
+                  <td>413</td>
+                  <td>Reduce the JSON request body to at most 16 KB.</td>
+                </tr>
+                <tr>
+                  <td>429</td>
+                  <td>
+                    Back off according to <code>Retry-After</code>. Each key allows 60 requests per
+                    minute across all API endpoints.
+                  </td>
+                </tr>
+                <tr>
+                  <td>503</td>
+                  <td>
+                    Retry with backoff and the original idempotency key/body. Do not assume a
+                    timed-out creation failed.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            Never automatically broadcast the same deposit again after an API or wallet timeout.
+            Check for an existing receipt and reconcile the intent first. The API’s idempotency
+            guarantee covers intent creation, not repeated on-chain transactions.
+          </p>
+        </section>
+        <section id="privacy">
+          <h2>Understand the privacy model.</h2>
+          <p>
+            Curtain V2 supports flexible amounts and randomized delivery windows. The operator knows
+            the intended recipient and swap details. On-chain deposits and payouts are public, and
+            amounts or timing can allow observers to correlate them. V2 does not guarantee anonymity
+            or unlinkability.
+          </p>
+          <p>
+            Sending back to the depositor’s address or reusing a recipient can make correlation
+            easier. Explain these tradeoffs to your users, preserve their refund material, and never
+            describe the API as hiding all transaction history.
+          </p>
+          <a class="dashboard-link" href="https://curtainrh.com/app/developer"
+            >Build your first integration ↗</a
+          >
+        </section>
+        <footer>Curtain developer documentation <span>V2 · Robinhood Chain</span></footer>
+      </main>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
 </html>

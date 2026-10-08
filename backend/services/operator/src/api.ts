@@ -192,7 +192,8 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
           `SELECT i.status, i.deposit_id::text AS "depositId", i.amount_out::text AS "amountOut", s.tx_hash AS "payoutTx",
                   i.blocked_reason AS "blockedReason"
            FROM intents i LEFT JOIN settlements s ON s.id = i.settlement_id AND s.status = 'confirmed' WHERE i.id = $1
-           AND NOT EXISTS (SELECT 1 FROM developer_intents d WHERE d.intent_id = i.id)`,
+           AND NOT EXISTS (SELECT 1 FROM developer_intents d WHERE d.intent_id = i.id)
+           AND NOT EXISTS (SELECT 1 FROM developer_v3_intents d WHERE d.intent_id = i.id)`,
           [m[1]],
         );
         return rows[0] ? json(rows[0]) : json({ error: "unknown intent" }, 404);

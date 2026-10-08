@@ -29,14 +29,16 @@ It does not make authenticated API calls or offer a browser API-key playground.
 ## Developer API deployment
 
 The existing operator serves `/developer/*` for wallet-signature key management and
-`/v1/*` for authenticated V2 integration. `005_developer_api.sql` is applied by the
-operator's existing startup migration. Keys and developer intents use the V2 database.
+`/v1/*` for authenticated V2 and V3 integration. `005_developer_api.sql` and
+`006_developer_v3_intents.sql` are applied by the operator's existing startup migration.
+API keys use the main database; V2 and V3 intent ownership maps live with their respective
+operator databases.
 No new operator, keeper, or main frontend environment variables are required.
 Deploy the backend before the main dashboard. The keeper and vault contracts are unchanged.
 
 Dashboard management uses the existing same-origin `/api/curtain/developer/*` proxy.
 Third-party backends call `https://operator.curtainrh.com/v1` with a Bearer API key.
-V3, stealth/split parameters, and smart-contract wallet authentication are not supported
-by this first developer release. Key-specific limits persist in PostgreSQL across restarts.
+Stealth/split parameters and smart-contract wallet authentication are not supported by this
+first developer release. Key-specific limits persist in PostgreSQL across restarts.
 
 Security checks: `cd backend && bun test services/operator/test/developer.test.ts`.

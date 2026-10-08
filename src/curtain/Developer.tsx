@@ -89,7 +89,6 @@ export default function Developer({ wallet }: { wallet: string }) {
     <section className="panel developer-panel">
       <div className="panel-heading">
         <h2>Build with Curtain</h2>
-        <span className="pill">V2 API</span>
       </div>
       <p>
         Bring private swaps into your application. Get quotes, prepare wallet transactions, and
@@ -101,7 +100,7 @@ export default function Developer({ wallet }: { wallet: string }) {
       <div className="developer-facts">
         <div>
           <span>Privacy route</span>
-          <strong>Curtain V2 · flexible amounts</strong>
+          <strong>V2 flexible · V3 fixed denominations</strong>
         </div>
         <div>
           <span>Rate limit</span>
