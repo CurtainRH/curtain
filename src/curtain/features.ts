@@ -14,6 +14,7 @@ const OFF: Features = {
   sameWalletWarning: false,
   delayPresets: false,
   encryptedTickets: false,
+  ticketSync: false,
 };
 
 let loaded: Promise<Features> | undefined;

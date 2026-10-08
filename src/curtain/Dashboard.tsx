@@ -47,6 +47,7 @@ import FreshWallet from "./FreshWallet";
 import { decryptTicket, encryptTicket, isEncryptedTicket, type EncryptedTicket } from "./keystore";
 import PrivacyScore from "./PrivacyScore";
 import StealthReceive from "./StealthReceive";
+import TicketSync from "./TicketSync";
 import { useWorkspaceTools } from "./useWorkspaceTools";
 import {
   address,
@@ -2111,6 +2112,17 @@ export default function Dashboard({ path }: { path: string }) {
                     }}
                   />
                 </div>
+                {features.ticketSync && app.syncEnabled && address(wallet) && (
+                  <TicketSync
+                    wallet={wallet}
+                    sdk={app.sdk}
+                    tickets={app.tickets}
+                    addTicket={app.addTicket}
+                    busy={busy}
+                    run={run}
+                    setMessage={setMessage}
+                  />
+                )}
                 {locked && (
                   <div className="v2-fresh-wallet">
                     <label className="field-label" htmlFor="unlock-ticket">

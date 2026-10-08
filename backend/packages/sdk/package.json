@@ -9,7 +9,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./abi": "./src/abi.ts",
-    "./stealth": "./src/stealth.ts"
+    "./stealth": "./src/stealth.ts",
+    "./sync": "./src/sync.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

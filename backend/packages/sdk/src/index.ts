@@ -13,10 +13,12 @@
  */
 import { decodeEventLog, encodeAbiParameters, getAddress, keccak256, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 import { ERC20_ABI, STAKING_ABI, VAULT_ABI } from "./abi";
+import type { SyncKeys } from "./sync";
 
 export * from "./abi";
 export * from "./tokens";
 export * from "./stealth";
+export * from "./sync";
 
 export const REFUND_DELAY_SECONDS = 180;
 export const CHALLENGE_WINDOW_SECONDS = 3600;
@@ -68,6 +70,7 @@ export interface ServiceConfig {
   stealth?: { enabled: boolean; schemeId: number; announcer: Address; gasDropWei: string };
   split?: { enabled: boolean; maxRecipients: number };
   pool?: { enabled: boolean };
+  sync?: { enabled: boolean };
 }
 
 /** Deposits received and not yet paid out, per input token (GET /pool). */
@@ -155,6 +158,24 @@ export class CurtainClient {
 
   config() {
     return this.api<ServiceConfig>("/config");
+  }
+
+  /** Stores an encrypted ticket backup (FEATURE_TICKET_SYNC). The blob is sealed with sealBackup. */
+  async pushBackup(keys: SyncKeys, blob: Hex): Promise<void> {
+    const res = await (this.cfg.fetch ?? fetch)(`${this.cfg.apiUrl}/sync/${keys.id}`, {
+      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ authKey: keys.authKey, blob }),
+    });
+    if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+
+  /** The stored encrypted backup for these keys, or null if there is none yet. */
+  async pullBackup(keys: SyncKeys): Promise<Hex | null> {
+    const res = await (this.cfg.fetch ?? fetch)(`${this.cfg.apiUrl}/sync/${keys.id}`);
+    const body = (await res.json().catch(() => ({}))) as { blob?: Hex; error?: string };
+    // "no backup" means none stored yet; any other 404 means the operator doesn't offer sync.
+    if (res.status === 404 && body.error === "no backup") return null;
+    if (!res.ok || !body.blob) throw new Error(res.status === 404 ? "Ticket backup isn't available right now." : body.error ?? `HTTP ${res.status}`);
+    return body.blob;
   }
 
   /** How many deposits are waiting to be paid, per input token. Only when the operator serves it. */

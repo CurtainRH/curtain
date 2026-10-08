@@ -21,6 +21,7 @@ export const FEATURE_ENV = {
   sameWalletWarning: "FEATURE_SAME_WALLET_WARNING", // #10 warn when a recipient links back to you
   delayPresets: "FEATURE_DELAY_PRESETS", // #11 Quick / Better / Best delay presets with jitter
   encryptedTickets: "FEATURE_ENCRYPTED_TICKETS", // #12 password-locked escape ticket files
+  ticketSync: "FEATURE_TICKET_SYNC", // #13 encrypted ticket backup, restored by wallet signature
 } as const;
 
 export type FeatureName = keyof typeof FEATURE_ENV;

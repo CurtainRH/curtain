@@ -22,6 +22,7 @@
  *   WETH_ADDR                 optional; default: the router's WETH9()
  *   FEATURE_SPLIT_PAYOUTS     "true" lets one swap pay 2-5 recipients; anything else = off
  *   FEATURE_ANONYMITY_SET     "true" serves GET /pool (deposits waiting, per token); anything else = off
+ *   FEATURE_TICKET_SYNC       "true" serves GET/PUT /sync/:id (encrypted ticket backups); anything else = off
  */
 import { bunSqlDb, migrate } from "@curtain/db";
 import { DEFAULT_TOKENS } from "@curtain/sdk";
@@ -140,6 +141,7 @@ const makeOperator = async (contextDb: typeof db, contextVault: Address, v3 = fa
   ...(stealth ? { stealth } : {}),
   splitPayouts: process.env["FEATURE_SPLIT_PAYOUTS"]?.trim().toLowerCase() === "true",
   anonymitySet: process.env["FEATURE_ANONYMITY_SET"]?.trim().toLowerCase() === "true",
+  ticketSync: process.env["FEATURE_TICKET_SYNC"]?.trim().toLowerCase() === "true",
 });
 const operator = await makeOperator(db, vault);
 const v3Vault = process.env["V3_VAULT_ADDR"] ? getAddress(process.env["V3_VAULT_ADDR"] as Address) : undefined;
