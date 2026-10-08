@@ -117,6 +117,7 @@ export interface PendingTicket {
   vault: Address;
   deadline: string;
   salt: Hex;
+  tag?: Hex;
 }
 
 export interface CurtainConfig {
@@ -198,12 +199,12 @@ export class CurtainClient {
     const wallet = this.wallet;
     const owner = wallet.account!.address;
     // The operator matches the deposit on (depositor, hash), so it must come from this wallet.
-    const intent = await this.api<{ id: string; deadline: string; salt: Hex; deadlineHash: Hex; vault: Address }>("/intents", { ...p, depositor: owner });
+    const intent = await this.api<{ id: string; deadline: string; salt: Hex; deadlineHash: Hex; vault: Address; tag?: Hex }>("/intents", { ...p, depositor: owner });
     this.checkVault(intent.vault);
-    if (deadlineHashOf(BigInt(intent.deadline), intent.salt) !== intent.deadlineHash) {
+    if (deadlineHashOf(BigInt(intent.deadline), intent.salt, intent.tag) !== intent.deadlineHash) {
       throw new Error("The service returned an inconsistent escape ticket; nothing was deposited.");
     }
-    await opts.onIntent?.({ intentId: intent.id, vault: intent.vault, deadline: intent.deadline, salt: intent.salt });
+      await opts.onIntent?.({ intentId: intent.id, vault: intent.vault, deadline: intent.deadline, salt: intent.salt, ...(intent.tag ? { tag: intent.tag } : {}) });
     const { publicClient } = this.cfg;
 
     const allowance = await publicClient.readContract({ address: p.tokenIn, abi: ERC20_ABI, functionName: "allowance", args: [owner, intent.vault] });
@@ -325,8 +326,10 @@ export class CurtainClient {
 }
 
 /** keccak256(abi.encode(deadline, salt)): the hash a deposit carries on-chain. */
-export function deadlineHashOf(deadline: bigint, salt: Hex): Hex {
-  return keccak256(encodeAbiParameters([{ type: "uint256" }, { type: "bytes32" }], [deadline, salt]));
+export function deadlineHashOf(deadline: bigint, salt: Hex, tag?: Hex): Hex {
+  return tag
+    ? keccak256(encodeAbiParameters([{ type: "uint256" }, { type: "bytes32" }, { type: "bytes32" }], [deadline, salt, tag]))
+    : keccak256(encodeAbiParameters([{ type: "uint256" }, { type: "bytes32" }], [deadline, salt]));
 }
 
 /**
@@ -340,7 +343,7 @@ export async function findDepositId(
   depositor: Address,
   fromBlock: bigint = 0n,
 ): Promise<bigint | undefined> {
-  const hash = deadlineHashOf(BigInt(pending.deadline), pending.salt);
+  const hash = deadlineHashOf(BigInt(pending.deadline), pending.salt, pending.tag);
   const logs = await publicClient.getContractEvents({
     address: pending.vault, abi: VAULT_ABI, eventName: "Deposited", args: { depositor }, fromBlock,
   });

@@ -52,10 +52,10 @@ const DEFAULT_TOKENS: Record<string, string> = {
   XLK: "0x15Cd20759CE7F3285c29A319dE2D1A2e098c6f43",
 };
 
-export function getOperatorUrl(env?: unknown): string {
+export function getOperatorUrl(env?: unknown, v3 = false): string {
   if (env && typeof env === "object") {
     const e = env as Record<string, unknown>;
-    for (const key of [
+    for (const key of v3 ? ["CURTAIN_V3_OPERATOR_URL", "VITE_CURTAIN_V3_OPERATOR_URL"] : [
       "CURTAIN_API_URL",
       "CURTAIN_OPERATOR_URL",
       "OPERATOR_API_URL",
@@ -66,7 +66,7 @@ export function getOperatorUrl(env?: unknown): string {
   }
   if (typeof process !== "undefined" && process.env) {
     const p = process.env;
-    for (const key of [
+    for (const key of v3 ? ["CURTAIN_V3_OPERATOR_URL", "VITE_CURTAIN_V3_OPERATOR_URL"] : [
       "CURTAIN_API_URL",
       "CURTAIN_OPERATOR_URL",
       "OPERATOR_API_URL",
@@ -78,16 +78,18 @@ export function getOperatorUrl(env?: unknown): string {
   return "https://operator.curtainrh.com";
 }
 
-function getVaultAddress(env?: unknown): string {
+function getVaultAddress(env?: unknown, v3 = false): string {
   if (env && typeof env === "object") {
     const e = env as Record<string, unknown>;
-    if (typeof e["VITE_VAULT_ADDR"] === "string" && e["VITE_VAULT_ADDR"])
+    if (v3 && typeof e["VITE_V3_VAULT_ADDR"] === "string" && e["VITE_V3_VAULT_ADDR"]) return e["VITE_V3_VAULT_ADDR"] as string;
+    if (!v3 && typeof e["VITE_VAULT_ADDR"] === "string" && e["VITE_VAULT_ADDR"])
       return e["VITE_VAULT_ADDR"] as string;
     if (typeof e["VAULT_ADDR"] === "string" && e["VAULT_ADDR"]) return e["VAULT_ADDR"] as string;
   }
   if (typeof process !== "undefined" && process.env) {
     const p = process.env;
-    if (p["VITE_VAULT_ADDR"]) return p["VITE_VAULT_ADDR"];
+    if (v3 && p["VITE_V3_VAULT_ADDR"]) return p["VITE_V3_VAULT_ADDR"];
+    if (!v3 && p["VITE_VAULT_ADDR"]) return p["VITE_VAULT_ADDR"];
     if (p["VAULT_ADDR"]) return p["VAULT_ADDR"];
   }
   return "0xF9381841e982648c178E762116A437Ecbcf12Bbd";
@@ -99,7 +101,9 @@ export async function handleCurtainApiProxy(
 ): Promise<Response | null> {
   const url = new URL(request.url);
   // Only match /api/curtain exactly or subpaths under /api/curtain/ (prevent /api/curtain.attacker.com)
-  if (url.pathname !== "/api/curtain" && !url.pathname.startsWith("/api/curtain/")) {
+  const v3 = url.pathname === "/api/curtain-v3" || url.pathname.startsWith("/api/curtain-v3/");
+  const prefix = v3 ? "/api/curtain-v3" : "/api/curtain";
+  if (url.pathname !== prefix && !url.pathname.startsWith(`${prefix}/`)) {
     return null;
   }
 
@@ -115,11 +119,11 @@ export async function handleCurtainApiProxy(
     });
   }
 
-  let subpath = url.pathname.slice("/api/curtain".length);
+  let subpath = url.pathname.slice(prefix.length);
   if (!subpath || !subpath.startsWith("/")) {
     subpath = "/" + subpath;
   }
-  const operatorUrl = getOperatorUrl(env);
+  const operatorUrl = getOperatorUrl(env, v3);
 
   // If operator URL is configured, forward request to the backend operator
   if (operatorUrl) {
@@ -206,7 +210,7 @@ export async function handleCurtainApiProxy(
   }
 
   if (subpath === "/config") {
-    const vault = getVaultAddress(env);
+    const vault = getVaultAddress(env, v3);
     if (vault) {
       return new Response(
         JSON.stringify({

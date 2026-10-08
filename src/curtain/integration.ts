@@ -27,6 +27,14 @@ const env = import.meta.env;
 // Always same-origin: the server relays /api/curtain/* to the operator (src/lib/curtain-proxy.ts),
 // so the operator URL never reaches the browser.
 export const apiUrl = "/api/curtain";
+export type CurtainMode = "v2" | "v3";
+export function curtainMode(): CurtainMode {
+  if (typeof window === "undefined") return "v2";
+  return window.localStorage.getItem("curtain-mode") === "v3" ? "v3" : "v2";
+}
+export function apiUrlForMode(mode: CurtainMode = curtainMode()) {
+  return mode === "v3" ? "/api/curtain-v3" : apiUrl;
+}
 export const chain = defineChain({
   id: Number(env["VITE_CHAIN_ID"] || 4663),
   name: Number(env["VITE_CHAIN_ID"] || 4663) === 4663 ? "Robinhood Chain" : "Curtain local chain",
@@ -74,6 +82,10 @@ export const stealthRegistry = address(
 export const fallbackVault = address(
   env["VITE_VAULT_ADDR"] || "0xF9381841e982648c178E762116A437Ecbcf12Bbd",
 );
+export const v3Vault = address(
+  env["VITE_V3_VAULT_ADDR"] || "0xBF643c56D6f1775f9ABe97b7B7e89b0265D6c67a",
+);
+export const selectedVault = () => curtainMode() === "v3" ? v3Vault : fallbackVault;
 export const stakingBlock = /^\d+$/.test(env["VITE_STAKING_FROM_BLOCK"] || "")
   ? BigInt(env["VITE_STAKING_FROM_BLOCK"])
   : 80903085n;
@@ -106,10 +118,11 @@ export async function ensureChain() {
     await p.request({ method: "wallet_switchEthereumChain", params: [{ chainId: id }] });
   }
 }
-export function client(wallet?: string) {
+export function client(wallet?: string, mode: CurtainMode = curtainMode()) {
   const p = provider();
+  const expectedVault = selectedVault();
   return new CurtainClient({
-    apiUrl,
+    apiUrl: apiUrlForMode(mode),
     fetch: async (input, init) => {
       try {
         return await fetch(input, { ...init, signal: AbortSignal.timeout(8000) });
@@ -120,7 +133,7 @@ export function client(wallet?: string) {
     publicClient,
     // Pinned from the app's own config: the SDK refuses to deposit into, or refund from, any
     // other vault, even if the API (or an imported ticket file) names one.
-    ...(fallbackVault ? { vaultAddress: fallbackVault } : {}),
+    ...(expectedVault ? { vaultAddress: expectedVault } : {}),
     ...(staking ? { stakingAddress: staking } : {}),
     ...(wallet && p && isAddress(wallet)
       ? { walletClient: createWalletClient({ chain, transport: custom(p), account: wallet }) }
@@ -321,8 +334,9 @@ export function readTickets(wallet: string): SavedTicket[] {
   }
 }
 /** True when a ticket belongs to the vault this app is configured for. */
-export function trustedVault(vault: string) {
-  return !!fallbackVault && vault.toLowerCase() === fallbackVault.toLowerCase();
+export function trustedVault(vault: string, mode: CurtainMode = curtainMode()) {
+  const expected = mode === "v3" ? v3Vault : fallbackVault;
+  return !!expected && vault.toLowerCase() === expected.toLowerCase();
 }
 /**
  * A swap whose ticket secrets were saved before the deposit was signed. Once the deposit is

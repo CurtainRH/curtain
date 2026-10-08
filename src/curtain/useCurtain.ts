@@ -12,6 +12,7 @@ import {
 import {
   address,
   apiUrl,
+  curtainMode,
   chain,
   client,
   decimals,
@@ -48,7 +49,8 @@ export interface DepositState {
   status: number;
 }
 export function useCurtain(wallet: string) {
-  const sdk = useMemo(() => client(wallet), [wallet]);
+  const mode = curtainMode();
+  const sdk = useMemo(() => client(wallet, mode), [wallet, mode]);
   const [tokens, setTokens] = useState<TokenData[]>([]);
   const [vault, setVault] = useState(fallbackVault);
   const [maxDelay, setMaxDelay] = useState(15552000);
@@ -98,7 +100,7 @@ export function useCurtain(wallet: string) {
       // can't run: show the calm offline note rather than letting swaps fail one by one.
       const serviceOffline = (config as { offline?: unknown }).offline === true;
       if (!fallbackVault) throw new Error("The swap vault is not configured.");
-      if (!trustedVault(config.vault))
+      if (!trustedVault(config.vault, mode))
         throw new Error("Curtain's service reported an unexpected vault. Swaps are disabled.");
       setVault(config.vault);
       setMaxDelay(Math.min(15552000, config.maxDelaySeconds));

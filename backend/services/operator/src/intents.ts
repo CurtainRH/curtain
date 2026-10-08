@@ -73,6 +73,7 @@ export interface Intent {
   deadline: bigint;
   salt: Hex;
   deadlineHash: Hex;
+  tag?: Hex;
   payAt: bigint;
   /** Split payouts: each recipient's share in bps. */
   splits?: { recipient: Address; shareBps: number }[];
@@ -92,7 +93,7 @@ function randomUpTo(max: number): number {
   return Number(BigInt(`0x${randomBytes(8).toString("hex")}`) % BigInt(max + 1));
 }
 
-export async function createIntent(db: Db, req: IntentRequest, allowedTokens: Set<string>, vault: Address, nowSec: number): Promise<Intent> {
+export async function createIntent(db: Db, req: IntentRequest, allowedTokens: Set<string>, vault: Address, nowSec: number, v3 = false, fixedAmounts?: Set<string>): Promise<Intent> {
   for (const [k, v] of [["tokenIn", req.tokenIn], ["tokenOut", req.tokenOut], ["recipient", req.recipient], ["depositor", req.depositor]] as const) {
     if (!isAddress(v)) throw new IntentError(`${k} is not an address`);
   }
@@ -102,6 +103,7 @@ export async function createIntent(db: Db, req: IntentRequest, allowedTokens: Se
   const tokenOut = getAddress(req.tokenOut);
   if (!allowedTokens.has(tokenIn) || !allowedTokens.has(tokenOut)) throw new IntentError("token not supported");
   const amountIn = BigInt(req.amountIn);
+  if (v3 && fixedAmounts && !fixedAmounts.has(`${tokenIn}:${amountIn}`)) throw new IntentError("V3 only accepts an approved fixed denomination for this asset");
   const minOut = BigInt(req.minOut);
   if (amountIn <= 0n) throw new IntentError("amountIn must be positive");
   if (minOut <= 0n) throw new IntentError("minOut must be positive");
@@ -146,7 +148,11 @@ export async function createIntent(db: Db, req: IntentRequest, allowedTokens: Se
   const payAt = BigInt(nowSec + (instant ? 0 : randomUpTo(delay)));
   const deadline = BigInt(nowSec + (instant ? INSTANT_DEADLINE_SECONDS : delay + DELAYED_GRACE_SECONDS));
   const salt = hex32();
-  const deadlineHash = deadlineHashOf(deadline, salt);
+  const secret = hex32();
+  const tag = v3 ? keccak256(secret) : undefined;
+  const deadlineHash = v3
+    ? keccak256(encodeAbiParameters([{ type: "uint256" }, { type: "bytes32" }, { type: "bytes32" }], [deadline, salt, tag!]))
+    : deadlineHashOf(deadline, salt);
   const id = randomBytes(16).toString("hex");
 
   await db.transaction(async (tx) => {
@@ -155,7 +161,7 @@ export async function createIntent(db: Db, req: IntentRequest, allowedTokens: Se
                             stealth_ephemeral_pub, stealth_view_tag, stealth_fee)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
       [id, deadlineHash, deadline.toString(), salt, payAt.toString(), instant ? "instant" : "delayed", tokenIn, amountIn.toString(),
-        tokenOut, recipient, minOut.toString(), hex32(), getAddress(req.depositor), stealth?.eph ?? null, stealth?.tag ?? null, stealth?.fee ?? null],
+        tokenOut, recipient, minOut.toString(), secret, getAddress(req.depositor), stealth?.eph ?? null, stealth?.tag ?? null, stealth?.fee ?? null],
     );
     for (const [position, sp] of (splits ?? []).entries()) {
       await tx.query(
@@ -165,5 +171,5 @@ export async function createIntent(db: Db, req: IntentRequest, allowedTokens: Se
       );
     }
   });
-  return { id, deadline, salt, deadlineHash, payAt, ...(splits ? { splits: splits.map(({ recipient: r, shareBps }) => ({ recipient: r, shareBps })) } : {}) };
+  return { id, deadline, salt, deadlineHash, payAt, ...(tag ? { tag } : {}), ...(splits ? { splits: splits.map(({ recipient: r, shareBps }) => ({ recipient: r, shareBps })) } : {}) };
 }

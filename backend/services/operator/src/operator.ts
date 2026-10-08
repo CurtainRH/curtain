@@ -75,6 +75,7 @@ export interface OperatorConfig {
   quote: Quoter;
   /** Keeper fee as bps of each payout's output (vault caps it at 100). */
   keeperFeeBps: number;
+  v3Mode?: boolean;
   /** Price tolerance between quote and settlement, in bps (default 50 = 0.5%). */
   slippageBps?: number;
   /** How long a signed settlement stays valid, in seconds (default 300). Short, so stale
@@ -458,7 +459,7 @@ export class Operator {
         // Part 0 carries the deposit's refund-challenge tag; every other part gets its own.
         entries.push({
           recipient: part.recipient, amount: payoutGross - protocolFee - keeperFee, protocolFee, keeperFee,
-          tag: k === 0 ? payoutTag(depositId, i.secret) : derivedTag(depositId, i.secret, `curtain:split:${k}`),
+          tag: k === 0 ? (this.cfg.v3Mode ? v3Tag(i.secret) : payoutTag(depositId, i.secret)) : derivedTag(depositId, i.secret, `curtain:split:${k}`),
         });
         // The gas-drop fee is its own payout to the operator, so recipient payouts stay as
         // for a normal swap.
@@ -904,6 +905,11 @@ function splitGross(gross: bigint, parts: Part[]): bigint[] {
 /** The deposit's payout tag, keccak256(abi.encode(depositId, secret)): what a refund challenge proves. */
 export function payoutTag(depositId: bigint, secret: Hex): Hex {
   return keccak256(encodeAbiParameters([{ type: "uint256" }, { type: "bytes32" }], [depositId, secret]));
+}
+
+/** V3's tag is committed before the deposit id exists, so it is independent of that id. */
+export function v3Tag(secret: Hex): Hex {
+  return keccak256(secret);
 }
 
 /** A further payout tag for the same deposit, unique per label and never equal to payoutTag. */

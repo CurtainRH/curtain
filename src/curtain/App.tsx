@@ -308,6 +308,10 @@ export default function App() {
   const [menu, setMenu] = useState(false);
   const [modal, setModal] = useState<ModalState>(null);
   const [error, setError] = useState("");
+  const [curtainChoice, setCurtainChoice] = useState(() => {
+    if (!location.pathname.startsWith("/app")) return false;
+    try { return !localStorage.getItem("curtain-mode"); } catch { return true; }
+  });
   const [motion, setMotion] = useState(() => {
     try {
       return localStorage.getItem("curtain-motion") !== "off";
@@ -614,6 +618,26 @@ export default function App() {
         connectWallet={connectWallet}
         error={error}
       />
+      {curtainChoice && (
+        <div className="curtain-choice-backdrop" role="dialog" aria-modal="true" aria-labelledby="curtain-choice-title">
+          <div className="curtain-choice-card">
+            <p className="eyebrow">CHOOSE YOUR CURTAIN</p>
+            <h2 id="curtain-choice-title">How private should this act be?</h2>
+            <p className="curtain-choice-lead">Choose the vault before entering the dashboard. You can switch later from the application menu.</p>
+            <div className="curtain-choice-options">
+              <button className="curtain-choice-option" onClick={() => { localStorage.setItem("curtain-mode", "v3"); setCurtainChoice(false); }}>
+                <span className="eyebrow">CURTAIN III</span><strong>Fixed denominations</strong>
+                <span>Approved round amounts blend into a shared set. Stronger privacy, fewer amount choices.</span>
+              </button>
+              <button className="curtain-choice-option" onClick={() => { localStorage.setItem("curtain-mode", "v2"); setCurtainChoice(false); }}>
+                <span className="eyebrow">CURTAIN II</span><strong>Flexible swaps</strong>
+                <span>Use arbitrary amounts with the existing V2 vault and its broadest compatibility.</span>
+              </button>
+            </div>
+            <p className="curtain-choice-footnote">Both modes are private by design. Public chain data can still expose timing and amount relationships.</p>
+          </div>
+        </div>
+      )}
     </NavContext.Provider>
   );
 }

@@ -87,6 +87,17 @@ const vault = env("VAULT_ADDR") as Address;
 const router = env("DEX_ROUTER_ADDR") as Address;
 const keeperFeeBps = Number(env("KEEPER_FEE_BPS", "5"));
 const tokens = parseTokens(process.env["TOKENS"]);
+const v3Mode = process.env["V3_MODE"]?.trim().toLowerCase() === "true";
+const fixedAmounts = new Set<string>();
+if (v3Mode) {
+  const raw = env("V3_FIXED_AMOUNTS_JSON");
+  for (const [symbol, values] of Object.entries(JSON.parse(raw) as Record<string, string[]>)) {
+    const token = tokens[symbol];
+    if (!token) throw new Error(`V3_FIXED_AMOUNTS_JSON references unknown token ${symbol}`);
+    for (const value of values) fixedAmounts.add(`${getAddress(token)}:${BigInt(value)}`);
+  }
+  console.log(`V3 fixed denominations ON: ${fixedAmounts.size} approved amounts`);
+}
 
 /** Stealth payouts are off unless the flag is exactly "true"; when on, misconfiguration stops startup. */
 async function stealthConfig(): Promise<StealthConfig | undefined> {
@@ -116,7 +127,7 @@ const operator = new Operator({
     v4Adapter: process.env["V4_ADAPTER_ADDR"] as Address | undefined, v4Quoter: process.env["V4_QUOTER_ADDR"] as Address | undefined,
   }),
   slippageBps: Number(env("SLIPPAGE_BPS", "50")),
-  keeperFeeBps,
+  keeperFeeBps, v3Mode,
   startBlock: process.env["START_BLOCK"] ? BigInt(process.env["START_BLOCK"]) : await publicClient.getBlockNumber(),
   ...(stealth ? { stealth } : {}),
   splitPayouts: process.env["FEATURE_SPLIT_PAYOUTS"]?.trim().toLowerCase() === "true",
@@ -127,7 +138,7 @@ if (operator.splitEnabled) console.log("split payouts ON");
 const server = Bun.serve({
   port: Number(process.env["PORT"] ?? env("OPERATOR_PORT", "3100")),
   fetch: createApi({
-    db, operator, vault, tokens, keeperFeeBps,
+    db, operator, vault, tokens, keeperFeeBps, v3Mode, fixedAmounts,
     minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
   }),
 });

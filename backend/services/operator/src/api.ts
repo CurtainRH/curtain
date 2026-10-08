@@ -29,6 +29,8 @@ export interface ApiConfig {
   /** /status reports a problem below this operator gas balance (default 0.005 ETH). */
   minBalanceWei?: bigint;
   now?: () => number; // unix seconds
+  v3Mode?: boolean;
+  fixedAmounts?: Set<string>;
 }
 
 const json = (body: unknown, status = 200) =>
@@ -163,9 +165,9 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
           ...(stealth ? { stealth } : {}),
           ...(stealthFee !== undefined ? { stealthFee } : {}),
           ...(splits ? { splits, splitMode: body["splitMode"] === "equal" ? "equal" : "random" } : {}),
-        }, allowed, cfg.vault, now());
+        }, allowed, cfg.vault, now(), cfg.v3Mode === true, cfg.fixedAmounts);
         return json({
-          id: intent.id, deadline: intent.deadline, salt: intent.salt, deadlineHash: intent.deadlineHash, vault: cfg.vault,
+          id: intent.id, deadline: intent.deadline, salt: intent.salt, deadlineHash: intent.deadlineHash, vault: cfg.vault, ...(intent.tag ? { tag: intent.tag } : {}),
           ...(intent.splits ? { splits: intent.splits } : {}),
         }, 201);
       }
