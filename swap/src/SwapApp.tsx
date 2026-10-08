@@ -3,7 +3,7 @@ import { RainbowKitProvider, darkTheme, useConnectModal } from "@rainbow-me/rain
 import { WagmiProvider, useAccount } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { formatUnits, isAddress, parseAbi, parseUnits, type Address } from "viem";
-import { ArrowDownUp, ArrowRight, Check, ChevronDown, Clock, Home, LoaderCircle, Search, X } from "lucide-react";
+import { ArrowDownUp, ArrowRight, Check, ChevronDown, Clock, HelpCircle, Home, LoaderCircle, Search, X } from "lucide-react";
 import { wagmiConfig } from "./wagmi";
 import { chain, ensureChain, errorMessage, publicClient, v3Vault } from "./curtain/integration";
 import { downloadFile } from "./curtain/domain";
@@ -225,7 +225,15 @@ function SwapExperience() {
                 <button className="swap-primary" disabled={!canSwap || !!busy} onClick={() => void swap()}>{busy ? <><LoaderCircle className="swap-spin" size={17} /> {busy}</> : <>Swap now <ArrowRight size={17} /></>}</button>
               </div>
             )}
-            <p className="swap-dynamic-note">Dynamic privacy is enabled.</p>
+            <p className="swap-dynamic-note">
+              Dynamic privacy is enabled.
+              <span className="swap-help-tooltip-wrap">
+                <HelpCircle size={14} aria-label="What is dynamic privacy?" />
+                <span className="swap-help-tooltip" role="tooltip">
+                  Curtain automatically chooses the best privacy route for your amount. Approved fixed amounts use V3; other amounts use V2.
+                </span>
+              </span>
+            </p>
           </>
         )}
         <p className="swap-footnote"><img src="/robinhood-logo.png" alt="" /> Robinhood Chain</p>
