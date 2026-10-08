@@ -30,6 +30,7 @@ import {
   staking,
   stakingBlock,
   type SavedTicket,
+  type CurtainMode,
 } from "./integration";
 export interface TokenData {
   symbol: string;
@@ -48,8 +49,8 @@ export interface DepositState {
   requestedAt: number;
   status: number;
 }
-export function useCurtain(wallet: string) {
-  const mode = curtainMode();
+export function useCurtain(wallet: string, requestedMode?: CurtainMode) {
+  const mode = requestedMode ?? curtainMode();
   const sdk = useMemo(() => client(wallet, mode), [wallet, mode]);
   const [tokens, setTokens] = useState<TokenData[]>([]);
   const [vault, setVault] = useState(fallbackVault);
@@ -87,7 +88,7 @@ export function useCurtain(wallet: string) {
     setTokens([]);
     setStorageWarning("");
     due.current = {};
-  }, [wallet]);
+  }, [wallet, mode]);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now() / 1000), 1000);
     return () => clearInterval(timer);

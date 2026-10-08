@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { RainbowKitProvider, darkTheme, useConnectModal } from "@rainbow-me/rainbowkit";
 import { WagmiProvider, useAccount } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { formatUnits, isAddress, parseUnits, type Address } from "viem";
-import { ArrowDownUp, ArrowRight, Check, ChevronDown, Home, LoaderCircle, LockKeyhole, Search, X } from "lucide-react";
+import { formatUnits, isAddress, parseAbi, parseUnits, type Address } from "viem";
+import { ArrowDownUp, ArrowRight, Check, ChevronDown, Clock, Home, LoaderCircle, Search, X } from "lucide-react";
 import { wagmiConfig } from "./wagmi";
-import { chain, curtainMode, ensureChain, errorMessage } from "./curtain/integration";
+import { chain, ensureChain, errorMessage, publicClient, v3Vault } from "./curtain/integration";
 import { downloadFile } from "./curtain/domain";
 import { useCurtain, type TokenData } from "./curtain/useCurtain";
 import type { SavedTicket } from "./curtain/integration";
@@ -18,12 +18,14 @@ function SwapExperience() {
   const { address: account } = useAccount();
   const { openConnectModal } = useConnectModal();
   const wallet = account ?? "";
-  const app = useCurtain(wallet);
+  const [routeMode, setRouteMode] = useState<"v2" | "v3">("v2");
+  const [modeChecking, setModeChecking] = useState(false);
+  const app = useCurtain(wallet, routeMode);
   const [from, setFrom] = useState("USDG");
   const [to, setTo] = useState("NVDA");
   const [amount, setAmount] = useState("");
   const [recipient, setRecipient] = useState("");
-  const [delay, setDelay] = useState("3600");
+  const [delay, setDelay] = useState("0");
   const [quote, setQuote] = useState<string>();
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -32,9 +34,8 @@ function SwapExperience() {
 
   const input = app.tokens.find((token) => token.symbol === from);
   const output = app.tokens.find((token) => token.symbol === to);
-  const isV3 = curtainMode() === "v3";
   const recipientAddress = recipient.trim() || wallet;
-  const canSwap = !!wallet && !!input && !!output && !!amount && !!recipientAddress;
+  const canSwap = !!wallet && !!input && !!output && !!amount && !!recipientAddress && !modeChecking;
 
   const tokenOptions = useMemo(
     () => app.tokens.filter((token) => token.symbol !== to),
@@ -56,6 +57,44 @@ function SwapExperience() {
     setError("");
   }, [from, to, amount]);
 
+  useEffect(() => {
+    let active = true;
+    const checkRoute = async () => {
+      setModeChecking(true);
+      if (!amount) {
+        if (active) {
+          setRouteMode("v2");
+          setModeChecking(false);
+        }
+        return;
+      }
+      if (!input) {
+        if (active) setModeChecking(false);
+        return;
+      }
+      try {
+        const raw = rawAmount(amount, input.decimals);
+        const approved = v3Vault
+          ? await publicClient.readContract({
+              address: v3Vault,
+              abi: parseAbi(["function allowedAmount(address,uint256) view returns (bool)"]),
+              functionName: "allowedAmount",
+              args: [input.address, raw],
+            })
+          : false;
+        if (active) setRouteMode(approved ? "v3" : "v2");
+      } catch {
+        if (active) setRouteMode("v2");
+      } finally {
+        if (active) setModeChecking(false);
+      }
+    };
+    void checkRoute();
+    return () => {
+      active = false;
+    };
+  }, [amount, input]);
+
   function rawAmount(value: string, decimals: number) {
     if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) throw new Error("Enter a valid amount.");
     const raw = parseUnits(value, decimals);
@@ -64,7 +103,7 @@ function SwapExperience() {
   }
 
   async function getQuote() {
-    if (!input || !output) return;
+    if (!input || !output || modeChecking) return;
     try {
       setError("");
       const raw = rawAmount(amount, input.decimals);
@@ -78,7 +117,7 @@ function SwapExperience() {
   }
 
   async function swap() {
-    if (!input || !output || !canSwap) return;
+    if (!input || !output || !canSwap || modeChecking) return;
     try {
       setBusy("Preparing your swap");
       setError("");
@@ -165,7 +204,7 @@ function SwapExperience() {
               </div>
             </div>
             <div className="swap-private-panel">
-              <div><span className="swap-private-title"><LockKeyhole size={16} /> Private swap</span><span className="swap-private-copy">Your timing and recipient are handled through Curtain.</span></div>
+              <div><span className="swap-private-title"><Clock size={16} /> Delivery time</span><span className="swap-private-copy">Choose when your payout arrives.</span></div>
               <select id="simple-delay" className="swap-private-select" value={delay} onChange={(e) => setDelay(e.target.value)} aria-label="Delivery timing">
                 <option value="0">Instant</option>
                 <option value="3600">Within 1 hour</option>
@@ -176,7 +215,6 @@ function SwapExperience() {
             <label className="swap-label" htmlFor="simple-recipient">Recipient <small>optional</small></label>
             <input id="simple-recipient" className="swap-input" placeholder={`${wallet.slice(0, 6)}…${wallet.slice(-4)} (your wallet)`} value={recipient} onChange={(e) => setRecipient(e.target.value)} />
             <p className="swap-help">Leave this blank to send the result to your connected wallet.</p>
-            {isV3 && <p className="swap-help swap-note">Curtain III uses approved fixed denominations. If this amount is not approved, switch to Curtain II in the full dashboard.</p>}
             {quote && <p className="swap-quote">Minimum received: <strong>{quote} {to}</strong></p>}
             {error && <div className="swap-error" role="alert">{error}</div>}
             {success ? (
@@ -187,6 +225,7 @@ function SwapExperience() {
                 <button className="swap-primary" disabled={!canSwap || !!busy} onClick={() => void swap()}>{busy ? <><LoaderCircle className="swap-spin" size={17} /> {busy}</> : <>Swap now <ArrowRight size={17} /></>}</button>
               </div>
             )}
+            <p className="swap-dynamic-note">Dynamic privacy is enabled.</p>
           </>
         )}
         <p className="swap-footnote"><img src="/robinhood-logo.png" alt="" /> Robinhood Chain</p>
