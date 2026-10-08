@@ -40,6 +40,7 @@ import { TheatreEntrance, SceneStory, ActProgramme, Soundscape } from "./StageEx
 type ModalState =
   | { kind: "coming"; name: string }
   | { kind: "film"; film: "overture" | "technology" }
+  | { kind: "version"; mode: "v2" | "v3" }
   | { kind: "wallet" }
   | null;
 type NavContextType = {
@@ -244,6 +245,24 @@ function Modal({
             Back to the stage <ArrowRight size={16} />
           </button>
         </>
+      ) : modal.kind === "version" ? (
+        <>
+          <Logo compact />
+          <p className="eyebrow">CURTAIN {modal.mode === "v3" ? "III" : "II"}</p>
+          <h2>{modal.mode === "v3" ? "Fixed denominations." : "Flexible swaps."}</h2>
+          <p>
+            {modal.mode === "v3"
+              ? "Curtain III uses approved fixed amounts that blend into a shared set. It offers stronger amount privacy, with fewer amount choices."
+              : "Curtain II accepts arbitrary amounts and offers the broadest compatibility. It is the flexible rail for swaps that do not fit a fixed denomination."}
+          </p>
+          <p className="small muted">
+            Both versions use private timing and public-chain data can still reveal transaction
+            details.
+          </p>
+          <button className="button gold" onClick={close}>
+            Enter Curtain {modal.mode === "v3" ? "III" : "II"} <ArrowRight size={16} />
+          </button>
+        </>
       ) : (
         <>
           <Logo compact />
@@ -306,7 +325,19 @@ export default function App() {
   const wallet = isConnected && wagmiAddress ? wagmiAddress : "";
   const [path, setPath] = useState(location.pathname);
   const [menu, setMenu] = useState(false);
-  const [modal, setModal] = useState<ModalState>(null);
+  const [modal, setModal] = useState<ModalState>(() => {
+    if (!location.pathname.startsWith("/app")) return null;
+    try {
+      const mode = localStorage.getItem("curtain-version-welcome");
+      if (mode === "v2" || mode === "v3") {
+        localStorage.removeItem("curtain-version-welcome");
+        return { kind: "version", mode };
+      }
+    } catch {
+      // ignore unavailable storage
+    }
+    return null;
+  });
   const [error, setError] = useState("");
   const [curtainChoice, setCurtainChoice] = useState(() => {
     if (!location.pathname.startsWith("/app")) return false;

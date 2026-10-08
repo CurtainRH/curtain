@@ -179,6 +179,7 @@ export default function Dashboard({ path }: { path: string }) {
   function switchCurtain(nextMode: CurtainMode) {
     if (nextMode === mode || busy) return;
     localStorage.setItem("curtain-mode", nextMode);
+    localStorage.setItem("curtain-version-welcome", nextMode);
     window.location.reload();
   }
 

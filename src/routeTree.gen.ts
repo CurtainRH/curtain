@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as RoadmapRouteImport } from './routes/roadmap'
+import { Route as SwapRouteImport } from './routes/swap'
 import { Route as WhitepaperRouteImport } from './routes/whitepaper'
 import { Route as AppSplatRouteImport } from './routes/app.$'
 import { Route as LegalTypeRouteImport } from './routes/legal.$type'
@@ -29,6 +30,11 @@ const AppRoute = AppRouteImport.update({
 const RoadmapRoute = RoadmapRouteImport.update({
   id: '/roadmap',
   path: '/roadmap',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SwapRoute = SwapRouteImport.update({
+  id: '/swap',
+  path: '/swap',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WhitepaperRoute = WhitepaperRouteImport.update({
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/roadmap': typeof RoadmapRoute
+  '/swap': typeof SwapRoute
   '/whitepaper': typeof WhitepaperRoute
   '/app/$': typeof AppSplatRoute
   '/legal/$type': typeof LegalTypeRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/roadmap': typeof RoadmapRoute
+  '/swap': typeof SwapRoute
   '/whitepaper': typeof WhitepaperRoute
   '/app/$': typeof AppSplatRoute
   '/legal/$type': typeof LegalTypeRoute
@@ -68,6 +76,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/roadmap': typeof RoadmapRoute
+  '/swap': typeof SwapRoute
   '/whitepaper': typeof WhitepaperRoute
   '/app/$': typeof AppSplatRoute
   '/legal/$type': typeof LegalTypeRoute
@@ -75,14 +84,28 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/app' | '/roadmap' | '/whitepaper' | '/app/$' | '/legal/$type'
+    | '/'
+    | '/app'
+    | '/roadmap'
+    | '/swap'
+    | '/whitepaper'
+    | '/app/$'
+    | '/legal/$type'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/app' | '/roadmap' | '/whitepaper' | '/app/$' | '/legal/$type'
+  to:
+    | '/'
+    | '/app'
+    | '/roadmap'
+    | '/swap'
+    | '/whitepaper'
+    | '/app/$'
+    | '/legal/$type'
   id:
     | '__root__'
     | '/'
     | '/app'
     | '/roadmap'
+    | '/swap'
     | '/whitepaper'
     | '/app/$'
     | '/legal/$type'
@@ -92,6 +115,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   RoadmapRoute: typeof RoadmapRoute
+  SwapRoute: typeof SwapRoute
   WhitepaperRoute: typeof WhitepaperRoute
   LegalTypeRoute: typeof LegalTypeRoute
 }
@@ -117,6 +141,13 @@ declare module '@tanstack/react-router' {
       path: '/roadmap'
       fullPath: '/roadmap'
       preLoaderRoute: typeof RoadmapRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/swap': {
+      id: '/swap'
+      path: '/swap'
+      fullPath: '/swap'
+      preLoaderRoute: typeof SwapRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/whitepaper': {
@@ -157,6 +188,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   RoadmapRoute: RoadmapRoute,
+  SwapRoute: SwapRoute,
   WhitepaperRoute: WhitepaperRoute,
   LegalTypeRoute: LegalTypeRoute,
 }
