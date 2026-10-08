@@ -1,9 +1,20 @@
 .developer-panel {
   max-width: 920px;
+  padding: clamp(20px, 3vw, 32px);
+}
+.developer-panel > .panel-heading {
+  padding: 0 0 24px;
+  margin-bottom: 24px;
 }
 .developer-panel > p {
   color: #9daabc;
   line-height: 1.7;
+  margin-bottom: 20px;
+}
+.developer-panel .button {
+  gap: 12px;
+  max-width: 100%;
+  white-space: normal;
 }
 .developer-facts {
   display: grid;
@@ -32,9 +43,11 @@
   gap: 16px;
   align-items: end;
   margin-top: 28px;
+  margin-bottom: 16px;
 }
 .developer-create label {
   flex: 1;
+  min-width: 0;
   display: grid;
   gap: 8px;
 }
@@ -59,6 +72,10 @@
   display: grid;
   gap: 7px;
   min-width: 0;
+  overflow-wrap: anywhere;
+}
+.developer-keys > p {
+  padding: 20px 0 4px;
 }
 .developer-dialog {
   width: min(calc(100% - 48px), 520px);
