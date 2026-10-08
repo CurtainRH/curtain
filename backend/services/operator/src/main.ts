@@ -153,7 +153,7 @@ if (v3Operator) console.log(`V3 context ON: ${v3Vault}`);
 const server = Bun.serve({
   port: Number(process.env["PORT"] ?? env("OPERATOR_PORT", "3100")),
   fetch: createApi({
-    db, operator, vault, tokens, keeperFeeBps,
+    db, operator, vault, tokens, keeperFeeBps, chainId,
     minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
     contexts: v3Operator && v3Db && v3Vault ? {
       v2: { db, operator, vault, tokens, keeperFeeBps, minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")) },

@@ -31,6 +31,9 @@ V3 supports fixed whole-token denominations: 1, 10, and 100 units for supported 
 | Open keepers | Anyone can submit signed payouts and earn a small fee. |
 | Stake-to-earn | Lock for 30 / 90 / 180 days to earn emissions at 1× / 1.5× / 2×. |
 | Lending | Morpho integration, after launch. |
+| Developer API | Create and revoke API keys in Dashboard → Developer. V2 quotes, idempotent intents, unsigned wallet transactions, and per-key intent status. |
+
+Developer documentation frontend: [`docs/README.md`](docs/README.md), intended for [docs.curtainrh.com](https://docs.curtainrh.com). API keys are server-side credentials; users still sign and fund their own deposits.
 
 ## How it works
 
@@ -61,7 +64,7 @@ V3 supports fixed whole-token denominations: 1, 10, and 100 units for supported 
 │  ├─ db/migrations/  operator schema
 │  ├─ scripts/        devnet.ts (anvil + Deploy.s.sol for e2e tests)
 │  └─ Dockerfile      operator / keeper image
-├─ docs/              CURTAIN_V2_SPEC.md (current), earlier ZK specs, repo sync guide
+├─ docs/              standalone developer docs frontend + preserved product specs and repo sync guide
 ├─ scripts/           sync-public.py
 └─ .github/workflows/ backend CI
 ```

@@ -21,8 +21,10 @@ import { getAddress, isAddress, keccak256, type Address, type Hex } from "viem";
 import type { Db } from "@curtain/db";
 import { createIntent, IntentError, MAX_DELAY_SECONDS, MAX_SPLITS, minSplitShareBps } from "./intents";
 import type { Operator } from "./operator";
+import { createDeveloperApi } from "./developer";
 
 export interface ApiConfig {
+  chainId?: number;
   db: Db;
   operator: Operator;
   vault: Address;
@@ -66,8 +68,11 @@ function checkRate(key: string, limit: number, windowMs = 60_000): boolean {
 
 export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
   const now = cfg.now ?? (() => Math.floor(Date.now() / 1000));
+  const developerApi = createDeveloperApi(cfg);
 
   return async (req) => {
+    const developerResponse = await developerApi(req);
+    if (developerResponse) return developerResponse;
     const version = req.headers.get("x-curtain-version")?.trim().toLowerCase() === "v3" ? "v3" : "v2";
     const active = cfg.contexts?.[version] ?? cfg;
     const allowed = new Set(Object.values(active.tokens).map((t) => getAddress(t))); // config casing must not matter
@@ -186,7 +191,8 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         const rows = await active.db.query<Record<string, unknown>>(
           `SELECT i.status, i.deposit_id::text AS "depositId", i.amount_out::text AS "amountOut", s.tx_hash AS "payoutTx",
                   i.blocked_reason AS "blockedReason"
-           FROM intents i LEFT JOIN settlements s ON s.id = i.settlement_id AND s.status = 'confirmed' WHERE i.id = $1`,
+           FROM intents i LEFT JOIN settlements s ON s.id = i.settlement_id AND s.status = 'confirmed' WHERE i.id = $1
+           AND NOT EXISTS (SELECT 1 FROM developer_intents d WHERE d.intent_id = i.id)`,
           [m[1]],
         );
         return rows[0] ? json(rows[0]) : json({ error: "unknown intent" }, 404);

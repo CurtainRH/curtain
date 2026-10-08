@@ -1,0 +1,185 @@
+openapi: 3.0.3
+info:
+  title: Curtain Developer API
+  version: 1.0.0
+  description: >-
+    V2-only private swap preparation on Robinhood Chain. Call from your server.
+    API keys do not sign or broadcast transactions. Users retain wallet custody.
+    Obtain a key in https://curtainrh.com/app/developer.
+servers:
+  - url: https://operator.curtainrh.com/v1
+security:
+  - bearerAuth: []
+paths:
+  /config:
+    get:
+      operationId: getConfig
+      summary: Network, vault, token addresses, and limits
+      responses:
+        '200':
+          description: V2 configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chainId: { type: integer, example: 4663 }
+                  privacyRoutes: { type: array, items: { type: string, enum: [v2] } }
+                  vault: { $ref: '#/components/schemas/Address' }
+                  tokens: { type: object, additionalProperties: { $ref: '#/components/schemas/Address' } }
+                  maxDelaySeconds: { type: integer, example: 15552000 }
+                  rateLimitPerMinute: { type: integer, example: 60 }
+        default: { $ref: '#/components/responses/Error' }
+  /quote:
+    get:
+      operationId: getQuote
+      summary: Quote a V2 swap in raw token units
+      parameters:
+        - { name: privacyRoute, in: query, required: true, schema: { type: string, enum: [v2] } }
+        - { name: tokenIn, in: query, required: true, schema: { $ref: '#/components/schemas/Address' } }
+        - { name: tokenOut, in: query, required: true, schema: { $ref: '#/components/schemas/Address' } }
+        - { name: amountIn, in: query, required: true, schema: { $ref: '#/components/schemas/PositiveUnits' } }
+        - { name: slippageBps, in: query, schema: { type: integer, minimum: 0, maximum: 5000, default: 100 } }
+      responses:
+        '200':
+          description: Check available before using minOutSuggested; quotes do not reserve a price
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available: { type: boolean }
+                  amountIn: { type: string }
+                  marketOut: { type: string }
+                  expectedOut: { type: string }
+                  minOutSuggested: { type: string }
+                  protocolFee: { type: string }
+                  keeperFee: { type: string }
+                  venue: { type: string }
+        default: { $ref: '#/components/responses/Error' }
+  /intents:
+    post:
+      operationId: createIntent
+      summary: Create an intent and prepare unsigned approval/deposit transactions
+      description: >-
+        Save escapeTicket before asking the wallet to deposit. Identical retries return the
+        same intent and original deadline. Different parameters for the same idempotency key
+        return 409. Idempotency does not protect against broadcasting duplicate deposits.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.:-]+$' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privacyRoute, tokenIn, tokenOut, amountIn, minOut, depositor, recipient]
+              properties:
+                privacyRoute: { type: string, enum: [v2] }
+                tokenIn: { $ref: '#/components/schemas/Address' }
+                tokenOut: { $ref: '#/components/schemas/Address' }
+                amountIn: { $ref: '#/components/schemas/PositiveUnits' }
+                minOut: { $ref: '#/components/schemas/PositiveUnits' }
+                depositor: { $ref: '#/components/schemas/Address' }
+                recipient: { $ref: '#/components/schemas/Address' }
+                delaySeconds: { type: integer, minimum: 0, maximum: 15552000, default: 0 }
+      responses:
+        '201':
+          description: Intent created; nothing has been broadcast
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PreparedIntent' }
+        '200':
+          description: Existing intent returned for an identical retry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PreparedIntent' }
+        default: { $ref: '#/components/responses/Error' }
+  /intents/{id}:
+    get:
+      operationId: getIntent
+      summary: Track an intent created by this API key
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: '^[a-f0-9]{32}$' } }
+      responses:
+        '200':
+          description: Current intent state; fields may be null until available
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  status:
+                    type: string
+                    enum: [awaiting_deposit, deposited, settling, paid, blocked, expired, refund_requested, refunded, challenged]
+                  depositId: { type: string, nullable: true }
+                  amountOut: { type: string, nullable: true }
+                  payoutTx: { type: string, nullable: true }
+                  blockedReason: { type: string, nullable: true }
+        default: { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Server-side API key generated in the Curtain dashboard
+  responses:
+    Error:
+      description: >-
+        400 invalid input; 401 missing/invalid/revoked key; 404 missing or unowned intent;
+        409 idempotency conflict; 413 body exceeds 16 KB; 429 rate limited (60 requests/min/key);
+        503 temporarily unavailable. Responses use Cache-Control no-store.
+      headers:
+        Retry-After:
+          description: Seconds to wait, included for rate-limit errors
+          schema: { type: integer }
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error: { type: string }
+  schemas:
+    Address:
+      type: string
+      pattern: '^0x[a-fA-F0-9]{40}$'
+    PositiveUnits:
+      type: string
+      pattern: '^[1-9][0-9]{0,77}$'
+      description: Positive uint256 decimal string, less than 2^256
+    Transaction:
+      type: object
+      required: [chainId, from, to, data, value]
+      properties:
+        chainId: { type: integer }
+        from: { $ref: '#/components/schemas/Address' }
+        to: { $ref: '#/components/schemas/Address' }
+        data: { type: string, pattern: '^0x[a-fA-F0-9]*$' }
+        value: { type: string, enum: ['0'] }
+    PreparedIntent:
+      type: object
+      required: [id, privacyRoute, chainId, vault, escapeTicket, transactions]
+      properties:
+        id: { type: string }
+        privacyRoute: { type: string, enum: [v2] }
+        chainId: { type: integer }
+        vault: { $ref: '#/components/schemas/Address' }
+        escapeTicket:
+          type: object
+          required: [vault, deadline, salt, deadlineHash]
+          description: Save before deposit; append depositId from the Deposited event afterward
+          properties:
+            vault: { $ref: '#/components/schemas/Address' }
+            deadline: { type: string }
+            salt: { type: string }
+            deadlineHash: { type: string }
+        transactions:
+          type: object
+          properties:
+            approval: { $ref: '#/components/schemas/Transaction' }
+            deposit: { $ref: '#/components/schemas/Transaction' }

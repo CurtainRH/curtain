@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Clock,
   Coins,
+  Code2,
   Download,
   Inbox,
   Info,
@@ -48,6 +49,7 @@ import { decryptTicket, encryptTicket, isEncryptedTicket, type EncryptedTicket }
 import PrivacyScore from "./PrivacyScore";
 import StealthReceive from "./StealthReceive";
 import TicketSync from "./TicketSync";
+import Developer from "./Developer";
 import { useWorkspaceTools } from "./useWorkspaceTools";
 import {
   address,
@@ -85,6 +87,7 @@ const nav = [
   { id: "stake", path: "/app/stake", name: "Stake", icon: Coins },
   { id: "activity", path: "/app/activity", name: "Activity", icon: Activity },
   { id: "receive", path: "/app/receive", name: "Receive", icon: Inbox },
+  { id: "developer", path: "/app/developer", name: "Developer", icon: Code2 },
 ];
 function Note({ children }: { children: ReactNode }) {
   return (
@@ -1360,6 +1363,7 @@ export default function Dashboard({ path }: { path: string }) {
                 {busy} in progress. Your wallet may ask for approval and then a transaction.
               </p>
             )}
+            {current.id === "developer" && <Developer key={wallet} wallet={wallet} />}
             {current.id === "overview" && (
               <>
                 <div className="overview-grid">
