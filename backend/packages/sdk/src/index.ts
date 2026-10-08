@@ -92,7 +92,7 @@ export interface SwapParams {
   recipient: Address;
   /** Minimum the recipient receives (after fees). */
   minOut: bigint;
-  /** 0 = instant; otherwise a random delay window in seconds (up to 180 days). */
+  /** 0 = instant; otherwise a random delay window in seconds, capped at 180 days by the operator service. */
   delaySeconds: number;
   /** Set when `recipient` is a stealth address (see generateStealthAddress). */
   stealth?: StealthIntent;

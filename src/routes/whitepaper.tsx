@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import CurtainApp from "@/components/CurtainApp";
 
 const description =
-  "Curtain Technical Whitepaper: Non-custodial dark pools, unlinked atomic settlements, and cryptographic escape hatches for tokenized real-world assets on Robinhood Chain.";
+  "Curtain Technical Whitepaper: Non-custodial private swaps, atomic settlements, and cryptographic escape hatches for tokenized real-world assets on Robinhood Chain.";
 
 export const Route = createFileRoute("/whitepaper")({
   head: () => ({

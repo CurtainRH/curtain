@@ -633,11 +633,11 @@ function Landing({ watch }: { watch: (film: "overture" | "technology") => void }
     ],
     [
       "Why choose a private delay?",
-      "Curtain pays out at a random time inside your chosen window, up to 180 days. Longer windows and fresh recipient addresses give more privacy.",
+      "Curtain pays out at a random time inside your chosen window, up to 180 days. The maximum is enforced by the operator service, not the vault contract. Longer windows and fresh recipient addresses can improve privacy, but public transaction amounts may still be correlatable.",
     ],
     [
       "Can I get my deposit back?",
-      "Save your escape ticket. If your swap has not been delivered by its deadline, you can request a refund three minutes later and finish it after a ten-minute challenge window. This works directly on-chain even when Curtain’s service is unavailable.",
+      "Save your escape ticket. If your swap has not been delivered by its deadline, you can request a refund three minutes later and finish it after the current V2 vault’s one-hour challenge window. This works directly on-chain, although already-paid deposits rely on the challenge mechanism during that window.",
     ],
     [
       "What are the protocol fees?",

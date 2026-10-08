@@ -23,7 +23,7 @@ export interface IntentRequest {
   /** The address that will call deposit(). Deposits are matched on (depositor, hash). */
   depositor: string;
   minOut: string | bigint;
-  /** 0 = instant; otherwise the maximum random delay in seconds (up to 180 days). */
+  /** 0 = instant; otherwise the maximum random delay in seconds, capped here at 180 days. */
   delaySeconds: number;
   /** Stealth payout: `recipient` is a one-time stealth address (ERC-5564). */
   stealth?: { ephemeralPublicKey: string; viewTag: string };

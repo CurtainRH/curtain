@@ -8,7 +8,7 @@ export default function Whitepaper() {
         <p className="eyebrow">CURTAIN PROTOCOL / TECHNICAL SPECIFICATION</p>
         <h1 tabIndex={-1}>Curtain Whitepaper</h1>
         <p>
-          Non-custodial dark pools, unlinked atomic settlements, and cryptographic escape hatches
+          Non-custodial private swaps, atomic settlements, and cryptographic escape hatches
           for tokenized real-world assets and crypto bluechips on Robinhood Chain.
         </p>
         <div style={{ display: "flex", gap: "16px", marginTop: "24px", flexWrap: "wrap" }}>
@@ -29,7 +29,7 @@ export default function Whitepaper() {
           <a href="#abstract">01. Abstract</a>
           <a href="#problem">02. Problem & Thesis</a>
           <a href="#vault">03. The Vault & Intents</a>
-          <a href="#settlement">04. Unlinked Settlements</a>
+          <a href="#settlement">04. Private Settlements</a>
           <a href="#escape-hatch">05. The Escape Hatch</a>
           <a href="#stealth">06. Stealth Addresses</a>
           <a href="#staking">07. Staking & Tokenomics</a>
@@ -129,15 +129,17 @@ function deposit(
           </section>
 
           <section id="settlement">
-            <h2>04. Unlinked Settlements & Payout Tags</h2>
+            <h2>04. Private Settlements & Payout Tags</h2>
             <p>
               When a batch of deposits matures, the off-chain operator engine groups pending
               orders by asset pair <code>(X, Y)</code>. The operator constructs an EIP-712 typed
               settlement payload and signs it with its designated hot key.
             </p>
             <p>
-              To sever the link between a deposit index and its recipient, each payout includes an
-              isolated cryptographic payout tag:
+              To avoid storing a direct deposit-to-recipient mapping in the vault, each payout
+              includes an isolated cryptographic payout tag. This does not make transaction
+              amounts unlinkable: public deposit amounts, payout amounts, and batch totals can
+              permit statistical correlation in low-volume batches.
             </p>
             <p style={{ fontFamily: "monospace", color: "var(--gold)", fontSize: "0.85rem", background: "#0b1728", padding: "12px", border: "1px solid var(--line)" }}>
               payoutTag = keccak256(abi.encode(depositId, secret))

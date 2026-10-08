@@ -147,8 +147,8 @@ export default function Legal({ type }: { type: string }) {
                 </p>
                 <p>
                   If a swap misses its deadline, the depositing wallet can request a refund three
-                  minutes later using its escape ticket. Finalization follows a ten-minute challenge
-                  window. This depends on possession of the ticket and wallet, RPC access and actual
+                  minutes later using its escape ticket. Finalization follows the current V2 vault's
+                  one-hour challenge window. This depends on possession of the ticket and wallet, RPC access and actual
                   deployed contract behavior.
                 </p>
               </section>

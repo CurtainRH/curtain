@@ -380,7 +380,8 @@ export default function StealthReceive({
                 </button>
                 <span className="field-help">
                   Optional, one transaction. Lets senders type your wallet address instead of the
-                  long meta-address. Payments stay unlinkable to you either way.
+                  long meta-address. A fresh stealth address reduces direct wallet-to-recipient
+                  linkability either way.
                 </span>
               </>
             )}

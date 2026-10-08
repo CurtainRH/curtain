@@ -67,6 +67,10 @@ docs/FRONTEND-INTEGRATION-VERIFICATION.md
 technical-docs/
 *.pdf
 
+# Local audit generators and generated reports
+scripts/generate_auditor_reply_pdf.py
+scripts/generate_audit_grade_pdf.py
+
 # Audit runs (raw tool output)
 .audit-grade/runs/
 

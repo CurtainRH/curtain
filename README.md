@@ -8,7 +8,7 @@
 ![Solidity](https://img.shields.io/badge/Solidity-0.8.26-363636?logo=solidity&logoColor=white)
 ![Robinhood Chain](https://img.shields.io/badge/Robinhood_Chain-4663-CCFF00)
 
-Private swaps and stake-to-earn on Robinhood Chain. Swap USDG and tokenized Stock Tokens without a public trail from your wallet to where the tokens land, instantly or on a random delay you choose, with an escape hatch that always returns your deposit if Curtain can't pay. Tagline: *Draw the curtain.*
+Private swaps and stake-to-earn on Robinhood Chain. Swap USDG and tokenized Stock Tokens without a direct wallet-to-recipient edge, instantly or on a random delay you choose, with an escape hatch that returns your deposit if Curtain can't pay. Tagline: *Draw the curtain.*
 
 Design: [docs/CURTAIN_V2_SPEC.md](docs/CURTAIN_V2_SPEC.md). Deploying: [docs/DEPLOY_RENDER.md](docs/DEPLOY_RENDER.md).
 
@@ -16,8 +16,8 @@ Design: [docs/CURTAIN_V2_SPEC.md](docs/CURTAIN_V2_SPEC.md). Deploying: [docs/DEP
 
 | Feature | What it does |
 |---|---|
-| Private swap | Deposit token X into the Curtain vault; token Y arrives at the address you choose. On-chain, the deposit and the payout aren't linked. |
-| Instant or delayed | Paid right away, or at a random time inside a window you pick (up to 180 days) for more privacy. |
+| Private swap | Deposit token X into the Curtain vault; token Y arrives at the address you choose. The vault does not store a direct deposit-to-recipient mapping, but public amounts can allow statistical correlation in low-volume batches. |
+| Instant or delayed | Paid right away, or at a random time inside a window you pick (up to 180 days). The maximum delay is enforced by the operator service, not by the vault contract. |
 | Escape hatch | If a swap isn't paid by its deadline, you can take your deposit back 3 minutes later. |
 | Open keepers | Anyone can submit signed payouts and earn a small fee. |
 | Stake-to-earn | Lock for 30 / 90 / 180 days to earn emissions at 1× / 1.5× / 2×. |
@@ -28,8 +28,8 @@ Design: [docs/CURTAIN_V2_SPEC.md](docs/CURTAIN_V2_SPEC.md). Deploying: [docs/DEP
 1. **Intent:** the app asks the operator for a swap (output token, recipient, minimum output, delay). The user gets an escape ticket.
 2. **Deposit:** the user deposits into `CurtainVault`. On-chain this shows only the deposit, not where it's going.
 3. **Swap:** at the scheduled time, the operator batches deposits and swaps inside the vault through Uniswap.
-4. **Payout:** the operator signs a payout; any keeper submits it. It carries no link to the deposit.
-5. **Refund if needed:** after the deadline plus 3 minutes, an unpaid deposit can be refunded. A 10-minute challenge window stops anyone who was already paid.
+4. **Payout:** the operator signs a payout; any keeper submits it. Recipient details are not stored in the deposit, although public amounts may be correlatable.
+5. **Refund if needed:** after the deadline plus 3 minutes, an unpaid deposit can be refunded. The current V2 vault uses a 1-hour challenge window for already-paid deposits.
 
 ## Fees
 
