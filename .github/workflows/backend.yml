@@ -19,6 +19,9 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: recursive
+          # Gitleaks scans the push range; the public mirror rewrites commit IDs,
+          # so the previous commit must be present locally after a mirror sync.
+          fetch-depth: 0
       - name: Run Gitleaks Secret Scanner
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
