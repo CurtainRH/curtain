@@ -14,6 +14,13 @@ Private swaps and stake-to-earn on Robinhood Chain. Swap USDG and tokenized Stoc
 
 **Contract address:** `0x66a844fcbf4705dbde3c97394d5a4c9822e8f35b`
 
+**Curtain vaults on Robinhood Chain:**
+
+- V2 flexible vault: `0xF9381841e982648c178E762116A437Ecbcf12Bbd`
+- V3 fixed-denomination vault: `0xBF643c56D6f1775f9ABe97b7B7e89b0265D6c67a`
+
+V3 supports fixed whole-token denominations: 1, 10, and 100 units for supported assets; USDG supports 10, 100, 1,000, and 10,000 units. V2 remains available for flexible amounts. The dashboard asks which vault to use before entering the app.
+
 ## Features
 
 | Feature | What it does |
