@@ -74,20 +74,24 @@ contract DeployV3Script is Script {
         require(deployer == operator, "deploy key must be the configured operator");
         console.log("V3 deployer/operator:", deployer);
 
-        address[] memory tokens = new address[](symbols.length * 3);
-        uint256[] memory amounts = new uint256[](symbols.length * 3);
+        address[] memory tokens = new address[](symbols.length * 3 + 1);
+        uint256[] memory amounts = new uint256[](symbols.length * 3 + 1);
         uint256 amountIndex;
         for (uint256 i; i < symbols.length; ++i) {
             address token = json.readAddress(string.concat(".tokens.", symbols[i]));
             uint8 decimals = IERC20Metadata(token).decimals();
             uint256 unit = 10 ** uint256(decimals);
-            uint256 base = keccak256(bytes(symbols[i])) == keccak256(bytes("USDG")) ? 100 : 1;
+            uint256 base = keccak256(bytes(symbols[i])) == keccak256(bytes("USDG")) ? 10 : 1;
             tokens[amountIndex] = token;
             amounts[amountIndex++] = base * unit;
             tokens[amountIndex] = token;
             amounts[amountIndex++] = base * 10 * unit;
             tokens[amountIndex] = token;
             amounts[amountIndex++] = base * 100 * unit;
+            if (keccak256(bytes(symbols[i])) == keccak256(bytes("USDG"))) {
+                tokens[amountIndex] = token;
+                amounts[amountIndex++] = base * 1000 * unit;
+            }
         }
         address[] memory routers = new address[](2);
         routers[0] = router;

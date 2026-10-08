@@ -115,8 +115,9 @@ const makeFixedAmounts = async () => {
     for (const [symbol, token] of Object.entries(tokens)) {
       const decimals = await publicClient.readContract({ address: getAddress(token), abi: parseAbi(["function decimals() view returns (uint8)"]), functionName: "decimals" });
       const unit = 10n ** BigInt(decimals);
-      const base = symbol.toUpperCase() === "USDG" ? 100n : 1n;
-      for (const multiplier of [1n, 10n, 100n]) result.add(`${getAddress(token)}:${base * multiplier * unit}`);
+      const base = symbol.toUpperCase() === "USDG" ? 10n : 1n;
+      const multipliers = symbol.toUpperCase() === "USDG" ? [1n, 10n, 100n, 1000n] : [1n, 10n, 100n];
+      for (const multiplier of multipliers) result.add(`${getAddress(token)}:${base * multiplier * unit}`);
     }
     return result;
   }

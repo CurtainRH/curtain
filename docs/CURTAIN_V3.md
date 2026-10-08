@@ -2,7 +2,7 @@
 
 Curtain V3 is a separate fixed-denomination vault. Curtain V2 remains available for flexible amounts and existing tickets.
 
-V3 currently approves 1, 10, and 100 whole units for supported assets, and 100, 1,000, and 10,000 USDG. The owner can change the allowlist on-chain, but the product should expose only denominations configured in the V3 operator.
+V3 currently approves 1, 10, and 100 whole units for supported assets, and 10, 100, 1,000, and 10,000 USDG. The owner can change the allowlist on-chain, but the product should expose only denominations configured in the V3 operator.
 
 V3 also commits the payout tag before the deposit exists. A refund reserves that tag, which prevents a later settlement from racing a refund. V3 does not redistribute settlement surplus pro-rata; surplus goes to treasury. The 180-day delay limit remains an operator policy, not a vault rule.
 
