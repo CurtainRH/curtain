@@ -90,6 +90,24 @@ function Note({ children }: { children: ReactNode }) {
     </div>
   );
 }
+function AlertModal({ message, close }: { message: string; close: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    dialog.showModal();
+    return () => { if (dialog.open) dialog.close(); };
+  }, []);
+  return (
+    <dialog ref={ref} className="modal dashboard-alert" onCancel={close}>
+      <button className="modal-close" aria-label="Close warning" onClick={close}><X size={18} /></button>
+      <p className="eyebrow">A NOTE FROM THE CURTAIN</p>
+      <h2>Before you continue</h2>
+      <p>{message}</p>
+      <button className="button gold" onClick={close}>Understood</button>
+    </dialog>
+  );
+}
 function Token({ token }: { token: TokenData }) {
   return (
     <span className="token-icon">
@@ -173,6 +191,7 @@ export default function Dashboard({ path }: { path: string }) {
   };
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
+  const [alertMessage, setAlertMessage] = useState("");
   const [from, setFrom] = useState("USDG");
   const [to, setTo] = useState("NVDA");
   const [amount, setAmount] = useState("");
@@ -218,6 +237,15 @@ export default function Dashboard({ path }: { path: string }) {
   const [quote, setQuote] = useState<SwapQuote>();
   const [quoteError, setQuoteError] = useState("");
   const [quoting, setQuoting] = useState(false);
+  useEffect(() => {
+    if (app.error) setAlertMessage(app.error);
+  }, [app.error]);
+  useEffect(() => {
+    if (app.storageWarning) setAlertMessage(app.storageWarning);
+  }, [app.storageWarning]);
+  useEffect(() => {
+    if (quoteError && !app.offline) setAlertMessage(quoteError);
+  }, [quoteError, app.offline]);
   const [latest, setLatest] = useState<SavedTicket>();
   const [stakeAmount, setStakeAmount] = useState("");
   const [tier, setTier] = useState<0 | 1 | 2>(0);
@@ -461,7 +489,7 @@ export default function Dashboard({ path }: { path: string }) {
         throw new Error("Your wallet account changed. Reconnect before continuing.");
       await action();
     } catch (e) {
-      setMessage(errorMessage(e));
+      setAlertMessage(errorMessage(e));
       await app.refreshActivity(true);
     } finally {
       setBusy("");
@@ -477,15 +505,15 @@ export default function Dashboard({ path }: { path: string }) {
     if (!input || !output || !app.vault || !quote?.available || quoting) return;
     if (useSplit) {
       if (splitProblem) {
-        setMessage(splitProblem);
+        setAlertMessage(splitProblem);
         return;
       }
     } else if (freshUnsaved && !useStealth) {
-      setMessage("Confirm you've saved the fresh wallet's file and password first.");
+      setAlertMessage("Confirm you've saved the fresh wallet's file and password first.");
       return;
     } else if (useStealth) {
       if (!stealthMeta) {
-        setMessage(stealthNote || "Enter the receiver's stealth meta-address.");
+        setAlertMessage(stealthNote || "Enter the receiver's stealth meta-address.");
         return;
       }
     } else if (
@@ -493,7 +521,7 @@ export default function Dashboard({ path }: { path: string }) {
       !address(recipient) ||
       recipient.toLowerCase() === app.vault.toLowerCase()
     ) {
-      setMessage("Enter a recipient address other than the zero address or vault.");
+      setAlertMessage("Enter a recipient address other than the zero address or vault.");
       return;
     }
     if (
@@ -501,7 +529,7 @@ export default function Dashboard({ path }: { path: string }) {
       (delayed ? delaySeconds < 1 : delaySeconds < 0) ||
       delaySeconds > app.maxDelay
     ) {
-      setMessage(`Choose a delay between 0 and ${app.maxDelay} seconds.`);
+      setAlertMessage(`Choose a delay between 0 and ${app.maxDelay} seconds.`);
       return;
     }
     await run("Swap", async () => {
@@ -1137,6 +1165,9 @@ export default function Dashboard({ path }: { path: string }) {
     );
   }
   return (
+    <>
+    {alertMessage && <AlertModal message={alertMessage} close={() => setAlertMessage("")} />}
+    {message && <AlertModal message={message} close={() => setMessage("")} />}
     <main id="main" className="app-layout">
       <aside className={`sidebar ${sideOpen ? "expanded" : ""} ${retracted ? "retracted" : ""}`}>
         <div className="sidebar-caption">
@@ -1241,22 +1272,7 @@ export default function Dashboard({ path }: { path: string }) {
             </button>
           </div>
           {!wallet && <Note>Connect your wallet to see balances, swaps and rewards.</Note>}
-          {app.error && (
-            <p role="alert" className="form-error">
-              {app.error}
-            </p>
-          )}
           {app.offline && <Note>{OFFLINE_MESSAGE}</Note>}
-          {app.storageWarning && (
-            <p role="alert" className="form-error">
-              {app.storageWarning}
-            </p>
-          )}
-          {message && (
-            <p role="status" className="notice">
-              {message}
-            </p>
-          )}
           {busy && (
             <p role="status" className="notice">
               {busy} in progress. Your wallet may ask for approval and then a transaction.
@@ -1486,9 +1502,9 @@ export default function Dashboard({ path }: { path: string }) {
                       ))}
                     </div>
                     {splitProblem && amount ? (
-                      <p role="alert" className="form-error">
-                        {splitProblem}
-                      </p>
+                      <button className="warning-link" onClick={() => setAlertMessage(splitProblem)}>
+                        Review recipient warning
+                      </button>
                     ) : null}
                     <span className="field-help">
                       {splitMode === "random"
@@ -1516,9 +1532,9 @@ export default function Dashboard({ path }: { path: string }) {
                         only they can find and spend from.
                       </span>
                     ) : stealthNote ? (
-                      <p role="alert" className="form-error">
-                        {stealthNote}
-                      </p>
+                      <button className="warning-link" onClick={() => setAlertMessage(stealthNote)}>
+                        Review receiver warning
+                      </button>
                     ) : (
                       <span className="field-help">
                         Paste the stealth meta-address the receiver gave you, or their wallet if
@@ -1553,15 +1569,11 @@ export default function Dashboard({ path }: { path: string }) {
                   </>
                 )}
                 {linkWarnings.length > 0 && (
-                  <div role="alert" className="v2-link-warnings">
-                    {linkWarnings.map((w) => (
-                      <p key={w} className="form-error">
-                        {w}
-                      </p>
-                    ))}
-                    <span className="field-help">
-                      A fresh or stealth address keeps the payout separate from you.
-                    </span>
+                  <div className="v2-link-warnings">
+                    <button className="warning-link" onClick={() => setAlertMessage(linkWarnings.join(" "))}>
+                      Review privacy warning
+                    </button>
+                    <span className="field-help">A fresh or stealth address keeps the payout separate from you.</span>
                   </div>
                 )}
                 <p className="field-label">Timing</p>
@@ -1763,11 +1775,6 @@ export default function Dashboard({ path }: { path: string }) {
                       )}
                     </>
                   )}
-                  {quoteError && !app.offline && (
-                    <p role="alert" className="form-error">
-                      {quoteError}
-                    </p>
-                  )}
                 </div>
                 {showPool && waiting && input && (
                   <Note>
@@ -1961,5 +1968,6 @@ export default function Dashboard({ path }: { path: string }) {
       </div>
       {tokenModal()}
     </main>
+    </>
   );
 }

@@ -22,7 +22,7 @@
 .hero-ca-status{min-width:37px;font-size:.5rem;letter-spacing:.08em;color:var(--bright);text-transform:uppercase}
 
 @media(max-width:700px){.hero-ca{max-width:calc(100vw - 40px);margin-top:0}.hero-ca-live{width:min(100%,360px)}.hero-ca-address{max-width:220px}.hero-ca-status{display:none}}
- .curtain-choice-backdrop {
+.curtain-choice-backdrop {
   position: fixed;
   inset: 0;
   z-index: 1000;
@@ -47,3 +47,5 @@
 .curtain-choice-option strong { font-size: 1.1rem; }
 .curtain-choice-option span:last-child { color: var(--muted, #b7aaa0); line-height: 1.5; }
 @media (max-width: 620px) { .curtain-choice-options { grid-template-columns: 1fr; } }
+.dashboard-alert { z-index: 1100; }
+.warning-link { margin-top: 12px; color: var(--gold); font-size: .8125rem; text-decoration: underline; text-underline-offset: 4px; }
