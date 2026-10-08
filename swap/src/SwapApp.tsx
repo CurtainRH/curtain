@@ -3,7 +3,7 @@ import { RainbowKitProvider, darkTheme, useConnectModal } from "@rainbow-me/rain
 import { WagmiProvider, useAccount } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { formatUnits, isAddress, parseUnits, type Address } from "viem";
-import { ArrowRight, Check, ChevronDown, Home, LoaderCircle } from "lucide-react";
+import { ArrowDownUp, ArrowRight, Check, ChevronDown, Home, LoaderCircle, LockKeyhole } from "lucide-react";
 import { wagmiConfig } from "./wagmi";
 import { chain, curtainMode, ensureChain, errorMessage } from "./curtain/integration";
 import { downloadFile } from "./curtain/domain";
@@ -43,6 +43,12 @@ function SwapExperience() {
     () => app.tokens.filter((token) => token.symbol !== from),
     [app.tokens, from],
   );
+
+  function flipTokens() {
+    setFrom(to);
+    setTo(from);
+    setAmount("");
+  }
 
   useEffect(() => {
     setQuote(undefined);
@@ -138,26 +144,37 @@ function SwapExperience() {
         ) : (
           <>
             <div className="swap-wallet-pill">Connected: {wallet.slice(0, 6)}…{wallet.slice(-4)}</div>
-            <div className="swap-fields">
-              <TokenSelect label="You send" value={from} options={tokenOptions} onChange={setFrom} token={input} />
-              <div className="swap-arrow"><ArrowRight size={17} /></div>
-              <TokenSelect label="You receive" value={to} options={outputOptions} onChange={setTo} token={output} />
+            <div className="swap-pair-stack">
+              <div className="swap-token-card">
+                <div className="swap-card-label">From</div>
+                <div className="swap-token-card-row">
+                  <input id="simple-amount" className="swap-card-amount" inputMode="decimal" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                  <TokenSelect label="From token" value={from} options={tokenOptions} onChange={setFrom} token={input} />
+                </div>
+                <div className="swap-card-foot"><span>{input?.balance === undefined ? "Balance —" : `Balance ${formatUnits(input.balance, input.decimals)}`}</span><button type="button" onClick={() => input?.balance !== undefined && setAmount(formatUnits(input.balance, input.decimals))}>Max</button></div>
+              </div>
+              <button className="swap-flip" type="button" onClick={flipTokens} aria-label="Switch tokens"><ArrowDownUp size={17} /></button>
+              <div className="swap-token-card">
+                <div className="swap-card-label">To</div>
+                <div className="swap-token-card-row">
+                  <span className="swap-card-amount swap-output-amount">{quote || "0"}</span>
+                  <TokenSelect label="To token" value={to} options={outputOptions} onChange={setTo} token={output} />
+                </div>
+                <div className="swap-card-foot"><span>{quote ? "Estimated minimum received" : "Enter an amount to preview"}</span></div>
+              </div>
             </div>
-            <label className="swap-label" htmlFor="simple-amount">Amount</label>
-            <div className="swap-amount-row">
-              <input id="simple-amount" className="swap-input" inputMode="decimal" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
-              <span>{from}</span>
+            <div className="swap-private-panel">
+              <div><span className="swap-private-title"><LockKeyhole size={16} /> Private swap</span><span className="swap-private-copy">Your timing and recipient are handled through Curtain.</span></div>
+              <select id="simple-delay" className="swap-private-select" value={delay} onChange={(e) => setDelay(e.target.value)} aria-label="Delivery timing">
+                <option value="0">Instant</option>
+                <option value="3600">Within 1 hour</option>
+                <option value="86400">Within 1 day</option>
+                <option value="604800">Within 7 days</option>
+              </select>
             </div>
             <label className="swap-label" htmlFor="simple-recipient">Recipient <small>optional</small></label>
             <input id="simple-recipient" className="swap-input" placeholder={`${wallet.slice(0, 6)}…${wallet.slice(-4)} (your wallet)`} value={recipient} onChange={(e) => setRecipient(e.target.value)} />
             <p className="swap-help">Leave this blank to send the result to your connected wallet.</p>
-            <label className="swap-label" htmlFor="simple-delay">Delivery</label>
-            <select id="simple-delay" className="swap-input" value={delay} onChange={(e) => setDelay(e.target.value)}>
-              <option value="0">Instant</option>
-              <option value="3600">Within 1 hour</option>
-              <option value="86400">Within 1 day</option>
-              <option value="604800">Within 7 days</option>
-            </select>
             {isV3 && <p className="swap-help swap-note">Curtain III uses approved fixed denominations. If this amount is not approved, switch to Curtain II in the full dashboard.</p>}
             {quote && <p className="swap-quote">Minimum received: <strong>{quote} {to}</strong></p>}
             {error && <div className="swap-error" role="alert">{error}</div>}
