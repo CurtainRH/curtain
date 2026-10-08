@@ -27,6 +27,8 @@ function SwapExperience() {
   const [recipient, setRecipient] = useState("");
   const [delay, setDelay] = useState("0");
   const [quote, setQuote] = useState<string>();
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteRefresh, setQuoteRefresh] = useState(0);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<SavedTicket>();
@@ -104,7 +106,17 @@ function SwapExperience() {
 
   useEffect(() => {
     let active = true;
-    if (!input || !output || !amount || modeChecking) return;
+    setQuote(undefined);
+    if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(amount) || Number(amount) <= 0) {
+      setQuoteLoading(false);
+      return;
+    }
+    setQuoteLoading(true);
+    if (modeChecking) return;
+    if (!input || !output) {
+      setQuoteLoading(false);
+      return;
+    }
     const timer = window.setTimeout(async () => {
       try {
         const raw = rawAmount(amount, input.decimals);
@@ -116,26 +128,19 @@ function SwapExperience() {
           setQuote(undefined);
           setError(errorMessage(e));
         }
+      } finally {
+        if (active) setQuoteLoading(false);
       }
     }, 350);
     return () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [amount, app.sdk, input, modeChecking, output]);
+  }, [amount, app.sdk, input, modeChecking, output, quoteRefresh]);
 
-  async function getQuote() {
-    if (!input || !output || modeChecking) return;
-    try {
-      setError("");
-      const raw = rawAmount(amount, input.decimals);
-      const result = await app.sdk.quote(input.address, output.address, raw, 100);
-      if (!result.available) throw new Error("No quote is available for this pair right now.");
-      setQuote(formatUnits(BigInt(result.minOutSuggested), output.decimals));
-    } catch (e) {
-      setQuote(undefined);
-      setError(errorMessage(e));
-    }
+  function getQuote() {
+    setError("");
+    setQuoteRefresh((value) => value + 1);
   }
 
   async function swap() {
@@ -219,10 +224,12 @@ function SwapExperience() {
               <div className="swap-token-card">
                 <div className="swap-card-label">To</div>
                 <div className="swap-token-card-row">
-                  <span className="swap-card-amount swap-output-amount">{quote || "0"}</span>
+                  <span className="swap-card-amount swap-output-amount" aria-busy={quoteLoading}>
+                    {quoteLoading ? <QuoteReel /> : <span className="swap-quote-value">{quote || "0"}</span>}
+                  </span>
                   <TokenSelect label="To token" onOpen={() => setPicker("to")} token={output} />
                 </div>
-                <div className="swap-card-foot"><span>{quote ? "Estimated minimum received" : "Enter an amount to preview"}</span></div>
+                <div className="swap-card-foot"><span role="status">{quoteLoading ? "Getting your quote…" : quote ? "Estimated minimum received" : "Enter an amount to preview"}</span></div>
               </div>
             </div>
             <div className="swap-private-panel">
@@ -274,6 +281,20 @@ function SwapExperience() {
         />
       )}
     </main>
+  );
+}
+
+function QuoteReel() {
+  return (
+    <span className="swap-quote-reel" aria-hidden="true">
+      {[0, 1, 2, 3, 4].map((column) => (
+        <span key={column} className="swap-reel-column">
+          <span className="swap-reel-strip" style={{ animationDelay: `${column * -0.17}s` }}>
+            {"01234567890".split("").map((digit, index) => <span key={index}>{digit}</span>)}
+          </span>
+        </span>
+      ))}
+    </span>
   );
 }
 

@@ -18,6 +18,14 @@
 .swap-token-card-row { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
 .swap-card-amount { min-width: 0; width: 100%; color: #eef0f3; background: transparent; border: 0; outline: 0; font: 400 2.1rem "Playfair Display", serif; }
 .swap-output-amount { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.swap-quote-reel { display: inline-flex; height: 1.2em; gap: .04em; color: #c5a059; opacity: .65; font-variant-numeric: tabular-nums; mask-image: linear-gradient(transparent, #000 20%, #000 80%, transparent); }
+.swap-reel-column { display: inline-block; overflow: hidden; width: .6em; height: 1.2em; }
+.swap-reel-strip { display: flex; flex-direction: column; animation: swap-reel-roll 1.1s linear infinite; }
+.swap-reel-strip > span { height: 1.2em; line-height: 1.2em; flex: 0 0 auto; text-align: center; }
+.swap-quote-value { animation: swap-quote-arrive .2s ease-out; }
+@keyframes swap-reel-roll { to { transform: translateY(-12em); } }
+@keyframes swap-quote-arrive { from { opacity: .4; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .swap-reel-strip, .swap-quote-value { animation: none; } .swap-reel-column { visibility: hidden; } .swap-quote-reel::before { content: "…"; } }
 .swap-card-foot { display: flex; justify-content: space-between; gap: 10px; color: #718096; font-size: .65rem; margin-top: 11px; }
 .swap-card-foot button { border: 0; background: transparent; color: #c5a059; cursor: pointer; font-size: .65rem; }
 .swap-flip { position: absolute; z-index: 2; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid #d2ae6f55; border-radius: 50%; color: #c5a059; background: #102037; cursor: pointer; }
