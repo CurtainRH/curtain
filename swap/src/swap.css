@@ -4,7 +4,7 @@
 .swap-header { max-width: 620px; margin: 0 auto 70px; display: flex; justify-content: space-between; align-items: center; }
 .swap-brand, .swap-header-link { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 9px; }
 .swap-brand { font: 1.25rem "Playfair Display", serif; }
-.swap-brand-mark { color: #07111e; background: #c5a059; border-radius: 50%; width: 25px; height: 25px; display: grid; place-items: center; font: italic 1rem "Playfair Display", serif; }
+.swap-curtain-logo { width: 24px; height: 30px; object-fit: contain; }
 .swap-header-link { color: #c5a059; font-size: .75rem; }
 .swap-card { max-width: 620px; margin: auto; background: #0b192b; border: 1px solid #d2ae6f30; box-shadow: 0 25px 90px #0006; padding: clamp(25px, 6vw, 54px); }
 .swap-intro { margin-bottom: 30px; }
@@ -39,7 +39,8 @@
 .swap-error { color: #f0b3aa; background: #3c1f2a; border: 1px solid #a85c5c; padding: 12px 14px; font-size: .75rem; margin-top: 16px; }
 .swap-success { display: flex; gap: 12px; align-items: flex-start; background: #18352d; border: 1px solid #65b895; color: #baf2d5; padding: 15px; margin-top: 22px; font-size: .8rem; }
 .swap-success span { display: block; color: #b5d2c3; font-size: .72rem; margin-top: 5px; }
-.swap-footnote { text-align: center; margin: 30px 0 0; font-size: .65rem; }
+.swap-footnote { text-align: center; margin: 30px 0 0; font-size: .65rem; display: inline-flex; align-items: center; gap: 7px; width: 100%; justify-content: center; }
+.swap-footnote img { width: 18px; height: 18px; object-fit: contain; }
 .swap-loading { min-height: 100vh; background: #07111e; }
 .swap-spin { animation: swap-spin 1s linear infinite; }
 @keyframes swap-spin { to { transform: rotate(360deg); } }

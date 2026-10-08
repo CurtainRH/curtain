@@ -3,7 +3,7 @@ import { RainbowKitProvider, darkTheme, useConnectModal } from "@rainbow-me/rain
 import { WagmiProvider, useAccount } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { formatUnits, isAddress, parseUnits, type Address } from "viem";
-import { ArrowRight, Check, ChevronDown, LoaderCircle, ShieldCheck } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Home, LoaderCircle } from "lucide-react";
 import { wagmiConfig } from "./wagmi";
 import { chain, curtainMode, ensureChain, errorMessage } from "./curtain/integration";
 import { downloadFile } from "./curtain/domain";
@@ -120,16 +120,15 @@ function SwapExperience() {
     <main className="swap-page">
       <header className="swap-header">
         <a className="swap-brand" href="https://curtainrh.com" aria-label="Curtain home">
-          <span className="swap-brand-mark">C</span>
+          <img src="/curtain-logo-exact.png" alt="" className="swap-curtain-logo" />
           <span>Curtain</span>
         </a>
-        <a className="swap-header-link" href="https://curtainrh.com/app">Full dashboard <ArrowRight size={14} /></a>
+        <a className="swap-header-link" href="https://curtainrh.com/app"><Home size={14} /> main</a>
       </header>
       <section className="swap-card" aria-labelledby="swap-title">
         <div className="swap-intro">
-          <span className="swap-eyebrow"><ShieldCheck size={15} /> PRIVATE SWAP</span>
           <h1 id="swap-title">Swap simply.</h1>
-          <p>Choose what you send, what you receive, and where it should arrive.</p>
+          <p>Choose what you send, what you receive, and where it should arrive...privately</p>
         </div>
         {!wallet ? (
           <button className="swap-primary" onClick={() => openConnectModal?.()}>
@@ -171,7 +170,7 @@ function SwapExperience() {
             )}
           </>
         )}
-        <p className="swap-footnote">Robinhood Chain · You keep control of your wallet</p>
+        <p className="swap-footnote"><img src="/robinhood-logo.png" alt="" /> Robinhood Chain</p>
       </section>
     </main>
   );
