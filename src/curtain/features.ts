@@ -13,6 +13,7 @@ const OFF: Features = {
   freshWallet: false,
   sameWalletWarning: false,
   delayPresets: false,
+  encryptedTickets: false,
 };
 
 let loaded: Promise<Features> | undefined;

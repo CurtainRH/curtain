@@ -44,6 +44,7 @@ import { Logo, RouteLink, Socials, useNav } from "./App";
 import { downloadFile } from "./domain";
 import { useFeatures } from "./features";
 import FreshWallet from "./FreshWallet";
+import { decryptTicket, encryptTicket, isEncryptedTicket, type EncryptedTicket } from "./keystore";
 import PrivacyScore from "./PrivacyScore";
 import StealthReceive from "./StealthReceive";
 import { useWorkspaceTools } from "./useWorkspaceTools";
@@ -98,15 +99,21 @@ function AlertModal({ message, close }: { message: string; close: () => void }) 
     const dialog = ref.current;
     if (!dialog) return;
     dialog.showModal();
-    return () => { if (dialog.open) dialog.close(); };
+    return () => {
+      if (dialog.open) dialog.close();
+    };
   }, []);
   return (
     <dialog ref={ref} className="modal dashboard-alert" onCancel={close}>
-      <button className="modal-close" aria-label="Close warning" onClick={close}><X size={18} /></button>
+      <button className="modal-close" aria-label="Close warning" onClick={close}>
+        <X size={18} />
+      </button>
       <p className="eyebrow">A NOTE FROM THE CURTAIN</p>
       <h2>Before you continue</h2>
       <p>{message}</p>
-      <button className="button gold" onClick={close}>Understood</button>
+      <button className="button gold" onClick={close}>
+        Understood
+      </button>
     </dialog>
   );
 }
@@ -505,11 +512,41 @@ export default function Dashboard({ path }: { path: string }) {
       setBusy("");
     }
   }
+  // #12: escape tickets locked with a password kept in memory for this visit only. Without one,
+  // tickets download as before, so a deposit is never left without its ticket.
+  const [ticketPassword, setTicketPassword] = useState("");
+  const [ticketPw, setTicketPw] = useState("");
+  const [ticketPw2, setTicketPw2] = useState("");
+  const [locked, setLocked] = useState<{ file: File; envelope: EncryptedTicket }>();
+  const [unlockPassword, setUnlockPassword] = useState("");
+  const lockTickets = features.encryptedTickets && !!ticketPassword;
   function download(row: SavedTicket) {
-    downloadFile(`curtain-escape-ticket-${row.ticket.depositId}.json`, {
-      ...row,
-      chainId: row.chainId || chain.id,
-    });
+    const data = { ...row, chainId: row.chainId || chain.id };
+    const name = `curtain-escape-ticket-${row.ticket.depositId}`;
+    if (!lockTickets) {
+      downloadFile(`${name}.json`, data);
+      return;
+    }
+    void encryptTicket(data, ticketPassword)
+      .then((envelope) => downloadFile(`${name}.locked.json`, envelope))
+      .catch(() => {
+        // Never leave a deposit without its ticket: fall back to an unlocked file.
+        downloadFile(`${name}.json`, data);
+        setMessage(
+          "Couldn't lock this escape ticket, so it was saved without a password. Keep the file somewhere safe.",
+        );
+      });
+  }
+  async function unlockImport() {
+    if (!locked) return;
+    try {
+      const plain = await decryptTicket(locked.envelope, unlockPassword);
+      setLocked(undefined);
+      setUnlockPassword("");
+      await importTicket(locked.file, plain);
+    } catch (e) {
+      setMessage(errorMessage(e));
+    }
   }
   async function swap() {
     if (!input || !output || !app.vault || !quote?.available || quoting) return;
@@ -722,12 +759,22 @@ export default function Dashboard({ path }: { path: string }) {
     app.removePending(result.intentId);
     return row;
   }
-  async function importTicket(file: File) {
+  async function importTicket(file: File, unlocked?: unknown) {
     try {
       if (!address(wallet))
         throw new Error("Connect the depositing wallet before importing a ticket.");
-      if (file.size > 100000) throw new Error("This ticket file is too large.");
-      const data: unknown = JSON.parse(await file.text());
+      let data: unknown = unlocked;
+      if (data === undefined) {
+        if (file.size > 100000) throw new Error("This ticket file is too large.");
+        data = JSON.parse(await file.text());
+        // Locked tickets import whether or not the flag is on, so no saved ticket is stranded.
+        if (isEncryptedTicket(data)) {
+          setLocked({ file, envelope: data });
+          setUnlockPassword("");
+          setMessage("This escape ticket is locked with a password. Enter it below to import it.");
+          return;
+        }
+      }
       const source = data as Partial<SavedTicket>;
       const ticket = validTicket(data) ? data : source.ticket;
       if (!validTicket(ticket)) throw new Error("This file is not a valid Curtain escape ticket.");
@@ -1176,831 +1223,927 @@ export default function Dashboard({ path }: { path: string }) {
   }
   return (
     <>
-    {alertMessage && <AlertModal message={alertMessage} close={() => setAlertMessage("")} />}
-    {message && <AlertModal message={message} close={() => setMessage("")} />}
-    <main id="main" className="app-layout">
-      <aside className={`sidebar ${sideOpen ? "expanded" : ""} ${retracted ? "retracted" : ""}`}>
-        <div className="sidebar-caption">
-          <div className="sidebar-caption-text">
-            <span className="eyebrow">YOUR PRIVATE BOX</span>
-            <span className="box-no">Nº 01</span>
-          </div>
-          <button
-            type="button"
-            className="sidebar-retract-btn"
-            onClick={toggleRetract}
-            aria-label={retracted ? "Expand sidebar" : "Collapse sidebar"}
-            title={retracted ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            {retracted ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
-          </button>
-        </div>
-        <nav aria-label="Application navigation">
-          {navItems.map((n) => (
-            <RouteLink
-              key={n.id}
-              to={n.path}
-              className={`side-link ${n.id === current.id ? "selected" : ""}`}
-              title={n.name}
-            >
-              <n.icon size={18} />
-              <span className="side-link-text">{n.name}</span>
-            </RouteLink>
-          ))}
-          <span className="side-link coming-soon" title="Lending — coming soon">
-            <Clock size={18} />
-            <span className="side-link-text">Lending — coming soon</span>
-          </span>
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="side-motto">
-            <Logo compact />
-            <p>
-              The position is yours.
-              <br />
-              <em>So is the privacy.</em>
-            </p>
-          </div>
-          <Socials />
-          <div className="side-legal">
-            <RouteLink to="/whitepaper">Whitepaper</RouteLink>
-            <RouteLink to="/roadmap">Roadmap</RouteLink>
-            <RouteLink to="/legal/terms">Terms</RouteLink>
-          </div>
-          <RouteLink to="/" className="return-link" title="Back to the overture">
-            <span className="side-link-text">Back to the overture</span>
-            <ArrowUpRight size={13} />
-          </RouteLink>
-        </div>
-      </aside>
-      <div className="app-content">
-        <div className="app-topline">
-          <div className="topline-left">
+      {alertMessage && <AlertModal message={alertMessage} close={() => setAlertMessage("")} />}
+      {message && <AlertModal message={message} close={() => setMessage("")} />}
+      <main id="main" className="app-layout">
+        <aside className={`sidebar ${sideOpen ? "expanded" : ""} ${retracted ? "retracted" : ""}`}>
+          <div className="sidebar-caption">
+            <div className="sidebar-caption-text">
+              <span className="eyebrow">YOUR PRIVATE BOX</span>
+              <span className="box-no">Nº 01</span>
+            </div>
             <button
-              className="mobile-sidebar"
-              aria-label="Toggle application navigation"
-              aria-expanded={sideOpen}
-              onClick={() => {
-                if (typeof window !== "undefined" && window.innerWidth <= 700) {
-                  setSideOpen((v) => !v);
-                } else {
-                  toggleRetract();
-                }
-              }}
+              type="button"
+              className="sidebar-retract-btn"
+              onClick={toggleRetract}
+              aria-label={retracted ? "Expand sidebar" : "Collapse sidebar"}
               title={retracted ? "Expand sidebar" : "Collapse sidebar"}
             >
-              <Menu size={18} />
+              {retracted ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
             </button>
-            <span className="breadcrumbs">
-              PRIVATE BOX <ChevronRight size={12} />
-              {current.name}
+          </div>
+          <nav aria-label="Application navigation">
+            {navItems.map((n) => (
+              <RouteLink
+                key={n.id}
+                to={n.path}
+                className={`side-link ${n.id === current.id ? "selected" : ""}`}
+                title={n.name}
+              >
+                <n.icon size={18} />
+                <span className="side-link-text">{n.name}</span>
+              </RouteLink>
+            ))}
+            <span className="side-link coming-soon" title="Lending — coming soon">
+              <Clock size={18} />
+              <span className="side-link-text">Lending — coming soon</span>
             </span>
-          </div>
-          <div className="app-topline-actions">
-            <div className="curtain-switch" role="group" aria-label="Choose Curtain vault">
-              <span className="curtain-switch-label">CURTAIN</span>
-              <button
-                type="button"
-                className={mode === "v2" ? "active" : ""}
-                aria-pressed={mode === "v2"}
-                onClick={() => switchCurtain("v2")}
-                title="Use Curtain II with flexible amounts"
-              >
-                V2
-              </button>
-              <button
-                type="button"
-                className={mode === "v3" ? "active" : ""}
-                aria-pressed={mode === "v3"}
-                onClick={() => switchCurtain("v3")}
-                title="Use Curtain III with fixed denominations"
-              >
-                V3
-              </button>
+          </nav>
+          <div className="sidebar-bottom">
+            <div className="side-motto">
+              <Logo compact />
+              <p>
+                The position is yours.
+                <br />
+                <em>So is the privacy.</em>
+              </p>
             </div>
-            <button className="wallet-button" onClick={connect}>
-              <Wallet size={16} />
-              {wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : "Connect wallet"}
-            </button>
-          </div>
-        </div>
-        <div className="dashboard-body">
-          <div className="dashboard-heading">
-            <div>
-              <p className="eyebrow">DRAW THE CURTAIN</p>
-              <h1>{current.name}</h1>
-              <p>Private swaps. Considered timing. Rewards for your next act.</p>
+            <Socials />
+            <div className="side-legal">
+              <RouteLink to="/whitepaper">Whitepaper</RouteLink>
+              <RouteLink to="/roadmap">Roadmap</RouteLink>
+              <RouteLink to="/legal/terms">Terms</RouteLink>
             </div>
-            <button
-              className="text-button"
-              disabled={!!busy}
-              onClick={() => {
-                void app.refresh();
-                void app.refreshActivity(true);
-                void app.refreshStaking();
-              }}
-            >
-              <RefreshCw size={16} />
-              Refresh
-            </button>
+            <RouteLink to="/" className="return-link" title="Back to the overture">
+              <span className="side-link-text">Back to the overture</span>
+              <ArrowUpRight size={13} />
+            </RouteLink>
           </div>
-          {!wallet && <Note>Connect your wallet to see balances, swaps and rewards.</Note>}
-          {app.offline && <Note>{OFFLINE_MESSAGE}</Note>}
-          {busy && (
-            <p role="status" className="notice">
-              {busy} in progress. Your wallet may ask for approval and then a transaction.
-            </p>
-          )}
-          {current.id === "overview" && (
-            <>
-              <div className="overview-grid">
-                <section className="panel">
-                  <div className="panel-heading">
-                    <h2>Your balances</h2>
-                    <span className="pill">Raw token units</span>
-                  </div>
-                  <div className="asset-table">
-                    {app.tokens.map((t) => (
-                      <div className="asset-row" key={t.symbol}>
-                        <div>
-                          <Token token={t} />
-                          <span>
-                            <strong>{t.symbol}</strong>
-                            <small>{t.name}</small>
-                          </span>
-                        </div>
-                        <span>{balanceText(t)}</span>
-                        <RouteLink to="/app/swap">
-                          Swap <ArrowUpRight size={14} />
-                        </RouteLink>
-                      </div>
-                    ))}
-                    {!app.tokens.length && (
-                      <p className="empty-compact">
-                        Token balances are waiting for network configuration.
-                      </p>
-                    )}
-                  </div>
-                </section>
-                <section className="panel next-act">
-                  <p className="eyebrow">THE NEXT ACT</p>
-                  <h2>On your terms.</h2>
-                  <RouteLink to="/app/swap">
-                    Swap privately <ArrowUpRight size={16} />
-                  </RouteLink>
-                  <RouteLink to="/app/stake">
-                    Earn up to 2× rewards <ArrowUpRight size={16} />
-                  </RouteLink>
-                  <p>Lending coming soon.</p>
-                </section>
-              </div>
-              <section className="panel v2-section">
-                <div className="panel-heading">
-                  <h2>Open swaps</h2>
-                </div>
-                {rows(true)}
-              </section>
-              <div className="v2-section">
-                {stakeToken ? positionTable() : <Note>Staking opens when $CRTN launches.</Note>}
-              </div>
-            </>
-          )}
-          {current.id === "swap" && (
-            <div className="workspace-grid">
-              <section className="panel form-panel">
-                <div className="panel-heading">
-                  <h2>Swap privately</h2>
-                </div>
-                <label className="field-label" htmlFor="swap-from">
-                  From
-                </label>
-                {picker("swap-from", from, "from")}
-                <label className="field-label" htmlFor="swap-amount">
-                  Amount
-                </label>
-                <div className="amount-input">
-                  <input
-                    id="swap-amount"
-                    inputMode="decimal"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder="0"
-                  />
-                  <button
-                    className="text-button"
-                    disabled={input?.balance === undefined}
-                    onClick={() =>
-                      input &&
-                      input.balance !== undefined &&
-                      setAmount(formatUnits(input.balance, input.decimals))
-                    }
-                  >
-                    Max
-                  </button>
-                </div>
-                {(() => {
-                  // #6: pieces are random-sized on purpose, so the nudge doesn't apply there.
-                  if (!features.roundNudge || usePieces || !input) return null;
-                  let raw: bigint;
-                  try {
-                    raw = rawAmount(amount, input.decimals);
-                  } catch {
-                    return null;
+        </aside>
+        <div className="app-content">
+          <div className="app-topline">
+            <div className="topline-left">
+              <button
+                className="mobile-sidebar"
+                aria-label="Toggle application navigation"
+                aria-expanded={sideOpen}
+                onClick={() => {
+                  if (typeof window !== "undefined" && window.innerWidth <= 700) {
+                    setSideOpen((v) => !v);
+                  } else {
+                    toggleRetract();
                   }
-                  const tip = roundSuggestions(raw, input.decimals, input.balance);
-                  if (!tip) return null;
-                  const label = (v: string) =>
-                    `${Number(v).toLocaleString(undefined, { maximumFractionDigits: input.decimals })} ${from}`;
-                  return (
-                    <div className="v2-round-nudge">
-                      <span className="field-help">
-                        Deposits are public, and an exact amount like this is easy to match to its
-                        payout. A round amount blends in with other swaps.
-                      </span>
-                      <div>
-                        <button className="text-button" onClick={() => setAmount(tip.lower)}>
-                          Use {label(tip.lower)}
-                        </button>
-                        {tip.higher && (
-                          <button className="text-button" onClick={() => setAmount(tip.higher!)}>
-                            Use {label(tip.higher)}
-                          </button>
-                        )}
-                      </div>
+                }}
+                title={retracted ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                <Menu size={18} />
+              </button>
+              <span className="breadcrumbs">
+                PRIVATE BOX <ChevronRight size={12} />
+                {current.name}
+              </span>
+            </div>
+            <div className="app-topline-actions">
+              <div className="curtain-switch" role="group" aria-label="Choose Curtain vault">
+                <span className="curtain-switch-label">CURTAIN</span>
+                <button
+                  type="button"
+                  className={mode === "v2" ? "active" : ""}
+                  aria-pressed={mode === "v2"}
+                  onClick={() => switchCurtain("v2")}
+                  title="Use Curtain II with flexible amounts"
+                >
+                  V2
+                </button>
+                <button
+                  type="button"
+                  className={mode === "v3" ? "active" : ""}
+                  aria-pressed={mode === "v3"}
+                  onClick={() => switchCurtain("v3")}
+                  title="Use Curtain III with fixed denominations"
+                >
+                  V3
+                </button>
+              </div>
+              <button className="wallet-button" onClick={connect}>
+                <Wallet size={16} />
+                {wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : "Connect wallet"}
+              </button>
+            </div>
+          </div>
+          <div className="dashboard-body">
+            <div className="dashboard-heading">
+              <div>
+                <p className="eyebrow">DRAW THE CURTAIN</p>
+                <h1>{current.name}</h1>
+                <p>Private swaps. Considered timing. Rewards for your next act.</p>
+              </div>
+              <button
+                className="text-button"
+                disabled={!!busy}
+                onClick={() => {
+                  void app.refresh();
+                  void app.refreshActivity(true);
+                  void app.refreshStaking();
+                }}
+              >
+                <RefreshCw size={16} />
+                Refresh
+              </button>
+            </div>
+            {!wallet && <Note>Connect your wallet to see balances, swaps and rewards.</Note>}
+            {app.offline && <Note>{OFFLINE_MESSAGE}</Note>}
+            {busy && (
+              <p role="status" className="notice">
+                {busy} in progress. Your wallet may ask for approval and then a transaction.
+              </p>
+            )}
+            {current.id === "overview" && (
+              <>
+                <div className="overview-grid">
+                  <section className="panel">
+                    <div className="panel-heading">
+                      <h2>Your balances</h2>
+                      <span className="pill">Raw token units</span>
                     </div>
-                  );
-                })()}
-                <div className="field-header-row">
-                  <label className="field-label" htmlFor="swap-to">
-                    To (Recipient Asset)
-                  </label>
-                  <span className="field-hint">{app.tokens.length} verified assets</span>
-                </div>
-                <div className="quick-category-pills">
-                  {TOKEN_CATEGORIES.map((cat) => {
-                    const active = (output?.category || "bluechip") === cat.id;
-                    return (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        className={`quick-pill ${active ? "active" : ""}`}
-                        onClick={() => {
-                          setSelectedCategory(cat.id);
-                          setSearchQuery("");
-                          setPickingTarget("to");
-                        }}
-                      >
-                        {cat.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {picker("swap-to", to, "to")}
-                <label className="field-label" htmlFor="swap-recipient">
-                  {useSplit ? "Recipients" : "Recipient"}
-                </label>
-                {splitAvailable && (
-                  <div className="segmented">
-                    {[false, true].map((v) => (
-                      <button
-                        key={String(v)}
-                        aria-pressed={splitOn === v}
-                        onClick={() => setSplitOn(v)}
-                      >
-                        {v ? "Split between several" : "One recipient"}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {stealthAvailable && (
-                  <div className="segmented">
-                    {[false, true].map((v) => (
-                      <button
-                        key={String(v)}
-                        aria-pressed={stealthMode === v}
-                        onClick={() => setStealthMode(v)}
-                      >
-                        {v ? "Stealth address" : "Wallet address"}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {useSplit ? (
-                  <>
-                    {splitTo.map((value, k) => (
-                      <div key={k} className="v2-split-row">
-                        <input
-                          id={k === 0 ? "swap-recipient" : undefined}
-                          aria-label={`Recipient ${k + 1}`}
-                          value={value}
-                          onChange={(e) =>
-                            setSplitTo((list) => list.map((v, i) => (i === k ? e.target.value : v)))
-                          }
-                          placeholder={
-                            useStealth
-                              ? `Recipient ${k + 1}: st:eth:0x… or a wallet with stealth keys`
-                              : `Recipient ${k + 1}: 0x…`
-                          }
-                          spellCheck={false}
-                          autoComplete="off"
-                        />
-                        {splitTo.length > 2 && (
-                          <button
-                            className="text-button"
-                            aria-label={`Remove recipient ${k + 1}`}
-                            onClick={() => setSplitTo((list) => list.filter((_, i) => i !== k))}
-                          >
-                            <X size={14} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    {splitTo.length < maxSplit && (
-                      <button
-                        className="text-button"
-                        onClick={() => setSplitTo((list) => [...list, ""])}
-                      >
-                        + Add recipient
-                      </button>
-                    )}
-                    <div className="segmented">
-                      {(["random", "equal"] as const).map((m) => (
-                        <button
-                          key={m}
-                          aria-pressed={splitMode === m}
-                          onClick={() => setSplitMode(m)}
-                        >
-                          {m === "random" ? "Random amounts" : "Equal amounts"}
-                        </button>
+                    <div className="asset-table">
+                      {app.tokens.map((t) => (
+                        <div className="asset-row" key={t.symbol}>
+                          <div>
+                            <Token token={t} />
+                            <span>
+                              <strong>{t.symbol}</strong>
+                              <small>{t.name}</small>
+                            </span>
+                          </div>
+                          <span>{balanceText(t)}</span>
+                          <RouteLink to="/app/swap">
+                            Swap <ArrowUpRight size={14} />
+                          </RouteLink>
+                        </div>
                       ))}
+                      {!app.tokens.length && (
+                        <p className="empty-compact">
+                          Token balances are waiting for network configuration.
+                        </p>
+                      )}
                     </div>
-                    {splitProblem && amount ? (
-                      <button className="warning-link" onClick={() => setAlertMessage(splitProblem)}>
-                        Review recipient warning
-                      </button>
-                    ) : null}
-                    <span className="field-help">
-                      {splitMode === "random"
-                        ? "Curtain picks a random share for each recipient, so none of the amounts matches your deposit."
-                        : "Each recipient gets the same share."}{" "}
-                      Everyone is paid in the same transaction.
-                      {useStealth
-                        ? " Each recipient gets their own brand-new stealth address, with its own small delivery fee."
-                        : ""}
-                    </span>
-                  </>
-                ) : useStealth ? (
-                  <>
-                    <input
-                      id="swap-recipient"
-                      value={stealthInput}
-                      onChange={(e) => setStealthInput(e.target.value)}
-                      placeholder="st:eth:0x… or the receiver's 0x… wallet"
-                      spellCheck={false}
-                      autoComplete="off"
-                    />
-                    {stealthMeta ? (
-                      <span className="field-help">
-                        Receiver's stealth keys found. This swap goes to a brand-new address that
-                        only they can find and spend from.
-                      </span>
-                    ) : stealthNote ? (
-                      <button className="warning-link" onClick={() => setAlertMessage(stealthNote)}>
-                        Review receiver warning
-                      </button>
-                    ) : (
-                      <span className="field-help">
-                        Paste the stealth meta-address the receiver gave you, or their wallet if
-                        they've published stealth keys.
-                      </span>
-                    )}
-                    <span className="field-help">
-                      A small fee, shown in the quote, puts gas on the new address so the receiver
-                      can move the tokens without linking it to their main wallet.
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <input
-                      id="swap-recipient"
-                      value={recipient}
-                      onChange={(e) => setRecipient(e.target.value)}
-                      placeholder="0x…"
-                    />
-                    <button className="text-button" onClick={() => setRecipient(wallet)}>
-                      Use my wallet
-                    </button>
-                    {features.freshWallet && (
-                      <FreshWallet
-                        onUse={(a) => setRecipient(a)}
-                        onSaved={(a, saved) => setFreshWallet({ address: a, saved })}
-                      />
-                    )}
-                    <span className="field-help">
-                      Sending to a fresh address gives you the most privacy.
-                    </span>
-                  </>
-                )}
-                {linkWarnings.length > 0 && (
-                  <div className="v2-link-warnings">
-                    <button className="warning-link" onClick={() => setAlertMessage(linkWarnings.join(" "))}>
-                      Review privacy warning
-                    </button>
-                    <span className="field-help">A fresh or stealth address keeps the payout separate from you.</span>
-                  </div>
-                )}
-                <p className="field-label">Timing</p>
-                <div className="segmented">
-                  {[false, true].map((v) => (
-                    <button
-                      key={String(v)}
-                      aria-pressed={delayed === v}
-                      onClick={() => setDelayed(v)}
-                    >
-                      {v ? "Private delay" : "Instant"}
-                    </button>
-                  ))}
+                  </section>
+                  <section className="panel next-act">
+                    <p className="eyebrow">THE NEXT ACT</p>
+                    <h2>On your terms.</h2>
+                    <RouteLink to="/app/swap">
+                      Swap privately <ArrowUpRight size={16} />
+                    </RouteLink>
+                    <RouteLink to="/app/stake">
+                      Earn up to 2× rewards <ArrowUpRight size={16} />
+                    </RouteLink>
+                    <p>Lending coming soon.</p>
+                  </section>
                 </div>
-                {delayed && features.delayPresets && (
-                  <>
-                    <div className="segmented v2-delay-presets">
-                      {(["quick", "better", "best", "custom"] as const).map((p) => (
+                <section className="panel v2-section">
+                  <div className="panel-heading">
+                    <h2>Open swaps</h2>
+                  </div>
+                  {rows(true)}
+                </section>
+                <div className="v2-section">
+                  {stakeToken ? positionTable() : <Note>Staking opens when $CRTN launches.</Note>}
+                </div>
+              </>
+            )}
+            {current.id === "swap" && (
+              <div className="workspace-grid">
+                <section className="panel form-panel">
+                  <div className="panel-heading">
+                    <h2>Swap privately</h2>
+                  </div>
+                  <label className="field-label" htmlFor="swap-from">
+                    From
+                  </label>
+                  {picker("swap-from", from, "from")}
+                  <label className="field-label" htmlFor="swap-amount">
+                    Amount
+                  </label>
+                  <div className="amount-input">
+                    <input
+                      id="swap-amount"
+                      inputMode="decimal"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder="0"
+                    />
+                    <button
+                      className="text-button"
+                      disabled={input?.balance === undefined}
+                      onClick={() =>
+                        input &&
+                        input.balance !== undefined &&
+                        setAmount(formatUnits(input.balance, input.decimals))
+                      }
+                    >
+                      Max
+                    </button>
+                  </div>
+                  {(() => {
+                    // #6: pieces are random-sized on purpose, so the nudge doesn't apply there.
+                    if (!features.roundNudge || usePieces || !input) return null;
+                    let raw: bigint;
+                    try {
+                      raw = rawAmount(amount, input.decimals);
+                    } catch {
+                      return null;
+                    }
+                    const tip = roundSuggestions(raw, input.decimals, input.balance);
+                    if (!tip) return null;
+                    const label = (v: string) =>
+                      `${Number(v).toLocaleString(undefined, { maximumFractionDigits: input.decimals })} ${from}`;
+                    return (
+                      <div className="v2-round-nudge">
+                        <span className="field-help">
+                          Deposits are public, and an exact amount like this is easy to match to its
+                          payout. A round amount blends in with other swaps.
+                        </span>
+                        <div>
+                          <button className="text-button" onClick={() => setAmount(tip.lower)}>
+                            Use {label(tip.lower)}
+                          </button>
+                          {tip.higher && (
+                            <button className="text-button" onClick={() => setAmount(tip.higher!)}>
+                              Use {label(tip.higher)}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  <div className="field-header-row">
+                    <label className="field-label" htmlFor="swap-to">
+                      To (Recipient Asset)
+                    </label>
+                    <span className="field-hint">{app.tokens.length} verified assets</span>
+                  </div>
+                  <div className="quick-category-pills">
+                    {TOKEN_CATEGORIES.map((cat) => {
+                      const active = (output?.category || "bluechip") === cat.id;
+                      return (
                         <button
-                          key={p}
-                          aria-pressed={delayPreset === p}
+                          key={cat.id}
+                          type="button"
+                          className={`quick-pill ${active ? "active" : ""}`}
                           onClick={() => {
-                            setDelayPreset(p);
-                            if (p !== "custom") setPresetSeconds(presetWindow(p, app.maxDelay));
+                            setSelectedCategory(cat.id);
+                            setSearchQuery("");
+                            setPickingTarget("to");
                           }}
                         >
-                          {p === "custom" ? "Custom" : DELAY_PRESETS[p].label}
-                          {p !== "custom" && <small>{DELAY_PRESETS[p].range}</small>}
+                          {cat.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {picker("swap-to", to, "to")}
+                  <label className="field-label" htmlFor="swap-recipient">
+                    {useSplit ? "Recipients" : "Recipient"}
+                  </label>
+                  {splitAvailable && (
+                    <div className="segmented">
+                      {[false, true].map((v) => (
+                        <button
+                          key={String(v)}
+                          aria-pressed={splitOn === v}
+                          onClick={() => setSplitOn(v)}
+                        >
+                          {v ? "Split between several" : "One recipient"}
                         </button>
                       ))}
                     </div>
-                    {usePresets && (
-                      <span className="field-help">
-                        This swap gets a window of {aboutDuration(delaySeconds)}, picked at random
-                        inside the preset so delays don't all look the same.
-                      </span>
-                    )}
-                  </>
-                )}
-                {delayed && (
-                  <>
-                    {!usePresets && (
-                      <>
-                        <label className="field-label" htmlFor="swap-delay">
-                          Delay window
-                        </label>
-                        <select
-                          id="swap-delay"
-                          value={delay}
-                          onChange={(e) => setDelay(e.target.value)}
+                  )}
+                  {stealthAvailable && (
+                    <div className="segmented">
+                      {[false, true].map((v) => (
+                        <button
+                          key={String(v)}
+                          aria-pressed={stealthMode === v}
+                          onClick={() => setStealthMode(v)}
                         >
-                          {[
-                            [3600, "1 hour"],
-                            [21600, "6 hours"],
-                            [86400, "1 day"],
-                            [604800, "7 days"],
-                            [2592000, "30 days"],
-                            [15552000, "180 days"],
-                          ].map(([s, label]) => (
-                            <option key={s} value={s} disabled={Number(s) > app.maxDelay}>
-                              {label}
-                            </option>
-                          ))}
-                          <option value="custom">Custom</option>
-                        </select>
-                        {delay === "custom" && (
-                          <>
-                            <label className="field-label" htmlFor="custom-delay">
-                              Window in seconds (maximum {app.maxDelay})
-                            </label>
-                            <input
-                              id="custom-delay"
-                              type="number"
-                              min={1}
-                              max={app.maxDelay}
-                              value={customDelay}
-                              onChange={(e) => setCustomDelay(e.target.value)}
-                            />
-                          </>
-                        )}
-                      </>
-                    )}
-                    <span className="field-help">
-                      Curtain pays out at a random time inside this window. Longer windows are more
-                      private.
-                    </span>
-                    {piecesAvailable && (
-                      <>
-                        <div className="segmented">
-                          {[false, true].map((v) => (
-                            <button
-                              key={String(v)}
-                              aria-pressed={piecesOn === v}
-                              onClick={() => setPiecesOn(v)}
-                            >
-                              {v ? "Deliver in pieces" : "One delivery"}
-                            </button>
-                          ))}
-                        </div>
-                        {usePieces && (
-                          <>
-                            <label className="field-label" htmlFor="piece-count">
-                              Pieces
-                            </label>
-                            <select
-                              id="piece-count"
-                              value={pieceCount}
-                              onChange={(e) => setPieceCount(Number(e.target.value))}
-                            >
-                              {[2, 3, 4, 5].map((n) => (
-                                <option key={n} value={n}>
-                                  {n} pieces
-                                </option>
-                              ))}
-                            </select>
-                            <span className="field-help">
-                              Your swap becomes {pieceCount} separate private swaps of random sizes,
-                              each delivered at its own random time in this window. Each piece has
-                              its own escape ticket, so every piece stays refundable on its own.
-                              Your wallet asks you to approve once and confirm {pieceCount}{" "}
-                              deposits.
-                            </span>
-                          </>
-                        )}
-                      </>
-                    )}
-                  </>
-                )}
-                <label className="field-label" htmlFor="slippage">
-                  Slippage
-                </label>
-                <select
-                  id="slippage"
-                  value={slippage}
-                  onChange={(e) => setSlippage(Number(e.target.value))}
-                >
-                  {[50, 100, 200].map((bps) => (
-                    <option key={bps} value={bps}>
-                      {bps / 100}%
-                    </option>
-                  ))}
-                </select>
-                <div className="fee-breakdown" aria-live="polite">
-                  {quoting && <p>Updating quote…</p>}
-                  {quote && output && (
+                          {v ? "Stealth address" : "Wallet address"}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {useSplit ? (
                     <>
-                      <div>
-                        <span>You receive ≈</span>
-                        <strong>
-                          {formatUnits(BigInt(quote.expectedOut), output.decimals)} {to}
-                        </strong>
+                      {splitTo.map((value, k) => (
+                        <div key={k} className="v2-split-row">
+                          <input
+                            id={k === 0 ? "swap-recipient" : undefined}
+                            aria-label={`Recipient ${k + 1}`}
+                            value={value}
+                            onChange={(e) =>
+                              setSplitTo((list) =>
+                                list.map((v, i) => (i === k ? e.target.value : v)),
+                              )
+                            }
+                            placeholder={
+                              useStealth
+                                ? `Recipient ${k + 1}: st:eth:0x… or a wallet with stealth keys`
+                                : `Recipient ${k + 1}: 0x…`
+                            }
+                            spellCheck={false}
+                            autoComplete="off"
+                          />
+                          {splitTo.length > 2 && (
+                            <button
+                              className="text-button"
+                              aria-label={`Remove recipient ${k + 1}`}
+                              onClick={() => setSplitTo((list) => list.filter((_, i) => i !== k))}
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      {splitTo.length < maxSplit && (
+                        <button
+                          className="text-button"
+                          onClick={() => setSplitTo((list) => [...list, ""])}
+                        >
+                          + Add recipient
+                        </button>
+                      )}
+                      <div className="segmented">
+                        {(["random", "equal"] as const).map((m) => (
+                          <button
+                            key={m}
+                            aria-pressed={splitMode === m}
+                            onClick={() => setSplitMode(m)}
+                          >
+                            {m === "random" ? "Random amounts" : "Equal amounts"}
+                          </button>
+                        ))}
                       </div>
-                      <div>
-                        <span>Minimum</span>
-                        <span>
-                          {formatUnits(BigInt(quote.minOutSuggested), output.decimals)} {to}
+                      {splitProblem && amount ? (
+                        <button
+                          className="warning-link"
+                          onClick={() => setAlertMessage(splitProblem)}
+                        >
+                          Review recipient warning
+                        </button>
+                      ) : null}
+                      <span className="field-help">
+                        {splitMode === "random"
+                          ? "Curtain picks a random share for each recipient, so none of the amounts matches your deposit."
+                          : "Each recipient gets the same share."}{" "}
+                        Everyone is paid in the same transaction.
+                        {useStealth
+                          ? " Each recipient gets their own brand-new stealth address, with its own small delivery fee."
+                          : ""}
+                      </span>
+                    </>
+                  ) : useStealth ? (
+                    <>
+                      <input
+                        id="swap-recipient"
+                        value={stealthInput}
+                        onChange={(e) => setStealthInput(e.target.value)}
+                        placeholder="st:eth:0x… or the receiver's 0x… wallet"
+                        spellCheck={false}
+                        autoComplete="off"
+                      />
+                      {stealthMeta ? (
+                        <span className="field-help">
+                          Receiver's stealth keys found. This swap goes to a brand-new address that
+                          only they can find and spend from.
                         </span>
-                      </div>
-                      <div>
-                        <span>Route</span>
-                        <span>{quote.venue}</span>
-                      </div>
-                      <div>
-                        <span>Protocol fee</span>
-                        <span>0.20%</span>
-                      </div>
-                      <div>
-                        <span>Keeper fee</span>
-                        <span>0.05%</span>
-                      </div>
-                      {quote.stealthFee && (
-                        <div>
-                          <span>
-                            Stealth delivery fee
-                            {quote.splitParts ? ` (×${quote.splitParts})` : ""}
-                          </span>
-                          <span>
-                            {formatUnits(BigInt(quote.stealthFee), output.decimals)} {to}
-                          </span>
-                        </div>
+                      ) : stealthNote ? (
+                        <button
+                          className="warning-link"
+                          onClick={() => setAlertMessage(stealthNote)}
+                        >
+                          Review receiver warning
+                        </button>
+                      ) : (
+                        <span className="field-help">
+                          Paste the stealth meta-address the receiver gave you, or their wallet if
+                          they've published stealth keys.
+                        </span>
                       )}
-                      {quote.splitParts && (
-                        <div>
-                          <span>Split</span>
-                          <span>
-                            {quote.splitParts} recipients ·{" "}
-                            {splitMode === "random" ? "random amounts" : "equal amounts"}
-                          </span>
-                        </div>
+                      <span className="field-help">
+                        A small fee, shown in the quote, puts gas on the new address so the receiver
+                        can move the tokens without linking it to their main wallet.
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        id="swap-recipient"
+                        value={recipient}
+                        onChange={(e) => setRecipient(e.target.value)}
+                        placeholder="0x…"
+                      />
+                      <button className="text-button" onClick={() => setRecipient(wallet)}>
+                        Use my wallet
+                      </button>
+                      {features.freshWallet && (
+                        <FreshWallet
+                          onUse={(a) => setRecipient(a)}
+                          onSaved={(a, saved) => setFreshWallet({ address: a, saved })}
+                        />
                       )}
-                      {!quote.available && (
-                        <p>
-                          {quote.splitParts && BigInt(quote.marketOut) > 0n
-                            ? "This amount is too small to split. Try a larger amount or fewer recipients."
-                            : quote.stealthFee && BigInt(quote.marketOut) > 0n
-                              ? "This amount is too small to cover stealth delivery. Try a larger amount."
-                              : "No liquidity for this pair right now"}
-                        </p>
+                      <span className="field-help">
+                        Sending to a fresh address gives you the most privacy.
+                      </span>
+                    </>
+                  )}
+                  {linkWarnings.length > 0 && (
+                    <div className="v2-link-warnings">
+                      <button
+                        className="warning-link"
+                        onClick={() => setAlertMessage(linkWarnings.join(" "))}
+                      >
+                        Review privacy warning
+                      </button>
+                      <span className="field-help">
+                        A fresh or stealth address keeps the payout separate from you.
+                      </span>
+                    </div>
+                  )}
+                  <p className="field-label">Timing</p>
+                  <div className="segmented">
+                    {[false, true].map((v) => (
+                      <button
+                        key={String(v)}
+                        aria-pressed={delayed === v}
+                        onClick={() => setDelayed(v)}
+                      >
+                        {v ? "Private delay" : "Instant"}
+                      </button>
+                    ))}
+                  </div>
+                  {delayed && features.delayPresets && (
+                    <>
+                      <div className="segmented v2-delay-presets">
+                        {(["quick", "better", "best", "custom"] as const).map((p) => (
+                          <button
+                            key={p}
+                            aria-pressed={delayPreset === p}
+                            onClick={() => {
+                              setDelayPreset(p);
+                              if (p !== "custom") setPresetSeconds(presetWindow(p, app.maxDelay));
+                            }}
+                          >
+                            {p === "custom" ? "Custom" : DELAY_PRESETS[p].label}
+                            {p !== "custom" && <small>{DELAY_PRESETS[p].range}</small>}
+                          </button>
+                        ))}
+                      </div>
+                      {usePresets && (
+                        <span className="field-help">
+                          This swap gets a window of {aboutDuration(delaySeconds)}, picked at random
+                          inside the preset so delays don't all look the same.
+                        </span>
                       )}
                     </>
                   )}
-                </div>
-                {showPool && waiting && input && (
-                  <Note>
-                    {(() => {
-                      const key = Object.keys(waiting.byToken).find(
-                        (k) => k.toLowerCase() === input.address.toLowerCase(),
-                      ) as Address | undefined;
-                      const n = key ? waiting.byToken[key]! : 0;
-                      if (n === 0)
-                        return `No other ${from} deposits are waiting right now. A private delay gives others time to join, so your payout is harder to single out.`;
-                      const crowd = `${n} ${from} deposit${n === 1 ? " is" : "s are"} waiting to be paid out right now`;
-                      return delaySeconds > 0
-                        ? `${crowd}. Yours would join them until its random payout time.`
-                        : `${crowd}. Instant swaps pay out within seconds; a private delay lets your deposit hide among them.`;
-                    })()}
-                  </Note>
-                )}
-                {features.privacyScore && input && (
-                  <PrivacyScore
-                    delaySeconds={delaySeconds}
-                    pieces={usePieces}
-                    recipient={recipientKind}
-                    roundAmount={(() => {
-                      if (usePieces) return true; // pieces are random-sized on purpose
-                      try {
-                        return (
-                          roundSuggestions(rawAmount(amount, input.decimals), input.decimals) ===
-                          null
-                        );
-                      } catch {
-                        return true; // no amount yet: don't count it against the swap
-                      }
-                    })()}
-                    randomSplit={(useSplit && splitMode === "random") || usePieces}
-                  />
-                )}
-                <button
-                  className="button gold v2-primary"
-                  disabled={
-                    !!busy ||
-                    !wallet ||
-                    !app.vault ||
-                    !quote?.available ||
-                    quoting ||
-                    app.offline ||
-                    (useSplit ? !!splitProblem : useStealth ? !stealthMeta : freshUnsaved)
-                  }
-                  onClick={() => void swap()}
-                >
-                  Swap privately <ArrowUpRight size={16} />
-                </button>
-              </section>
-              <div>
-                <Note>
-                  Your deposit shows your wallet, token and amount. Longer delays and fresh
-                  recipient addresses give more privacy.
-                </Note>
-                <Note>
-                  If the price falls below your minimum, the swap waits for a better price. After
-                  the deadline, use your escape ticket to refund.
-                </Note>
-                {latest && (
-                  <section className="panel form-panel v2-section">
-                    <h2>Your escape ticket</h2>
-                    <p>
-                      Keep this file. If Curtain is ever unavailable, it lets you take your deposit
-                      back.
-                    </p>
-                    <button className="button gold" onClick={() => download(latest)}>
-                      <Download size={16} />
-                      Download escape ticket
-                    </button>
-                    <p className="field-help">This file is private. Store it somewhere safe.</p>
-                    {link(latest.depositTx!, "Deposit transaction")}
-                    {rows()}
-                  </section>
-                )}
-              </div>
-            </div>
-          )}
-          {current.id === "stake" &&
-            (!stakeToken ? (
-              <section className="panel empty-compact">
-                <h3>The next act awaits.</h3>
-                <p>Staking opens when $CRTN launches.</p>
-              </section>
-            ) : (
-              <>
-                <section className="panel form-panel">
-                  <h2>Earn up to 2× rewards</h2>
-                  {!staking && <Note>Staking is not configured.</Note>}
-                  <label className="field-label" htmlFor="stake-amount">
-                    Amount · CRTN{" "}
-                    {app.stakeBalance !== undefined && app.stakeDecimals !== undefined
-                      ? `· Balance ${formatUnits(app.stakeBalance, app.stakeDecimals)}`
-                      : ""}
+                  {delayed && (
+                    <>
+                      {!usePresets && (
+                        <>
+                          <label className="field-label" htmlFor="swap-delay">
+                            Delay window
+                          </label>
+                          <select
+                            id="swap-delay"
+                            value={delay}
+                            onChange={(e) => setDelay(e.target.value)}
+                          >
+                            {[
+                              [3600, "1 hour"],
+                              [21600, "6 hours"],
+                              [86400, "1 day"],
+                              [604800, "7 days"],
+                              [2592000, "30 days"],
+                              [15552000, "180 days"],
+                            ].map(([s, label]) => (
+                              <option key={s} value={s} disabled={Number(s) > app.maxDelay}>
+                                {label}
+                              </option>
+                            ))}
+                            <option value="custom">Custom</option>
+                          </select>
+                          {delay === "custom" && (
+                            <>
+                              <label className="field-label" htmlFor="custom-delay">
+                                Window in seconds (maximum {app.maxDelay})
+                              </label>
+                              <input
+                                id="custom-delay"
+                                type="number"
+                                min={1}
+                                max={app.maxDelay}
+                                value={customDelay}
+                                onChange={(e) => setCustomDelay(e.target.value)}
+                              />
+                            </>
+                          )}
+                        </>
+                      )}
+                      <span className="field-help">
+                        Curtain pays out at a random time inside this window. Longer windows are
+                        more private.
+                      </span>
+                      {piecesAvailable && (
+                        <>
+                          <div className="segmented">
+                            {[false, true].map((v) => (
+                              <button
+                                key={String(v)}
+                                aria-pressed={piecesOn === v}
+                                onClick={() => setPiecesOn(v)}
+                              >
+                                {v ? "Deliver in pieces" : "One delivery"}
+                              </button>
+                            ))}
+                          </div>
+                          {usePieces && (
+                            <>
+                              <label className="field-label" htmlFor="piece-count">
+                                Pieces
+                              </label>
+                              <select
+                                id="piece-count"
+                                value={pieceCount}
+                                onChange={(e) => setPieceCount(Number(e.target.value))}
+                              >
+                                {[2, 3, 4, 5].map((n) => (
+                                  <option key={n} value={n}>
+                                    {n} pieces
+                                  </option>
+                                ))}
+                              </select>
+                              <span className="field-help">
+                                Your swap becomes {pieceCount} separate private swaps of random
+                                sizes, each delivered at its own random time in this window. Each
+                                piece has its own escape ticket, so every piece stays refundable on
+                                its own. Your wallet asks you to approve once and confirm{" "}
+                                {pieceCount} deposits.
+                              </span>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )}
+                  <label className="field-label" htmlFor="slippage">
+                    Slippage
                   </label>
-                  <input
-                    id="stake-amount"
-                    inputMode="decimal"
-                    value={stakeAmount}
-                    onChange={(e) => setStakeAmount(e.target.value)}
-                  />
-                  <div className="v2-tiers">
-                    {TIERS.map((t) => (
-                      <button
-                        key={t.tier}
-                        className="panel"
-                        aria-pressed={tier === t.tier}
-                        onClick={() => setTier(t.tier)}
-                      >
-                        <strong>{t.days} days</strong>
-                        <span>{t.multiplier}× rewards</span>
-                      </button>
+                  <select
+                    id="slippage"
+                    value={slippage}
+                    onChange={(e) => setSlippage(Number(e.target.value))}
+                  >
+                    {[50, 100, 200].map((bps) => (
+                      <option key={bps} value={bps}>
+                        {bps / 100}%
+                      </option>
                     ))}
+                  </select>
+                  <div className="fee-breakdown" aria-live="polite">
+                    {quoting && <p>Updating quote…</p>}
+                    {quote && output && (
+                      <>
+                        <div>
+                          <span>You receive ≈</span>
+                          <strong>
+                            {formatUnits(BigInt(quote.expectedOut), output.decimals)} {to}
+                          </strong>
+                        </div>
+                        <div>
+                          <span>Minimum</span>
+                          <span>
+                            {formatUnits(BigInt(quote.minOutSuggested), output.decimals)} {to}
+                          </span>
+                        </div>
+                        <div>
+                          <span>Route</span>
+                          <span>{quote.venue}</span>
+                        </div>
+                        <div>
+                          <span>Protocol fee</span>
+                          <span>0.20%</span>
+                        </div>
+                        <div>
+                          <span>Keeper fee</span>
+                          <span>0.05%</span>
+                        </div>
+                        {quote.stealthFee && (
+                          <div>
+                            <span>
+                              Stealth delivery fee
+                              {quote.splitParts ? ` (×${quote.splitParts})` : ""}
+                            </span>
+                            <span>
+                              {formatUnits(BigInt(quote.stealthFee), output.decimals)} {to}
+                            </span>
+                          </div>
+                        )}
+                        {quote.splitParts && (
+                          <div>
+                            <span>Split</span>
+                            <span>
+                              {quote.splitParts} recipients ·{" "}
+                              {splitMode === "random" ? "random amounts" : "equal amounts"}
+                            </span>
+                          </div>
+                        )}
+                        {!quote.available && (
+                          <p>
+                            {quote.splitParts && BigInt(quote.marketOut) > 0n
+                              ? "This amount is too small to split. Try a larger amount or fewer recipients."
+                              : quote.stealthFee && BigInt(quote.marketOut) > 0n
+                                ? "This amount is too small to cover stealth delivery. Try a larger amount."
+                                : "No liquidity for this pair right now"}
+                          </p>
+                        )}
+                      </>
+                    )}
                   </div>
+                  {showPool && waiting && input && (
+                    <Note>
+                      {(() => {
+                        const key = Object.keys(waiting.byToken).find(
+                          (k) => k.toLowerCase() === input.address.toLowerCase(),
+                        ) as Address | undefined;
+                        const n = key ? waiting.byToken[key]! : 0;
+                        if (n === 0)
+                          return `No other ${from} deposits are waiting right now. A private delay gives others time to join, so your payout is harder to single out.`;
+                        const crowd = `${n} ${from} deposit${n === 1 ? " is" : "s are"} waiting to be paid out right now`;
+                        return delaySeconds > 0
+                          ? `${crowd}. Yours would join them until its random payout time.`
+                          : `${crowd}. Instant swaps pay out within seconds; a private delay lets your deposit hide among them.`;
+                      })()}
+                    </Note>
+                  )}
+                  {features.privacyScore && input && (
+                    <PrivacyScore
+                      delaySeconds={delaySeconds}
+                      pieces={usePieces}
+                      recipient={recipientKind}
+                      roundAmount={(() => {
+                        if (usePieces) return true; // pieces are random-sized on purpose
+                        try {
+                          return (
+                            roundSuggestions(rawAmount(amount, input.decimals), input.decimals) ===
+                            null
+                          );
+                        } catch {
+                          return true; // no amount yet: don't count it against the swap
+                        }
+                      })()}
+                      randomSplit={(useSplit && splitMode === "random") || usePieces}
+                    />
+                  )}
+                  {features.encryptedTickets && (
+                    <div className="v2-fresh-wallet">
+                      {ticketPassword ? (
+                        <>
+                          <p className="field-help">
+                            Escape tickets are locked with your password for this visit. You'll need
+                            it to import a ticket later; Curtain can't recover it.
+                          </p>
+                          <button className="text-button" onClick={() => setTicketPassword("")}>
+                            Stop locking tickets
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <p className="field-help">
+                            Optional: lock your escape tickets with a password, so anyone who finds
+                            the file can't use it. Kept only in this tab.
+                          </p>
+                          <input
+                            type="password"
+                            aria-label="Ticket password"
+                            placeholder="Ticket password (10+ characters)"
+                            autoComplete="new-password"
+                            value={ticketPw}
+                            onChange={(e) => setTicketPw(e.target.value)}
+                          />
+                          <input
+                            type="password"
+                            aria-label="Repeat ticket password"
+                            placeholder="Repeat password"
+                            autoComplete="new-password"
+                            value={ticketPw2}
+                            onChange={(e) => setTicketPw2(e.target.value)}
+                          />
+                          <button
+                            className="text-button"
+                            disabled={ticketPw.length < 10 || ticketPw !== ticketPw2}
+                            onClick={() => {
+                              setTicketPassword(ticketPw);
+                              setTicketPw("");
+                              setTicketPw2("");
+                            }}
+                          >
+                            Lock my tickets
+                          </button>
+                          {ticketPw && (ticketPw.length < 10 || ticketPw !== ticketPw2) && (
+                            <span className="field-help">
+                              {ticketPw.length < 10
+                                ? "Use at least 10 characters."
+                                : "The passwords don't match."}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
                   <button
-                    className="button gold"
+                    className="button gold v2-primary"
                     disabled={
                       !!busy ||
                       !wallet ||
-                      !staking ||
-                      app.stakeDecimals === undefined ||
-                      !stakeAmount ||
-                      stakingBlock === undefined
+                      !app.vault ||
+                      !quote?.available ||
+                      quoting ||
+                      app.offline ||
+                      (useSplit ? !!splitProblem : useStealth ? !stealthMeta : freshUnsaved)
                     }
-                    onClick={() =>
-                      void run("Stake", async () => {
-                        const raw = rawAmount(stakeAmount, app.stakeDecimals!);
-                        if (app.stakeBalance === undefined || raw > app.stakeBalance)
-                          throw new Error("Your CRTN balance is too low.");
-                        await app.sdk.stake(stakeToken!, raw, tier);
-                        setStakeAmount("");
-                        await app.refreshStaking();
-                        setMessage("Your position is staked.");
-                      })
-                    }
+                    onClick={() => void swap()}
                   >
-                    Stake
+                    Swap privately <ArrowUpRight size={16} />
                   </button>
-                  <span
-                    className="field-help"
-                    title="After unlocking, a position earns at 1×. Withdraw and restake to earn a multiplier again."
-                  >
-                    After unlocking, a position earns at 1×. Withdraw and restake to earn a
-                    multiplier again.
-                  </span>
                 </section>
-                <div className="v2-section">{positionTable()}</div>
-              </>
-            ))}
-          {current.id === "receive" && (
-            <StealthReceive
-              wallet={wallet}
-              tokens={app.tokens}
-              showKeys={features.stealthKeys}
-              showInbox={features.stealthInbox}
-              busy={busy}
-              run={run}
-              setMessage={setMessage}
-            />
-          )}
-          {current.id === "activity" && (
-            <section className="panel">
-              <div className="panel-heading">
-                <h2>Your swaps & tickets</h2>
-                <button
-                  className="text-button"
-                  disabled={!wallet || !!busy}
-                  onClick={() => importRef.current?.click()}
-                >
-                  Import ticket
-                </button>
-                <input
-                  ref={importRef}
-                  type="file"
-                  accept="application/json,.json"
-                  className="v2-file-input"
-                  aria-label="Import escape ticket"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void importTicket(file);
-                    e.target.value = "";
-                  }}
-                />
+                <div>
+                  <Note>
+                    Your deposit shows your wallet, token and amount. Longer delays and fresh
+                    recipient addresses give more privacy.
+                  </Note>
+                  <Note>
+                    If the price falls below your minimum, the swap waits for a better price. After
+                    the deadline, use your escape ticket to refund.
+                  </Note>
+                  {latest && (
+                    <section className="panel form-panel v2-section">
+                      <h2>Your escape ticket</h2>
+                      <p>
+                        Keep this file. If Curtain is ever unavailable, it lets you take your
+                        deposit back.
+                      </p>
+                      <button className="button gold" onClick={() => download(latest)}>
+                        <Download size={16} />
+                        Download escape ticket
+                      </button>
+                      <p className="field-help">This file is private. Store it somewhere safe.</p>
+                      {link(latest.depositTx!, "Deposit transaction")}
+                      {rows()}
+                    </section>
+                  )}
+                </div>
               </div>
-              {rows()}
-            </section>
-          )}
+            )}
+            {current.id === "stake" &&
+              (!stakeToken ? (
+                <section className="panel empty-compact">
+                  <h3>The next act awaits.</h3>
+                  <p>Staking opens when $CRTN launches.</p>
+                </section>
+              ) : (
+                <>
+                  <section className="panel form-panel">
+                    <h2>Earn up to 2× rewards</h2>
+                    {!staking && <Note>Staking is not configured.</Note>}
+                    <label className="field-label" htmlFor="stake-amount">
+                      Amount · CRTN{" "}
+                      {app.stakeBalance !== undefined && app.stakeDecimals !== undefined
+                        ? `· Balance ${formatUnits(app.stakeBalance, app.stakeDecimals)}`
+                        : ""}
+                    </label>
+                    <input
+                      id="stake-amount"
+                      inputMode="decimal"
+                      value={stakeAmount}
+                      onChange={(e) => setStakeAmount(e.target.value)}
+                    />
+                    <div className="v2-tiers">
+                      {TIERS.map((t) => (
+                        <button
+                          key={t.tier}
+                          className="panel"
+                          aria-pressed={tier === t.tier}
+                          onClick={() => setTier(t.tier)}
+                        >
+                          <strong>{t.days} days</strong>
+                          <span>{t.multiplier}× rewards</span>
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      className="button gold"
+                      disabled={
+                        !!busy ||
+                        !wallet ||
+                        !staking ||
+                        app.stakeDecimals === undefined ||
+                        !stakeAmount ||
+                        stakingBlock === undefined
+                      }
+                      onClick={() =>
+                        void run("Stake", async () => {
+                          const raw = rawAmount(stakeAmount, app.stakeDecimals!);
+                          if (app.stakeBalance === undefined || raw > app.stakeBalance)
+                            throw new Error("Your CRTN balance is too low.");
+                          await app.sdk.stake(stakeToken!, raw, tier);
+                          setStakeAmount("");
+                          await app.refreshStaking();
+                          setMessage("Your position is staked.");
+                        })
+                      }
+                    >
+                      Stake
+                    </button>
+                    <span
+                      className="field-help"
+                      title="After unlocking, a position earns at 1×. Withdraw and restake to earn a multiplier again."
+                    >
+                      After unlocking, a position earns at 1×. Withdraw and restake to earn a
+                      multiplier again.
+                    </span>
+                  </section>
+                  <div className="v2-section">{positionTable()}</div>
+                </>
+              ))}
+            {current.id === "receive" && (
+              <StealthReceive
+                wallet={wallet}
+                tokens={app.tokens}
+                showKeys={features.stealthKeys}
+                showInbox={features.stealthInbox}
+                busy={busy}
+                run={run}
+                setMessage={setMessage}
+              />
+            )}
+            {current.id === "activity" && (
+              <section className="panel">
+                <div className="panel-heading">
+                  <h2>Your swaps & tickets</h2>
+                  <button
+                    className="text-button"
+                    disabled={!wallet || !!busy}
+                    onClick={() => importRef.current?.click()}
+                  >
+                    Import ticket
+                  </button>
+                  <input
+                    ref={importRef}
+                    type="file"
+                    accept="application/json,.json"
+                    className="v2-file-input"
+                    aria-label="Import escape ticket"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void importTicket(file);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+                {locked && (
+                  <div className="v2-fresh-wallet">
+                    <label className="field-label" htmlFor="unlock-ticket">
+                      Password for {locked.file.name}
+                    </label>
+                    <input
+                      id="unlock-ticket"
+                      type="password"
+                      autoComplete="current-password"
+                      value={unlockPassword}
+                      onChange={(e) => setUnlockPassword(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && void unlockImport()}
+                    />
+                    <div className="v2-fresh-actions">
+                      <button
+                        className="button gold"
+                        disabled={!unlockPassword || !!busy}
+                        onClick={() => void unlockImport()}
+                      >
+                        Unlock & import
+                      </button>
+                      <button className="text-button" onClick={() => setLocked(undefined)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {rows()}
+              </section>
+            )}
+          </div>
         </div>
-      </div>
-      {tokenModal()}
-    </main>
+        {tokenModal()}
+      </main>
     </>
   );
 }
