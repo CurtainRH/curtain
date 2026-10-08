@@ -8,7 +8,7 @@ This document outlines the workflow and architecture for synchronizing the Curta
 
 | Property | Private Production Repo | Public Open-Source Repo |
 | :--- | :--- | :--- |
-| **GitHub URI** | `NotADeveloper7/curtain` | `CurtainRH/curtain-be` |
+| **GitHub URI** | `NotADeveloper7/curtain` | `CurtainRH/curtain` |
 | **Git Remote** | `origin` | `origin-public` |
 | **Branch** | `main` | `main` |
 | **Author Name** | `NAD7` | `CurtainRH` |
@@ -72,8 +72,8 @@ Expected output:
 ```text
 origin          https://ghp_...github.com/NotADeveloper7/curtain.git (fetch)
 origin          https://ghp_...github.com/NotADeveloper7/curtain.git (push)
-origin-public   https://ghp_...github.com/CurtainRH/curtain-be.git (fetch)
-origin-public   https://ghp_...github.com/CurtainRH/curtain-be.git (push)
+origin-public   https://ghp_...github.com/CurtainRH/curtain.git (fetch)
+origin-public   https://ghp_...github.com/CurtainRH/curtain.git (push)
 ```
 
 To verify commit authorship on the public branch:
