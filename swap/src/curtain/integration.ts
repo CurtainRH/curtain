@@ -85,7 +85,7 @@ export const fallbackVault = address(
 export const v3Vault = address(
   env["VITE_V3_VAULT_ADDR"] || "0xBF643c56D6f1775f9ABe97b7B7e89b0265D6c67a",
 );
-export const selectedVault = () => curtainMode() === "v3" ? v3Vault : fallbackVault;
+export const selectedVault = (mode: CurtainMode = curtainMode()) => mode === "v3" ? v3Vault : fallbackVault;
 export const stakingBlock = /^\d+$/.test(env["VITE_STAKING_FROM_BLOCK"] || "")
   ? BigInt(env["VITE_STAKING_FROM_BLOCK"])
   : 80903085n;
@@ -120,7 +120,7 @@ export async function ensureChain() {
 }
 export function client(wallet?: string, mode: CurtainMode = curtainMode()) {
   const p = provider();
-  const expectedVault = selectedVault();
+  const expectedVault = selectedVault(mode);
   return new CurtainClient({
     apiUrl: apiUrlForMode(mode),
     fetch: async (input, init) => {

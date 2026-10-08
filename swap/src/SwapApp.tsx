@@ -102,6 +102,28 @@ function SwapExperience() {
     return raw;
   }
 
+  useEffect(() => {
+    let active = true;
+    if (!input || !output || !amount || modeChecking) return;
+    const timer = window.setTimeout(async () => {
+      try {
+        const raw = rawAmount(amount, input.decimals);
+        const result = await app.sdk.quote(input.address, output.address, raw, 100);
+        if (!result.available) throw new Error("No quote is available for this pair right now.");
+        if (active) setQuote(formatUnits(BigInt(result.minOutSuggested), output.decimals));
+      } catch (e) {
+        if (active) {
+          setQuote(undefined);
+          setError(errorMessage(e));
+        }
+      }
+    }, 350);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [amount, app.sdk, input, modeChecking, output]);
+
   async function getQuote() {
     if (!input || !output || modeChecking) return;
     try {
