@@ -129,8 +129,9 @@ describe("split payouts (e2e)", () => {
     const gross = (parseEther("5") * 9950n) / 10000n;
     const got = await Promise.all(recipients.map((r) => balance(nvda, r)));
     const total = got.reduce((a, b) => a + b, 0n);
-    // Fees are charged per part, so the total matches a single payout to within rounding.
-    const single = gross - (gross * 20n) / 10000n - (gross * 5n) / 10000n;
+    // Fees are charged per part, so the total matches a single payout to within rounding, plus
+    // the swap's surplus over the signed minimum, which the V2 vault shares out to recipients.
+    const single = gross - (gross * 20n) / 10000n - (gross * 5n) / 10000n + (parseEther("5") - gross);
     expect(single - total).toBeGreaterThanOrEqual(0n);
     expect(single - total).toBeLessThan(10n);
     expect(total).toBeGreaterThanOrEqual(BigInt(quote.body.minOutSuggested));

@@ -31,7 +31,7 @@ Replaces the zero-knowledge design in `Curtain_Overview.md` / `Curtain_Backend.m
 
 ### Escape hatch (optimistic refund)
 - `requestRefund(depositId, deadline, salt)`: depositor only, once `now >= deadline + 3 minutes`. Checks `keccak256(deadline, salt) == deadlineHash`.
-- `challengeRefund(depositId, secret)`: within 10 minutes of the request, anyone holding the secret (the operator's keepers) proves a payout with `tag = keccak256(depositId, secret)` already happened. The deposit is marked settled and no refund is paid. This link between a deposit and its payout is revealed only when someone tries to be paid twice.
+- `challengeRefund(depositId, secret)`: within 1 hour of the request (10 minutes before the V2 vault), anyone holding the secret (the operator's keepers) proves a payout with `tag = keccak256(depositId, secret)` already happened. The deposit is marked settled and no refund is paid. This link between a deposit and its payout is revealed only when someone tries to be paid twice.
 - `finalizeRefund(depositId)`: after 10 unchallenged minutes, the full deposited amount goes back to the depositor.
 - If Curtain goes offline, every unpaid deposit can be refunded 3 minutes after its own deadline.
 

@@ -135,7 +135,9 @@ describe("private swap lifecycle (e2e)", () => {
     const gross = (parseEther("5") * 9950n) / 10000n; // 1000 USDG at 200/NVDA, minus 0.5% slippage tolerance
     const fee = (gross * 20n) / 10000n;
     const keeperFee = (gross * 5n) / 10000n;
-    expect(await balance(nvda, recipient)).toBe(gross - fee - keeperFee);
+    // V2 vault: the swap's surplus over the signed minimum goes to the recipients.
+    const surplus = parseEther("5") - gross;
+    expect(await balance(nvda, recipient)).toBe(gross - fee - keeperFee + surplus);
     expect(await balance(nvda, d.deployment.treasury)).toBe(fee);
     expect((await balance(nvda, keeper.account!.address)) - keeperBefore).toBe(keeperFee);
     const status = (await call(`/intents/${s.id}`)).body;
@@ -156,14 +158,14 @@ describe("private swap lifecycle (e2e)", () => {
       if (challenged.length === 0) await Bun.sleep(100);
     }
     expect(challenged).toEqual([s.depositId]);
-    await warp(11 * 60);
+    await warp(61 * 60); // past the 1-hour challenge window
     await expect(d.wallets.user.writeContract({
       chain: d.chain, account: d.wallets.user.account!, address: d.deployment.vault, abi: VAULT_ABI, functionName: "finalizeRefund", args: [s.depositId],
     }).then(wait)).rejects.toThrow();
     await syncUntil(statusIs(s.id, "challenged"));
   });
 
-  it("escape hatch: an unpaid deposit is refunded after deadline + 3 min + 10 min challenge window", async () => {
+  it("escape hatch: an unpaid deposit is refunded after deadline + 3 min + 1 hour challenge window", async () => {
     const s = await swap(parseEther("500"), parseEther("2"));
     const userAddr = d.wallets.user.account!.address;
     const before = await balance(usdg, userAddr);
@@ -179,7 +181,7 @@ describe("private swap lifecycle (e2e)", () => {
     await op.processDue(await d.now());
     expect((await call(`/intents/${s.id}`)).body.status).toBe("refund_requested");
 
-    await warp(10 * 60 + 1);
+    await warp(60 * 60 + 1);
     await wait(await d.wallets.user.writeContract({
       chain: d.chain, account: d.wallets.user.account!, address: d.deployment.vault, abi: VAULT_ABI, functionName: "finalizeRefund", args: [s.depositId],
     }));

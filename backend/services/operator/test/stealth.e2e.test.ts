@@ -164,13 +164,19 @@ describe("stealth payouts (e2e)", () => {
     await op.submitSettlements(await d.now());
     await syncUntil(async () => (await call(`/intents/${intent.body.id}`)).body.status === "paid");
 
-    const gross = (parseEther("5") * 9950n) / 10000n - expectedFee;
+    const total = (parseEther("5") * 9950n) / 10000n;
+    const gross = total - expectedFee;
     const protocolFee = (gross * 20n) / 10000n;
     const keeperFee = (gross * 5n) / 10000n;
-    expect(await balance(nvda, pay.stealthAddress)).toBe(gross - protocolFee - keeperFee);
+    const amount = gross - protocolFee - keeperFee;
+    // V2 vault: the swap's surplus over the signed minimum is shared pro rata over the
+    // payouts' amounts (the recipient's and the gas-drop fee payout's).
+    const surplus = parseEther("5") - total;
+    const userTotal = amount + expectedFee;
+    expect(await balance(nvda, pay.stealthAddress)).toBe(amount + (surplus * amount) / userTotal);
     expect(await balance(nvda, pay.stealthAddress)).toBeGreaterThanOrEqual(BigInt(quote.body.minOutSuggested));
     // The operator was its own keeper here, so it also earned the keeper fee.
-    expect((await balance(nvda, opAddr)) - opNvdaBefore).toBe(expectedFee + keeperFee);
+    expect((await balance(nvda, opAddr)) - opNvdaBefore).toBe(expectedFee + (surplus * expectedFee) / userTotal + keeperFee);
 
     // Follow-up: announcement + gas drop, exactly once even if run again.
     expect(await op.processStealth()).toBe(1);

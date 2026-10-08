@@ -179,7 +179,7 @@ function deposit(
                 with <code>tag = keccak256(depositId, secret)</code> was already settled on-chain.
               </li>
               <li>
-                <strong>3. Finalization:</strong> If no challenge occurs within 10 minutes,
+                <strong>3. Finalization:</strong> If no challenge occurs within 1 hour,
                 <code>finalizeRefund(depositId)</code> transfers 100% of the original deposited asset
                 directly back to the depositor.
               </li>

@@ -87,8 +87,9 @@ describe("keeper (e2e)", () => {
     const out = (parseEther("4") * 9950n) / 10000n; // 1000 USDG at 250/TSLA, minus 0.5% slippage tolerance
     const fee = (out * 5n) / 10000n;
     expect(await d.publicClient.readContract({ address: tsla, abi: ERC20_ABI, functionName: "balanceOf", args: [k] })).toBe(before + fee);
+    // V2 vault: the swap's surplus over the signed minimum goes to the recipient.
     expect(await d.publicClient.readContract({ address: tsla, abi: ERC20_ABI, functionName: "balanceOf", args: [recipient] }))
-      .toBe(out - (out * 20n) / 10000n - fee);
+      .toBe(out - (out * 20n) / 10000n - fee + (parseEther("4") - out));
 
     expect(await keeper.tick(await d.now())).toEqual([]); // nonce already used on-chain
     await op.syncChain();

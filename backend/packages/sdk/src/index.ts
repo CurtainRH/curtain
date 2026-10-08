@@ -7,7 +7,7 @@
  *   await curtain.status(swap.intentId);
  *
  * Escape hatch (if a swap isn't paid): `refundAvailableAt(ticket)` -> `requestRefund(ticket)`
- * -> wait 10 minutes -> `finalizeRefund(ticket)`.
+ * -> wait 1 hour -> `finalizeRefund(ticket)`.
  *
  * Staking: `stake(amount, tier)`, `claim(id)`, `withdraw(id)`, `earned(id)`.
  */

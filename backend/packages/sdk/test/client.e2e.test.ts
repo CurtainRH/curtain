@@ -8,7 +8,7 @@ import { pgliteDb } from "@curtain/db/pglite";
 import { createApi, mockQuoter, mockRoute, Operator } from "@curtain/operator";
 import { parseAbi, parseEther, type Address, type Hex } from "viem";
 import { startDevnet, type Devnet } from "../../../scripts/devnet";
-import { CurtainClient, ERC20_ABI, findDepositId, positionsOf, STAKING_ABI, type PendingTicket } from "../src/index";
+import { CHALLENGE_WINDOW_SECONDS, CurtainClient, ERC20_ABI, findDepositId, positionsOf, STAKING_ABI, type PendingTicket } from "../src/index";
 
 setDefaultTimeout(180_000);
 const MOCK = parseAbi(["function mint(address to, uint256 amount)", "function setRate(address tokenIn, address tokenOut, uint256 rateWad)"]);
@@ -111,7 +111,7 @@ describe("CurtainClient (e2e)", () => {
 
     await warp(client.refundAvailableAt(s.ticket) - (await d.now()));
     await client.requestRefund(s.ticket);
-    await warp(601);
+    await warp(CHALLENGE_WINDOW_SECONDS + 1);
     await client.finalizeRefund(s.ticket);
     expect((await bal(tokens["USDG"]!, me)) - before).toBe(parseEther("300"));
   });
