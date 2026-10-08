@@ -1,14 +1,13 @@
-import { ClientOnly } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { RainbowKitProvider, darkTheme, useConnectModal } from "@rainbow-me/rainbowkit";
 import { WagmiProvider, useAccount } from "wagmi";
 import { formatUnits, isAddress, parseUnits, type Address } from "viem";
 import { ArrowRight, Check, ChevronDown, LoaderCircle, ShieldCheck } from "lucide-react";
-import { wagmiConfig } from "@/lib/wagmi";
-import { chain, curtainMode, ensureChain, errorMessage, type CurtainMode } from "@/curtain/integration";
-import { downloadFile } from "@/curtain/domain";
-import { useCurtain, type TokenData } from "@/curtain/useCurtain";
-import type { SavedTicket } from "@/curtain/integration";
+import { wagmiConfig } from "../../src/lib/wagmi";
+import { chain, curtainMode, ensureChain, errorMessage } from "../../src/curtain/integration";
+import { downloadFile } from "../../src/curtain/domain";
+import { useCurtain, type TokenData } from "../../src/curtain/useCurtain";
+import type { SavedTicket } from "../../src/curtain/integration";
 import "./swap.css";
 
 function SwapExperience() {
@@ -182,5 +181,5 @@ function TokenSelect({ label, value, options, onChange, token }: { label: string
 }
 
 export default function SwapApp() {
-  return <ClientOnly fallback={<div className="swap-loading" />}><WagmiProvider config={wagmiConfig}><RainbowKitProvider theme={darkTheme({ accentColor: "#c5a059", accentColorForeground: "#080c14", borderRadius: "medium" })}><SwapExperience /></RainbowKitProvider></WagmiProvider></ClientOnly>;
+  return <WagmiProvider config={wagmiConfig}><RainbowKitProvider theme={darkTheme({ accentColor: "#c5a059", accentColorForeground: "#080c14", borderRadius: "medium" })}><SwapExperience /></RainbowKitProvider></WagmiProvider>;
 }
