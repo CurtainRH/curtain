@@ -3,7 +3,7 @@ import { RainbowKitProvider, darkTheme, useConnectModal } from "@rainbow-me/rain
 import { WagmiProvider, useAccount } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { formatUnits, isAddress, parseUnits, type Address } from "viem";
-import { ArrowDownUp, ArrowRight, Check, ChevronDown, Home, LoaderCircle, LockKeyhole } from "lucide-react";
+import { ArrowDownUp, ArrowRight, Check, ChevronDown, Home, LoaderCircle, LockKeyhole, Search, X } from "lucide-react";
 import { wagmiConfig } from "./wagmi";
 import { chain, curtainMode, ensureChain, errorMessage } from "./curtain/integration";
 import { downloadFile } from "./curtain/domain";
@@ -28,6 +28,7 @@ function SwapExperience() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<SavedTicket>();
+  const [picker, setPicker] = useState<"from" | "to" | null>(null);
 
   const input = app.tokens.find((token) => token.symbol === from);
   const output = app.tokens.find((token) => token.symbol === to);
@@ -149,7 +150,7 @@ function SwapExperience() {
                 <div className="swap-card-label">From</div>
                 <div className="swap-token-card-row">
                   <input id="simple-amount" className="swap-card-amount" inputMode="decimal" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
-                  <TokenSelect label="From token" value={from} options={tokenOptions} onChange={setFrom} token={input} />
+                  <TokenSelect label="From token" onOpen={() => setPicker("from")} token={input} />
                 </div>
                 <div className="swap-card-foot"><span>{input?.balance === undefined ? "Balance —" : `Balance ${formatUnits(input.balance, input.decimals)}`}</span><button type="button" onClick={() => input?.balance !== undefined && setAmount(formatUnits(input.balance, input.decimals))}>Max</button></div>
               </div>
@@ -158,7 +159,7 @@ function SwapExperience() {
                 <div className="swap-card-label">To</div>
                 <div className="swap-token-card-row">
                   <span className="swap-card-amount swap-output-amount">{quote || "0"}</span>
-                  <TokenSelect label="To token" value={to} options={outputOptions} onChange={setTo} token={output} />
+                  <TokenSelect label="To token" onOpen={() => setPicker("to")} token={output} />
                 </div>
                 <div className="swap-card-foot"><span>{quote ? "Estimated minimum received" : "Enter an amount to preview"}</span></div>
               </div>
@@ -190,13 +191,46 @@ function SwapExperience() {
         )}
         <p className="swap-footnote"><img src="/robinhood-logo.png" alt="" /> Robinhood Chain</p>
       </section>
+      {picker && (
+        <TokenPickerModal
+          title={picker === "from" ? "Choose what you send" : "Choose what you receive"}
+          options={picker === "from" ? tokenOptions : outputOptions}
+          selected={picker === "from" ? from : to}
+          close={() => setPicker(null)}
+          choose={(symbol) => {
+            if (picker === "from") setFrom(symbol);
+            else setTo(symbol);
+            setPicker(null);
+          }}
+        />
+      )}
     </main>
   );
 }
 
-function TokenSelect({ label, value, options, onChange, token }: { label: string; value: string; options: TokenData[]; onChange: (value: string) => void; token?: TokenData | undefined }) {
+function TokenSelect({ label, onOpen, token }: { label: string; onOpen: () => void; token?: TokenData | undefined }) {
   return (
-    <label className="swap-token-select"><span>{label}</span><div><span className="swap-token-symbol">{token?.symbol || value}</span><ChevronDown size={15} /></div><select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}>{options.map((item) => <option key={item.symbol} value={item.symbol}>{item.symbol} — {item.name}</option>)}</select></label>
+    <button type="button" className="swap-token-select" onClick={onOpen} aria-label={label}>
+      <span className="swap-token-button-content">
+        <img src={token?.logo} alt="" className="swap-token-logo" />
+        <span className="swap-token-symbol">{token?.symbol || "Select"}</span>
+      </span>
+      <ChevronDown size={15} />
+    </button>
+  );
+}
+
+function TokenPickerModal({ title, options, selected, close, choose }: { title: string; options: TokenData[]; selected: string; close: () => void; choose: (symbol: string) => void }) {
+  const [query, setQuery] = useState("");
+  const filtered = options.filter((token) => `${token.symbol} ${token.name}`.toLowerCase().includes(query.trim().toLowerCase()));
+  return (
+    <div className="swap-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <section className="swap-token-modal" role="dialog" aria-modal="true" aria-labelledby="token-picker-title">
+        <div className="swap-token-modal-heading"><div><span className="swap-card-label">CURTAIN ASSETS</span><h2 id="token-picker-title">{title}</h2></div><button type="button" className="swap-modal-close" onClick={close} aria-label="Close token picker"><X size={19} /></button></div>
+        <label className="swap-token-search"><Search size={16} /><input autoFocus placeholder="Search token or company" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+        <div className="swap-token-list">{filtered.map((token) => <button type="button" className={`swap-token-option ${token.symbol === selected ? "selected" : ""}`} key={token.symbol} onClick={() => choose(token.symbol)}><img src={token.logo} alt="" className="swap-token-logo" /><span><strong>{token.symbol}</strong><small>{token.name}</small></span>{token.symbol === selected && <Check size={16} />}</button>)}{!filtered.length && <p className="swap-empty">No matching assets.</p>}</div>
+      </section>
+    </div>
   );
 }
 
