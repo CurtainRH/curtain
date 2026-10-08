@@ -20,7 +20,7 @@ jobs:
         with:
           submodules: recursive
       - name: Run Gitleaks Secret Scanner
-        uses: gitleaks/gitleaks-action@e76686a987d60980ff694c965e6fc8514945d8b7 # v2.3.9
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: oven-sh/setup-bun@4bc047ad259df6fc24a6c9b0f9a0cb08cf17fbe5 # v2.0.1
