@@ -1,3 +1,5 @@
+![Curtain center stage](public/center-stage-clean.png)
+
 # Curtain ($CRTN)
 
 ![CI](https://github.com/CurtainRH/curtain/actions/workflows/backend.yml/badge.svg)
@@ -9,8 +11,6 @@
 ![Robinhood Chain](https://img.shields.io/badge/Robinhood_Chain-4663-CCFF00)
 
 Private swaps and stake-to-earn on Robinhood Chain. Swap USDG and tokenized Stock Tokens without a direct wallet-to-recipient edge, instantly or on a random delay you choose, with an escape hatch that returns your deposit if Curtain can't pay. Tagline: *Draw the curtain.*
-
-Design: [docs/CURTAIN_V2_SPEC.md](docs/CURTAIN_V2_SPEC.md). Deploying: [docs/DEPLOY_RENDER.md](docs/DEPLOY_RENDER.md).
 
 ## Features
 
