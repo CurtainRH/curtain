@@ -2,18 +2,14 @@
   "extends": "../tsconfig.json",
   "include": [
     "src/**/*.ts",
-    "src/**/*.tsx",
-    "../src/curtain/**/*.ts",
-    "../src/lib/wagmi.ts",
-    "../backend/packages/sdk/src/**/*.ts"
+    "src/**/*.tsx"
   ],
   "compilerOptions": {
     "baseUrl": ".",
     "types": ["vite/client", "node"],
     "paths": {
-      "@/*": ["../src/*"],
-      "@curtain/sdk": ["../backend/packages/sdk/src/index.ts"],
-      "@curtain/sdk/*": ["../backend/packages/sdk/src/*"]
+      "@curtain/sdk": ["src/sdk/index.ts"],
+      "@curtain/sdk/*": ["src/sdk/*"]
     }
   }
 }

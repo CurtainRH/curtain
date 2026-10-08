@@ -6,8 +6,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@": fileURLToPath(new URL("../src", import.meta.url)),
-      "@curtain/sdk": fileURLToPath(new URL("../backend/packages/sdk/src/index.ts", import.meta.url)),
+      "@curtain/sdk": fileURLToPath(new URL("./src/sdk/index.ts", import.meta.url)),
     },
   },
   server: {

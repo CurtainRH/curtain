@@ -3,11 +3,11 @@ import { RainbowKitProvider, darkTheme, useConnectModal } from "@rainbow-me/rain
 import { WagmiProvider, useAccount } from "wagmi";
 import { formatUnits, isAddress, parseUnits, type Address } from "viem";
 import { ArrowRight, Check, ChevronDown, LoaderCircle, ShieldCheck } from "lucide-react";
-import { wagmiConfig } from "../../src/lib/wagmi";
-import { chain, curtainMode, ensureChain, errorMessage } from "../../src/curtain/integration";
-import { downloadFile } from "../../src/curtain/domain";
-import { useCurtain, type TokenData } from "../../src/curtain/useCurtain";
-import type { SavedTicket } from "../../src/curtain/integration";
+import { wagmiConfig } from "./wagmi";
+import { chain, curtainMode, ensureChain, errorMessage } from "./curtain/integration";
+import { downloadFile } from "./curtain/domain";
+import { useCurtain, type TokenData } from "./curtain/useCurtain";
+import type { SavedTicket } from "./curtain/integration";
 import "./swap.css";
 
 function SwapExperience() {
