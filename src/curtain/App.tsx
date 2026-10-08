@@ -620,6 +620,8 @@ export default function App() {
 function Landing({ watch }: { watch: (film: "overture" | "technology") => void }) {
   const hero = useRef<HTMLElement>(null);
   const [faq, setFaq] = useState<number | null>(0);
+  const [caCopied, setCaCopied] = useState(false);
+  const caAddress = import.meta.env["VITE_CA_ADDRESS"]?.trim() ?? "";
   const faqs = [
     [
       "What is Curtain?",
@@ -679,6 +681,42 @@ function Landing({ watch }: { watch: (film: "overture" | "technology") => void }
               <br />
               <em>Your private stage.</em>
             </h1>
+            <div className={`hero-ca${caAddress ? " hero-ca-live" : ""}`}>
+              <span className="hero-ca-label">CA</span>
+              {caAddress ? (
+                <>
+                  <button
+                    type="button"
+                    className="hero-ca-address"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(caAddress).then(() => {
+                        setCaCopied(true);
+                        window.setTimeout(() => setCaCopied(false), 1800);
+                      });
+                    }}
+                    title="Copy contract address"
+                    aria-label={`Copy contract address ${caAddress}`}
+                  >
+                    <span>{caAddress}</span>
+                    <Copy size={13} aria-hidden="true" />
+                  </button>
+                  <a
+                    className="hero-ca-link"
+                    href={`https://dexscreener.com/search?q=${encodeURIComponent(caAddress)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="View contract on DexScreener"
+                  >
+                    <ArrowUpRight size={15} aria-hidden="true" />
+                  </a>
+                  <span className="hero-ca-status" aria-live="polite">
+                    {caCopied ? "Copied" : ""}
+                  </span>
+                </>
+              ) : (
+                <span className="hero-ca-coming">Coming Soon</span>
+              )}
+            </div>
             <p className="hero-description">
               Stock Tokens. Private swaps. Rewards for your next act.
               <br />

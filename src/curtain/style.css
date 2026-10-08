@@ -9,3 +9,16 @@
 .brand-mark{display:block;flex-shrink:0;width:28px;height:36px}
 .brand-mark img{display:block;width:100%;height:100%;object-fit:contain}
 .brand.compact .brand-mark{width:49px;height:63px}
+
+.hero-ca{display:inline-flex;align-items:center;gap:10px;min-height:38px;margin:4px auto 0;padding:8px 12px;border:1px solid #d2ae6f45;background:linear-gradient(110deg,#091728d9,#1a2638c9);box-shadow:0 10px 35px #0003;color:var(--gold);font-size:.625rem;letter-spacing:.12em;text-transform:uppercase;backdrop-filter:blur(8px)}
+.hero-ca-label{padding-right:10px;border-right:1px solid #d2ae6f45;font-weight:600}
+.hero-ca-coming{color:#d8c29b;letter-spacing:.16em}
+.hero-ca-live{max-width:min(100%,520px)}
+.hero-ca-address{display:inline-flex;align-items:center;gap:8px;min-width:0;padding:0;color:#e9d7b5;font-size:.6875rem;letter-spacing:.02em;text-transform:none}
+.hero-ca-address span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hero-ca-address svg,.hero-ca-link{color:var(--gold)}
+.hero-ca-address:hover,.hero-ca-link:hover{color:var(--bright)}
+.hero-ca-link{display:inline-flex;align-items:center;padding-left:2px}
+.hero-ca-status{min-width:37px;font-size:.5rem;letter-spacing:.08em;color:var(--bright);text-transform:uppercase}
+
+@media(max-width:700px){.hero-ca{max-width:calc(100vw - 40px);margin-top:0}.hero-ca-live{width:min(100%,360px)}.hero-ca-address{max-width:220px}.hero-ca-status{display:none}}
