@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { RainbowKitProvider, darkTheme, useConnectModal } from "@rainbow-me/rainbowkit";
 import { WagmiProvider, useAccount } from "wagmi";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { formatUnits, isAddress, parseUnits, type Address } from "viem";
 import { ArrowRight, Check, ChevronDown, LoaderCircle, ShieldCheck } from "lucide-react";
 import { wagmiConfig } from "./wagmi";
@@ -9,6 +10,8 @@ import { downloadFile } from "./curtain/domain";
 import { useCurtain, type TokenData } from "./curtain/useCurtain";
 import type { SavedTicket } from "./curtain/integration";
 import "./swap.css";
+
+const queryClient = new QueryClient();
 
 function SwapExperience() {
   const { address: account } = useAccount();
@@ -181,5 +184,5 @@ function TokenSelect({ label, value, options, onChange, token }: { label: string
 }
 
 export default function SwapApp() {
-  return <WagmiProvider config={wagmiConfig}><RainbowKitProvider theme={darkTheme({ accentColor: "#c5a059", accentColorForeground: "#080c14", borderRadius: "medium" })}><SwapExperience /></RainbowKitProvider></WagmiProvider>;
+  return <QueryClientProvider client={queryClient}><WagmiProvider config={wagmiConfig}><RainbowKitProvider theme={darkTheme({ accentColor: "#c5a059", accentColorForeground: "#080c14", borderRadius: "medium" })}><SwapExperience /></RainbowKitProvider></WagmiProvider></QueryClientProvider>;
 }
