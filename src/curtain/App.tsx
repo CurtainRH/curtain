@@ -621,7 +621,7 @@ function Landing({ watch }: { watch: (film: "overture" | "technology") => void }
   const hero = useRef<HTMLElement>(null);
   const [faq, setFaq] = useState<number | null>(0);
   const [caCopied, setCaCopied] = useState(false);
-  const caAddress = import.meta.env["VITE_CA_ADDRESS"]?.trim() ?? "";
+  const caAddress = import.meta.env["VITE_CA_ADDRESS"]?.trim() || "0x66a844fcbf4705dbde3c97394d5a4c9822e8f35b";
   const faqs = [
     [
       "What is Curtain?",
