@@ -87,17 +87,6 @@ const vault = env("VAULT_ADDR") as Address;
 const router = env("DEX_ROUTER_ADDR") as Address;
 const keeperFeeBps = Number(env("KEEPER_FEE_BPS", "5"));
 const tokens = parseTokens(process.env["TOKENS"]);
-const v3Mode = process.env["V3_MODE"]?.trim().toLowerCase() === "true";
-const fixedAmounts = new Set<string>();
-if (v3Mode) {
-  const raw = env("V3_FIXED_AMOUNTS_JSON");
-  for (const [symbol, values] of Object.entries(JSON.parse(raw) as Record<string, string[]>)) {
-    const token = tokens[symbol];
-    if (!token) throw new Error(`V3_FIXED_AMOUNTS_JSON references unknown token ${symbol}`);
-    for (const value of values) fixedAmounts.add(`${getAddress(token)}:${BigInt(value)}`);
-  }
-  console.log(`V3 fixed denominations ON: ${fixedAmounts.size} approved amounts`);
-}
 
 /** Stealth payouts are off unless the flag is exactly "true"; when on, misconfiguration stops startup. */
 async function stealthConfig(): Promise<StealthConfig | undefined> {
@@ -119,27 +108,54 @@ async function stealthConfig(): Promise<StealthConfig | undefined> {
 }
 const stealth = await stealthConfig();
 const mock = env("ROUTE", "uniswap") === "mock";
-const operator = new Operator({
-  db, publicClient, walletClient, chainId, vault, router,
+const makeFixedAmounts = async () => {
+  const result = new Set<string>();
+  const raw = env("V3_FIXED_AMOUNTS_JSON");
+  if (raw.trim().toLowerCase() === "default") {
+    for (const [symbol, token] of Object.entries(tokens)) {
+      const decimals = await publicClient.readContract({ address: getAddress(token), abi: parseAbi(["function decimals() view returns (uint8)"]), functionName: "decimals" });
+      const unit = 10n ** BigInt(decimals);
+      const base = symbol.toUpperCase() === "USDG" ? 100n : 1n;
+      for (const multiplier of [1n, 10n, 100n]) result.add(`${getAddress(token)}:${base * multiplier * unit}`);
+    }
+    return result;
+  }
+  for (const [symbol, values] of Object.entries(JSON.parse(raw) as Record<string, string[]>)) {
+    const token = tokens[symbol];
+    if (!token) throw new Error(`V3_FIXED_AMOUNTS_JSON references unknown token ${symbol}`);
+    for (const value of values) result.add(`${getAddress(token)}:${BigInt(value)}`);
+  }
+  return result;
+};
+const makeOperator = async (contextDb: typeof db, contextVault: Address, v3 = false) => new Operator({
+  db: contextDb, publicClient, walletClient, chainId, vault: contextVault, router,
   route: mock ? mockRoute : uniswapRoute(),
   quote: mock ? mockQuoter(publicClient, router) : uniswapQuoter({
     client: publicClient, v3Router: router, v3Quoter: env("UNISWAP_QUOTER_ADDR") as Address,
     v4Adapter: process.env["V4_ADAPTER_ADDR"] as Address | undefined, v4Quoter: process.env["V4_QUOTER_ADDR"] as Address | undefined,
   }),
-  slippageBps: Number(env("SLIPPAGE_BPS", "50")),
-  keeperFeeBps, v3Mode,
-  startBlock: process.env["START_BLOCK"] ? BigInt(process.env["START_BLOCK"]) : await publicClient.getBlockNumber(),
+  slippageBps: Number(env("SLIPPAGE_BPS", "50")), keeperFeeBps, v3Mode: v3,
+  startBlock: process.env[v3 ? "V3_START_BLOCK" : "START_BLOCK"] ? BigInt(process.env[v3 ? "V3_START_BLOCK" : "START_BLOCK"]!) : await publicClient.getBlockNumber(),
   ...(stealth ? { stealth } : {}),
   splitPayouts: process.env["FEATURE_SPLIT_PAYOUTS"]?.trim().toLowerCase() === "true",
   anonymitySet: process.env["FEATURE_ANONYMITY_SET"]?.trim().toLowerCase() === "true",
 });
-if (operator.splitEnabled) console.log("split payouts ON");
+const operator = await makeOperator(db, vault);
+const v3Vault = process.env["V3_VAULT_ADDR"] ? getAddress(process.env["V3_VAULT_ADDR"] as Address) : undefined;
+const v3Db = v3Vault ? await bunSqlDb(env("V3_DATABASE_URL")) : undefined;
+if (v3Db) await migrate(v3Db);
+const v3Operator = v3Vault && v3Db ? await makeOperator(v3Db, v3Vault, true) : undefined;
+if (v3Operator) console.log(`V3 context ON: ${v3Vault}`);
 
 const server = Bun.serve({
   port: Number(process.env["PORT"] ?? env("OPERATOR_PORT", "3100")),
   fetch: createApi({
-    db, operator, vault, tokens, keeperFeeBps, v3Mode, fixedAmounts,
+    db, operator, vault, tokens, keeperFeeBps,
     minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
+    contexts: v3Operator && v3Db && v3Vault ? {
+      v2: { db, operator, vault, tokens, keeperFeeBps, minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")) },
+      v3: { db: v3Db, operator: v3Operator, vault: v3Vault, tokens, keeperFeeBps, v3Mode: true, fixedAmounts: await makeFixedAmounts(), minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")) },
+    } : undefined,
   }),
 });
 console.log(`@curtain/operator listening on :${server.port}`);
@@ -156,6 +172,15 @@ for (;;) {
     await operator.syncChain();
     await operator.processStealth();
     operator.markTick();
+    if (v3Operator) {
+      await v3Operator.syncChain();
+      await v3Operator.cleanupExpiredIntents();
+      await v3Operator.processDue(now);
+      await v3Operator.submitSettlements(now);
+      await v3Operator.syncChain();
+      await v3Operator.processStealth();
+      v3Operator.markTick();
+    }
   } catch (e) {
     console.error("operator tick failed:", e instanceof Error ? e.message.split("\n")[0] : e);
   }

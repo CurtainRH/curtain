@@ -31,6 +31,7 @@ export interface ApiConfig {
   now?: () => number; // unix seconds
   v3Mode?: boolean;
   fixedAmounts?: Set<string>;
+  contexts?: { v2: Omit<ApiConfig, "contexts">; v3?: Omit<ApiConfig, "contexts"> };
 }
 
 const json = (body: unknown, status = 200) =>
@@ -60,9 +61,11 @@ function checkRate(key: string, limit: number, windowMs = 60_000): boolean {
 
 export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
   const now = cfg.now ?? (() => Math.floor(Date.now() / 1000));
-  const allowed = new Set(Object.values(cfg.tokens).map((t) => getAddress(t))); // config casing must not matter
 
   return async (req) => {
+    const version = req.headers.get("x-curtain-version")?.trim().toLowerCase() === "v3" ? "v3" : "v2";
+    const active = cfg.contexts?.[version] ?? cfg;
+    const allowed = new Set(Object.values(active.tokens).map((t) => getAddress(t))); // config casing must not matter
     const url = new URL(req.url);
     const pathname = url.pathname.replace(/\/+/g, "/");
     const clientIp = req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "ip:default";
@@ -75,17 +78,17 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
 
       // For an uptime monitor: 503 with the list of problems when something needs attention.
       if (req.method === "GET" && pathname === "/status") {
-        const st = await cfg.operator.status(now(), { minBalanceWei: cfg.minBalanceWei });
+        const st = await active.operator.status(now(), { minBalanceWei: active.minBalanceWei });
         return json(st, st.ok ? 200 : 503);
       }
 
       if (req.method === "GET" && pathname === "/config") {
-        const stealth = cfg.operator.stealthInfo;
-        const split = cfg.operator.splitInfo;
+        const stealth = active.operator.stealthInfo;
+        const split = active.operator.splitInfo;
         return json({
-          vault: cfg.vault, tokens: cfg.tokens, keeperFeeBps: cfg.keeperFeeBps, maxDelaySeconds: MAX_DELAY_SECONDS,
+          vault: active.vault, tokens: active.tokens, keeperFeeBps: active.keeperFeeBps, maxDelaySeconds: MAX_DELAY_SECONDS,
           ...(stealth ? { stealth } : {}), ...(split ? { split } : {}),
-          ...(cfg.operator.anonymitySetEnabled ? { pool: { enabled: true } } : {}),
+          ...(active.operator.anonymitySetEnabled ? { pool: { enabled: true } } : {}),
         });
       }
 
@@ -104,22 +107,22 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         if (!(slippage >= 0 && slippage <= 5000)) return json({ error: "slippageBps must be 0..5000" }, 400);
         let stealthFee: bigint | undefined;
         if (url.searchParams.get("stealth") === "1") {
-          if (!cfg.operator.stealthEnabled) return json({ error: "stealth payouts are not enabled" }, 400);
-          const fee = await cfg.operator.stealthFee(getAddress(tokenOut));
+          if (!active.operator.stealthEnabled) return json({ error: "stealth payouts are not enabled" }, 400);
+          const fee = await active.operator.stealthFee(getAddress(tokenOut));
           if (fee === null) return json({ error: "private address delivery isn't available for this token yet" }, 400);
           stealthFee = fee;
         }
         let split: { parts: number; minShareBps: number } | undefined;
         const splitsParam = url.searchParams.get("splits");
         if (splitsParam !== null) {
-          if (!cfg.operator.splitEnabled) return json({ error: "split payouts are not enabled" }, 400);
+          if (!active.operator.splitEnabled) return json({ error: "split payouts are not enabled" }, 400);
           const parts = Number(splitsParam);
           const mode = url.searchParams.get("splitMode") ?? "random";
           if (!Number.isInteger(parts) || parts < 2 || parts > MAX_SPLITS) return json({ error: `a split needs 2 to ${MAX_SPLITS} recipients` }, 400);
           if (mode !== "random" && mode !== "equal") return json({ error: "splitMode must be random or equal" }, 400);
           split = { parts, minShareBps: minSplitShareBps(parts, mode) };
         }
-        return json(await cfg.operator.quoteForUser(getAddress(tokenIn), getAddress(tokenOut), BigInt(amountIn), slippage, stealthFee, split));
+        return json(await active.operator.quoteForUser(getAddress(tokenIn), getAddress(tokenOut), BigInt(amountIn), slippage, stealthFee, split));
       }
 
       if (req.method === "POST" && pathname === "/intents") {
@@ -138,7 +141,7 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         let stealth: { ephemeralPublicKey: string; viewTag: string } | undefined;
         let splits: { recipient: string; stealth?: { ephemeralPublicKey: string; viewTag: string } }[] | undefined;
         if (body["splits"] !== undefined && body["splits"] !== null) {
-          if (!cfg.operator.splitEnabled) return json({ error: "split payouts are not enabled" }, 400);
+          if (!active.operator.splitEnabled) return json({ error: "split payouts are not enabled" }, 400);
           if (!Array.isArray(body["splits"])) return json({ error: "splits must be a list" }, 400);
           splits = (body["splits"] as unknown[]).map((raw) => {
             const sp = (raw ?? {}) as Record<string, unknown>;
@@ -148,13 +151,13 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         if (body["stealth"] !== undefined && body["stealth"] !== null) stealth = asStealth(body["stealth"]);
         let stealthFee: bigint | undefined;
         if (stealth || splits?.some((sp) => sp.stealth)) {
-          if (!cfg.operator.stealthEnabled) return json({ error: "stealth payouts are not enabled" }, 400);
+          if (!active.operator.stealthEnabled) return json({ error: "stealth payouts are not enabled" }, 400);
           const tokenOut = String(body["tokenOut"]);
-          const fee = isAddress(tokenOut) ? await cfg.operator.stealthFee(getAddress(tokenOut)) : null;
+          const fee = isAddress(tokenOut) ? await active.operator.stealthFee(getAddress(tokenOut)) : null;
           if (fee === null) return json({ error: "private address delivery isn't available for this token yet" }, 400);
           stealthFee = fee;
         }
-        const intent = await createIntent(cfg.db, {
+        const intent = await createIntent(active.db, {
           tokenIn: String(body["tokenIn"]),
           amountIn: String(body["amountIn"]),
           tokenOut: String(body["tokenOut"]),
@@ -165,16 +168,16 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
           ...(stealth ? { stealth } : {}),
           ...(stealthFee !== undefined ? { stealthFee } : {}),
           ...(splits ? { splits, splitMode: body["splitMode"] === "equal" ? "equal" : "random" } : {}),
-        }, allowed, cfg.vault, now(), cfg.v3Mode === true, cfg.fixedAmounts);
+        }, allowed, active.vault, now(), active.v3Mode === true, active.fixedAmounts);
         return json({
-          id: intent.id, deadline: intent.deadline, salt: intent.salt, deadlineHash: intent.deadlineHash, vault: cfg.vault, ...(intent.tag ? { tag: intent.tag } : {}),
+          id: intent.id, deadline: intent.deadline, salt: intent.salt, deadlineHash: intent.deadlineHash, vault: active.vault, ...(intent.tag ? { tag: intent.tag } : {}),
           ...(intent.splits ? { splits: intent.splits } : {}),
         }, 201);
       }
 
       const m = pathname.match(/^\/intents\/([0-9a-f]{32})$/);
       if (req.method === "GET" && m) {
-        const rows = await cfg.db.query<Record<string, unknown>>(
+        const rows = await active.db.query<Record<string, unknown>>(
           `SELECT i.status, i.deposit_id::text AS "depositId", i.amount_out::text AS "amountOut", s.tx_hash AS "payoutTx",
                   i.blocked_reason AS "blockedReason"
            FROM intents i LEFT JOIN settlements s ON s.id = i.settlement_id AND s.status = 'confirmed' WHERE i.id = $1`,
@@ -184,12 +187,12 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
       }
 
       if (req.method === "GET" && pathname === "/pool") {
-        if (!cfg.operator.anonymitySetEnabled) return json({ error: "not found" }, 404);
-        return json(await cfg.operator.waitingDeposits());
+        if (!active.operator.anonymitySetEnabled) return json({ error: "not found" }, 404);
+        return json(await active.operator.waitingDeposits());
       }
 
       if (req.method === "GET" && pathname === "/settlements/pending") {
-        return json(await cfg.operator.pendingSettlements(now()));
+        return json(await active.operator.pendingSettlements(now()));
       }
 
       return json({ error: "not found" }, 404);

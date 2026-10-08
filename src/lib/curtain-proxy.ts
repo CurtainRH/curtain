@@ -55,7 +55,7 @@ const DEFAULT_TOKENS: Record<string, string> = {
 export function getOperatorUrl(env?: unknown, v3 = false): string {
   if (env && typeof env === "object") {
     const e = env as Record<string, unknown>;
-    for (const key of v3 ? ["CURTAIN_V3_OPERATOR_URL", "VITE_CURTAIN_V3_OPERATOR_URL"] : [
+    for (const key of v3 ? ["CURTAIN_V3_OPERATOR_URL", "VITE_CURTAIN_V3_OPERATOR_URL", "CURTAIN_API_URL", "CURTAIN_OPERATOR_URL", "OPERATOR_API_URL", "VITE_CURTAIN_API_URL"] : [
       "CURTAIN_API_URL",
       "CURTAIN_OPERATOR_URL",
       "OPERATOR_API_URL",
@@ -66,7 +66,7 @@ export function getOperatorUrl(env?: unknown, v3 = false): string {
   }
   if (typeof process !== "undefined" && process.env) {
     const p = process.env;
-    for (const key of v3 ? ["CURTAIN_V3_OPERATOR_URL", "VITE_CURTAIN_V3_OPERATOR_URL"] : [
+    for (const key of v3 ? ["CURTAIN_V3_OPERATOR_URL", "VITE_CURTAIN_V3_OPERATOR_URL", "CURTAIN_API_URL", "CURTAIN_OPERATOR_URL", "OPERATOR_API_URL", "VITE_CURTAIN_API_URL"] : [
       "CURTAIN_API_URL",
       "CURTAIN_OPERATOR_URL",
       "OPERATOR_API_URL",

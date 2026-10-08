@@ -125,7 +125,9 @@ export function client(wallet?: string, mode: CurtainMode = curtainMode()) {
     apiUrl: apiUrlForMode(mode),
     fetch: async (input, init) => {
       try {
-        return await fetch(input, { ...init, signal: AbortSignal.timeout(8000) });
+        const headers = new Headers(init?.headers);
+        headers.set("x-curtain-version", mode);
+        return await fetch(input, { ...init, headers, signal: AbortSignal.timeout(8000) });
       } catch {
         throw new Error(OFFLINE_MESSAGE);
       }

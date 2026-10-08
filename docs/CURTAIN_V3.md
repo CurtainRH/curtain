@@ -12,10 +12,8 @@ V3 also commits the payout tag before the deposit exists. A refund reserves that
 - V3: `deployments/4663-v3.json`
 - V3 vault: `0xBF643c56D6f1775f9ABe97b7B7e89b0265D6c67a`
 
-The V3 operator is a separate service instance. Set `V3_MODE=true`, point `VAULT_ADDR` at the V3 vault, and provide `V3_FIXED_AMOUNTS_JSON` with raw token amounts, for example:
+The existing operator and keeper now serve both vaults. Keep `VAULT_ADDR` pointed at V2, add `V3_VAULT_ADDR`, a separate `V3_DATABASE_URL`, `V3_START_BLOCK`, and provide `V3_FIXED_AMOUNTS_JSON` with raw token amounts, for example:
 
-```json
-{"USDG":["100000000000000000000","1000000000000000000000","10000000000000000000000"]}
-```
+Set `V3_FIXED_AMOUNTS_JSON=default` to load the deployed policy automatically using each token's on-chain decimals. You can instead provide a JSON object of raw amounts for a custom policy.
 
-The frontend uses `CURTAIN_V3_OPERATOR_URL` for `/api/curtain-v3` and `VITE_V3_VAULT_ADDR` for its trusted vault address.
+The frontend uses the same operator URL with an `X-Curtain-Version` request header and uses `VITE_V3_VAULT_ADDR` for its trusted vault address.

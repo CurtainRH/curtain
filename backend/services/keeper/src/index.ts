@@ -31,35 +31,37 @@ export interface KeeperConfig {
   /** Minimum total keeper fee worth submitting for, per output token (raw units). */
   minFee?: Record<string, bigint>;
   fetch?: typeof fetch;
+  contexts?: { version: "v2" | "v3"; vault: Address }[];
 }
 
 export class Keeper {
   constructor(private cfg: KeeperConfig) {}
 
-  async pending(): Promise<PendingSettlement[]> {
+  async pending(version: "v2" | "v3" = "v2"): Promise<PendingSettlement[]> {
     const base = this.cfg.operatorApi.replace(/\/+$/, "");
-    const res = await (this.cfg.fetch ?? fetch)(`${base}/settlements/pending`);
+    const res = await (this.cfg.fetch ?? fetch)(`${base}/settlements/pending`, { headers: { "x-curtain-version": version } });
     if (!res.ok) throw new Error(`operator API: HTTP ${res.status}`);
     return (await res.json()) as PendingSettlement[];
   }
 
   /** One pass: lands every worthwhile, unexpired, not-yet-landed settlement. Returns tx hashes. */
   async tick(nowSec: number): Promise<Hex[]> {
-    const { publicClient, walletClient, vault } = this.cfg;
+    const { publicClient, walletClient } = this.cfg;
     const sent: Hex[] = [];
-    for (const s of await this.pending()) {
+    const contexts = this.cfg.contexts ?? [{ version: "v2" as const, vault: this.cfg.vault }];
+    for (const context of contexts) for (const s of await this.pending(context.version)) {
       if (BigInt(s.deadline) < BigInt(nowSec)) continue;
       const fee = s.payouts.reduce((sum, p) => sum + BigInt(p.keeperFee), 0n);
       const floor = this.cfg.minFee?.[getAddress(s.swap.tokenOut)];
       if (floor !== undefined && fee < floor) continue;
-      if (await publicClient.readContract({ address: vault, abi: VAULT_ABI, functionName: "nonceUsed", args: [BigInt(s.nonce)] })) continue;
+      if (await publicClient.readContract({ address: context.vault, abi: VAULT_ABI, functionName: "nonceUsed", args: [BigInt(s.nonce)] })) continue;
       const args = [
         { ...s.swap, amountIn: BigInt(s.swap.amountIn), minOut: BigInt(s.swap.minOut) },
         s.payouts.map((p) => ({ recipient: p.recipient, amount: BigInt(p.amount), protocolFee: BigInt(p.protocolFee), keeperFee: BigInt(p.keeperFee), tag: p.tag })),
         BigInt(s.deadline), BigInt(s.nonce), s.signature,
       ] as const;
       try {
-        const { request } = await publicClient.simulateContract({ account: walletClient.account!, address: vault, abi: VAULT_ABI, functionName: "settle", args });
+        const { request } = await publicClient.simulateContract({ account: walletClient.account!, address: context.vault, abi: VAULT_ABI, functionName: "settle", args });
         const hash = await walletClient.writeContract({ ...request, chain: walletClient.chain });
         const r = await publicClient.waitForTransactionReceipt({ hash });
         if (r.status === "success") sent.push(hash);

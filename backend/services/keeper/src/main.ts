@@ -23,6 +23,10 @@ const keeper = new Keeper({
   publicClient: createPublicClient({ chain, transport: http() }),
   walletClient: createWalletClient({ account: privateKeyToAccount(env("KEEPER_PRIVATE_KEY") as Hex), chain, transport: http() }),
   minFee,
+  contexts: process.env["V3_VAULT_ADDR"] ? [
+    { version: "v2", vault: env("VAULT_ADDR") as Address },
+    { version: "v3", vault: env("V3_VAULT_ADDR") as Address },
+  ] : undefined,
 });
 const tickMs = Number(env("KEEPER_TICK_MS", "5000"));
 
