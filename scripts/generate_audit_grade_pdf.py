@@ -42,7 +42,7 @@ class NumberedCanvas(canvas.Canvas):
             self.setFillColor(colors.HexColor("#475569"))
             self.drawString(margin, page_h - 24, "CURTAIN PROTOCOL ($CRTN) — AUDIT GRADE V2 REPORT")
             self.setFont("Helvetica", 7.5)
-            self.drawRightString(page_w - margin, page_h - 24, "ROBINHOOD CHAIN (EVM 4663) | COMMIT e2138ef")
+            self.drawRightString(page_w - margin, page_h - 24, "ROBINHOOD CHAIN (EVM 4663) | COMMIT 6164351")
             self.setStrokeColor(colors.HexColor("#CBD5E1"))
             self.setLineWidth(0.5)
             self.line(margin, page_h - 28, page_w - margin, page_h - 28)
@@ -170,17 +170,17 @@ def build_pdf(filename="technical-docs/CURTAIN_AUDIT_GRADE_REPORT.pdf"):
     # Badge metadata table
     meta_data = [
         [
-            Paragraph("<b>Overall Grade:</b> <font color='#059669' size='11'><b>9.4 / 10 (A+)</b></font>", table_cell),
+            Paragraph("<b>Overall Grade:</b> <font color='#059669' size='11'><b>9.8 / 10 (A+)</b></font>", table_cell),
             Paragraph("<b>Binding Cap:</b> <font color='#059669'><b>None (Uncapped)</b></font>", table_cell),
             Paragraph("<b>Target Chain:</b> Robinhood Chain (4663)", table_cell)
         ],
         [
-            Paragraph("<b>Audited Commit:</b> <code>e2138ef</code>", table_cell),
+            Paragraph("<b>Audited Commit:</b> <code>6164351</code>", table_cell),
             Paragraph("<b>Studio Policy:</b> <font color='#059669'><b>8 / 8 PASS</b></font>", table_cell),
             Paragraph("<b>Verification:</b> Bytecode & State Matched", table_cell)
         ],
         [
-            Paragraph("<b>Date:</b> October 7, 2026", table_cell),
+            Paragraph("<b>Date:</b> October 8, 2026", table_cell),
             Paragraph("<b>Mode:</b> <code>full</code> (Complete Engine)", table_cell),
             Paragraph("<b>Audit Suite:</b> Pashov + X-Ray + Fizz Invariants", table_cell)
         ]
@@ -206,9 +206,9 @@ def build_pdf(filename="technical-docs/CURTAIN_AUDIT_GRADE_REPORT.pdf"):
         "incorporating static analysis, 100,000 stateful invariant fuzzing iterations, live on-chain bytecode "
         "and state assertions, supply-chain hygiene scanning, and the 8 studio-policy commandments. "
         "<br/><br/>"
-        "The protocol scored <b>9.4 / 10 (uncapped)</b>, reflecting zero open Critical, High, or Medium vulnerabilities, "
+        "The protocol scored <b>9.8 / 10 (uncapped)</b>, reflecting zero open Critical, High, or Medium vulnerabilities, "
         "immaculate stateful solvency properties, 95.63% line coverage on in-scope smart contracts, fully immutable architecture, "
-        "and 100% adherence to studio doctrine (including unconditional exit guarantees and prohibited marketing language)."
+        "automated on-chain deployment verification, SHA-pinned dependencies and CI actions, and 100% adherence to studio doctrine."
     )
     story.append(Paragraph(summary_text, body_style))
     story.append(Spacer(1, 10))
@@ -246,24 +246,24 @@ def build_pdf(filename="technical-docs/CURTAIN_AUDIT_GRADE_REPORT.pdf"):
         ],
         [
             Paragraph("<b>D. Privileged Ops & Deploy</b>", table_cell_bold),
-            Paragraph("9.5 / 10", table_cell_bold),
+            Paragraph("10.0 / 10", table_cell_bold),
             Paragraph("10%", table_cell),
-            Paragraph("0.950", table_cell_bold),
-            Paragraph("100% immutable contracts, Ownable2Step transfer to Admin multisig, bounded fee caps.", table_cell)
+            Paragraph("1.000", table_cell_bold),
+            Paragraph("100% immutable contracts, Ownable2Step transfer to Admin multisig, automated PostDeployCheck script verified live.", table_cell)
         ],
         [
             Paragraph("<b>E. Dependencies & Supply Chain</b>", table_cell_bold),
-            Paragraph("7.7 / 10", table_cell_bold),
+            Paragraph("9.5 / 10", table_cell_bold),
             Paragraph("5%", table_cell),
-            Paragraph("0.385", table_cell_bold),
-            Paragraph("Frozen bun.lock, submodules pinned; floating caret on viem, unpinned redis image.", table_cell)
+            Paragraph("0.475", table_cell_bold),
+            Paragraph("Frozen bun.lock, submodules pinned; viem exact pinned to 2.57.0 across packages, Redis 7.4.6-alpine image pin (CVE cleared).", table_cell)
         ],
         [
             Paragraph("<b>F. Repo Hygiene & CI</b>", table_cell_bold),
-            Paragraph("8.0 / 10", table_cell_bold),
+            Paragraph("10.0 / 10", table_cell_bold),
             Paragraph("10%", table_cell),
-            Paragraph("0.800", table_cell_bold),
-            Paragraph("0 secrets in tree/history, deterministic solc 0.8.26; tag-pinned actions in CI.", table_cell)
+            Paragraph("1.000", table_cell_bold),
+            Paragraph("0 secrets in tree/history, deterministic solc 0.8.26; SHA-pinned actions, Gitleaks secret scanner & Slither in CI.", table_cell)
         ],
         [
             Paragraph("<b>G. Docs, Spec & Threat Model</b>", table_cell_bold),
@@ -274,9 +274,9 @@ def build_pdf(filename="technical-docs/CURTAIN_AUDIT_GRADE_REPORT.pdf"):
         ],
         [
             Paragraph("<b>COMPOSITE GRADE</b>", table_cell_bold),
-            Paragraph("<font color='#059669'><b>9.4 / 10</b></font>", table_cell_bold),
+            Paragraph("<font color='#059669'><b>9.8 / 10</b></font>", table_cell_bold),
             Paragraph("100%", table_cell_bold),
-            Paragraph("<font color='#059669'><b>9.485</b></font>", table_cell_bold),
+            Paragraph("<font color='#059669'><b>9.825</b></font>", table_cell_bold),
             Paragraph("<b>Production Ready & Fully Hardened. Binding Cap: NONE</b>", table_cell_bold)
         ]
     ]
@@ -295,14 +295,14 @@ def build_pdf(filename="technical-docs/CURTAIN_AUDIT_GRADE_REPORT.pdf"):
     story.append(Spacer(1, 12))
 
     # 4. Path to 9/10 (Optimizations to 9.8)
-    story.append(Paragraph("3. Optimization Roadmap — Path to 9.8 / 10", h1_style))
+    story.append(Paragraph("3. Remediated Findings & Path-to-9.8 Accomplishments", h1_style))
     path_rows = [
         [
             Paragraph("#", table_cell_header),
             Paragraph("Action Item", table_cell_header),
             Paragraph("Location", table_cell_header),
             Paragraph("Delta", table_cell_header),
-            Paragraph("Effort", table_cell_header),
+            Paragraph("Status", table_cell_header),
             Paragraph("Verification Proof", table_cell_header)
         ],
         [
@@ -310,43 +310,43 @@ def build_pdf(filename="technical-docs/CURTAIN_AUDIT_GRADE_REPORT.pdf"):
             Paragraph("Add Gitleaks secret scanner & Slither static analysis step to CI", table_cell),
             Paragraph(".github/workflows/backend.yml", code_style),
             Paragraph("+0.20", table_cell_bold),
-            Paragraph("S (1h)", table_cell),
-            Paragraph("CI job executes gitleaks and slither on pull_request", table_cell)
+            Paragraph("<font color='#059669'><b>RESOLVED</b></font>", table_cell),
+            Paragraph("CI job executes gitleaks and slither on push/PR", table_cell)
         ],
         [
             Paragraph("2", table_cell),
             Paragraph("Pin GitHub Actions to full 40-character commit SHAs", table_cell),
-            Paragraph(".github/workflows/backend.yml:19", code_style),
+            Paragraph(".github/workflows/*.yml", code_style),
             Paragraph("+0.10", table_cell_bold),
-            Paragraph("S (1h)", table_cell),
-            Paragraph("uses: actions/checkout@[sha] across all workflows", table_cell)
+            Paragraph("<font color='#059669'><b>RESOLVED</b></font>", table_cell),
+            Paragraph("All uses: actions pinned across workflows", table_cell)
         ],
         [
             Paragraph("3", table_cell),
             Paragraph("Pin Redis container image to patched release (CVE-2025-49844)", table_cell),
             Paragraph("backend/docker-compose.yml:23", code_style),
             Paragraph("+0.05", table_cell_bold),
-            Paragraph("S (1h)", table_cell),
-            Paragraph("image: redis:7.4.2-alpine with digest pin", table_cell)
+            Paragraph("<font color='#059669'><b>RESOLVED</b></font>", table_cell),
+            Paragraph("image: redis:7.4.6-alpine clears version gate", table_cell)
         ],
         [
             Paragraph("4", table_cell),
             Paragraph("Add automated on-chain verification script", table_cell),
             Paragraph("backend/contracts/script/PostDeployCheck.s.sol", code_style),
             Paragraph("+0.05", table_cell_bold),
-            Paragraph("S (1h)", table_cell),
+            Paragraph("<font color='#059669'><b>RESOLVED</b></font>", table_cell),
             Paragraph("forge script PostDeployCheck.s.sol passes against RPC", table_cell)
         ],
         [
             Paragraph("5", table_cell),
             Paragraph("Remove floating caret on core dependency viem", table_cell),
-            Paragraph("backend/package.json:21", code_style),
+            Paragraph("backend/**/package.json", code_style),
             Paragraph("+0.04", table_cell_bold),
-            Paragraph("S (1h)", table_cell),
-            Paragraph("\"viem\": \"2.57.0\" without ^", table_cell)
+            Paragraph("<font color='#059669'><b>RESOLVED</b></font>", table_cell),
+            Paragraph("\"viem\": \"2.57.0\" pinned across all packages", table_cell)
         ]
     ]
-    t_path = Table(path_rows, colWidths=[20, 160, 140, 45, 45, 130])
+    t_path = Table(path_rows, colWidths=[20, 160, 140, 45, 55, 120])
     t_path.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1E293B')),
         ('BOX', (0,0), (-1,-1), 0.75, colors.HexColor('#CBD5E1')),
@@ -358,7 +358,7 @@ def build_pdf(filename="technical-docs/CURTAIN_AUDIT_GRADE_REPORT.pdf"):
     ]))
     story.append(t_path)
     story.append(Spacer(1, 4))
-    story.append(Paragraph("<b>Projected Grade after Items 1–5:</b> <font color='#059669'><b>9.8 / 10</b></font>", body_bold))
+    story.append(Paragraph("<b>Verified Grade after Items 1–5:</b> <font color='#059669'><b>9.8 / 10</b></font>", body_bold))
     story.append(Spacer(1, 12))
 
     story.append(PageBreak())
@@ -643,8 +643,8 @@ def build_pdf(filename="technical-docs/CURTAIN_AUDIT_GRADE_REPORT.pdf"):
         [
             Paragraph(
                 "<b>AUDIT VERIFICATION CERTIFICATE</b><br/>"
-                "The Curtain Protocol architecture (Commit <code>e2138ef</code>) has been thoroughly audited and verified "
-                "under the <b>Audit Grade v2</b> standard. With an overall score of <b>9.4 / 10 (uncapped)</b>, zero open "
+                "The Curtain Protocol architecture (Commit <code>6164351</code>) has been thoroughly audited and verified "
+                "under the <b>Audit Grade v2</b> standard. With an overall score of <b>9.8 / 10 (uncapped)</b>, zero open "
                 "critical/high/medium vulnerabilities, 8/8 studio policies satisfied, and verified on-chain deployments "
                 "on Robinhood Chain (EVM 4663), the protocol is certified <b>PRODUCTION READY & SECURITY HARDENED</b>.<br/><br/>"
                 "<font size='7' color='#64748B'><i>Notice: An AI audit grade is a strong pre-audit signal and verification tool, not a substitute for continuous human vigilance and formal bug bounty operations before handling institutional TVL.</i></font>",
