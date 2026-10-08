@@ -155,13 +155,15 @@ export async function createIntent(db: Db, req: IntentRequest, allowedTokens: Se
     : deadlineHashOf(deadline, salt);
   const id = randomBytes(16).toString("hex");
 
-  await db.transaction(async (tx) => {
+  const intentParams = [
+    id, deadlineHash, deadline.toString(), salt, payAt.toString(), instant ? "instant" : "delayed", tokenIn, amountIn.toString(),
+    tokenOut, recipient, minOut.toString(), secret, getAddress(req.depositor), stealth?.eph ?? null, stealth?.tag ?? null, stealth?.fee ?? null,
+  ];
+  const insertIntent = async (tx: Db) => {
     await tx.query(
       `INSERT INTO intents (id, deadline_hash, deadline, salt, pay_at, mode, token_in, amount_in, token_out, recipient, min_out, secret, depositor,
                             stealth_ephemeral_pub, stealth_view_tag, stealth_fee)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
-      [id, deadlineHash, deadline.toString(), salt, payAt.toString(), instant ? "instant" : "delayed", tokenIn, amountIn.toString(),
-        tokenOut, recipient, minOut.toString(), secret, getAddress(req.depositor), stealth?.eph ?? null, stealth?.tag ?? null, stealth?.fee ?? null],
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`, intentParams,
     );
     for (const [position, sp] of (splits ?? []).entries()) {
       await tx.query(
@@ -170,6 +172,10 @@ export async function createIntent(db: Db, req: IntentRequest, allowedTokens: Se
         [id, position, sp.recipient, sp.shareBps, sp.eph, sp.tag, sp.fee],
       );
     }
-  });
+  };
+  // A normal intent is one atomic INSERT; avoid BEGIN/COMMIT round trips on the hot path.
+  // Split intents still use a transaction because they also write intent_splits rows.
+  if (splits) await db.transaction(insertIntent);
+  else await insertIntent(db);
   return { id, deadline, salt, deadlineHash, payAt, ...(tag ? { tag } : {}), ...(splits ? { splits: splits.map(({ recipient: r, shareBps }) => ({ recipient: r, shareBps })) } : {}) };
 }

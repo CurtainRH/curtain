@@ -49,12 +49,37 @@ export class Keeper {
     const { publicClient, walletClient } = this.cfg;
     const sent: Hex[] = [];
     const contexts = this.cfg.contexts ?? [{ version: "v2" as const, vault: this.cfg.vault }];
-    for (const context of contexts) for (const s of await this.pending(context.version)) {
-      if (BigInt(s.deadline) < BigInt(nowSec)) continue;
-      const fee = s.payouts.reduce((sum, p) => sum + BigInt(p.keeperFee), 0n);
-      const floor = this.cfg.minFee?.[getAddress(s.swap.tokenOut)];
-      if (floor !== undefined && fee < floor) continue;
-      if (await publicClient.readContract({ address: context.vault, abi: VAULT_ABI, functionName: "nonceUsed", args: [BigInt(s.nonce)] })) continue;
+    const pending = (await Promise.all(contexts.map(async (context) =>
+      (await this.pending(context.version)).map((settlement) => ({ context, settlement }))))).flat();
+    const candidates = pending.filter(({ settlement }) => {
+      if (BigInt(settlement.deadline) < BigInt(nowSec)) return false;
+      const fee = settlement.payouts.reduce((sum, p) => sum + BigInt(p.keeperFee), 0n);
+      const floor = this.cfg.minFee?.[getAddress(settlement.swap.tokenOut)];
+      return floor === undefined || fee >= floor;
+    });
+    let used: boolean[];
+    try {
+      used = await publicClient.multicall({
+        allowFailure: false,
+        contracts: candidates.map(({ context, settlement }) => ({
+          address: context.vault,
+          abi: VAULT_ABI,
+          functionName: "nonceUsed" as const,
+          args: [BigInt(settlement.nonce)] as const,
+        })),
+      });
+    } catch {
+      // Some RPCs do not expose Multicall3 reliably. Preserve keeper progress with a safe fallback.
+      used = await Promise.all(candidates.map(({ context, settlement }) =>
+        publicClient.readContract({
+          address: context.vault,
+          abi: VAULT_ABI,
+          functionName: "nonceUsed",
+          args: [BigInt(settlement.nonce)],
+        })));
+    }
+    for (const [index, { context, settlement: s }] of candidates.entries()) {
+      if (used[index]) continue;
       const args = [
         { ...s.swap, amountIn: BigInt(s.swap.amountIn), minOut: BigInt(s.swap.minOut) },
         s.payouts.map((p) => ({ recipient: p.recipient, amount: BigInt(p.amount), protocolFee: BigInt(p.protocolFee), keeperFee: BigInt(p.keeperFee), tag: p.tag })),
