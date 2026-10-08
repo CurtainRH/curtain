@@ -7,7 +7,7 @@
       "devDependencies": {
         "@types/bun": "latest",
         "typescript": "^5.6.3",
-        "viem": "^2.57.0",
+        "viem": "2.57.0",
       },
     },
     "packages/db": {
@@ -27,7 +27,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@noble/curves": "1.9.1",
-        "viem": "^2.57.0",
+        "viem": "2.57.0",
       },
       "devDependencies": {
         "@curtain/db": "workspace:*",
@@ -40,7 +40,7 @@
       "name": "@curtain/keeper",
       "version": "0.0.1",
       "dependencies": {
-        "viem": "^2.57.0",
+        "viem": "2.57.0",
       },
       "devDependencies": {
         "@curtain/db": "workspace:*",
@@ -62,7 +62,7 @@
       "dependencies": {
         "@curtain/db": "workspace:*",
         "@curtain/sdk": "workspace:*",
-        "viem": "^2.57.0",
+        "viem": "2.57.0",
       },
       "devDependencies": {
         "@electric-sql/pglite": "^0.3.0",
