@@ -22,7 +22,7 @@ This document outlines the workflow and architecture for synchronizing the Curta
 From the project root:
 
 ### A. Push to Production Only
-Pushes your local `main` branch directly to the private repo (`NotADeveloper7/terrawallet`):
+Pushes your local `main` branch directly to the private repo (`NotADeveloper7/curtain`):
 ```bash
 bun run push:origin
 # or: git push origin main

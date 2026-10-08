@@ -19,4 +19,17 @@
 
 - Frontend (this Lovable project) stays at the repo root. Don't move it, because Lovable and Vercel build from here.
 - `backend/` is a separate Bun workspace (contracts, packages, services) with its own `package.json` and `bun.lock`. Root lint and tsconfig ignore it.
-- `docs/` holds the product specs; `docs/CURTAIN_V2_SPEC.md` is the current design. `docs/DUAL_REPO_SYNC.md` explains the private/public repo sync (`scripts/sync-public.py`).
+- `docs/` holds the product specs; `docs/CURTAIN_V2_SPEC.md` is the current design. `docs/DUAL_REPO_SYNC.md` & `docs/Dual_Repo_Reference.md` explain the private/public repo sync (`scripts/sync-public.py`).
+
+## Dual-Repository Sync Rules
+
+- **Remotes**:
+  - `origin`: Private Production Repo (`https://github.com/notadeveloper7/curtain.git`)
+  - `origin-public`: Public Open-Source Repo (`https://github.com/CurtainRH/curtain.git`)
+- **Credentials**: Use PAT tokens documented in `docs/Curtain_Git.md` (`NAD7` for `origin`, `CurtainRH` for `origin-public`).
+- **Push Workflow**:
+  - Always push private changes to `origin/main` using `bun run push:origin` (or `git push origin main`).
+  - Always sanitize and synchronize to public open-source repo using `bun run push:public` (or `python scripts/sync-public.py`).
+  - Or trigger both simultaneously using `bun run push:all`.
+- **Author Identity Sanitization**: Never push directly to `origin-public` without using `scripts/sync-public.py`. The sync script ensures commit authorship on `origin-public` is deterministically rewritten to `CurtainRH <curtainsrh@atomicmail.io>`.
+- **Workspace Hygiene**: Keep all backend services/packages/contracts inside `backend/`. Do not re-create legacy top-level folders (`/contracts`, `/circuits`, `/apps`, `/packages`, `/services`, `.tools`). Preserve all files in `/docs`.
