@@ -9,6 +9,7 @@ import { chain, curtainMode, ensureChain, errorMessage } from "./curtain/integra
 import { downloadFile } from "./curtain/domain";
 import { useCurtain, type TokenData } from "./curtain/useCurtain";
 import type { SavedTicket } from "./curtain/integration";
+import "@rainbow-me/rainbowkit/styles.css";
 import "./swap.css";
 
 const queryClient = new QueryClient();
