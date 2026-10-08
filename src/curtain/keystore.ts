@@ -122,3 +122,78 @@ export async function createFreshWallet(
     key = undefined;
   }
 }
+
+// ---------------------------------------------------------------- #12 encrypted escape tickets
+
+export const ENCRYPTED_TICKET_FORMAT = "curtain-escape-ticket-encrypted";
+
+/** A password-encrypted escape ticket: scrypt (N=2^17) key, AES-256-GCM (tamper-evident). */
+export interface EncryptedTicket {
+  format: typeof ENCRYPTED_TICKET_FORMAT;
+  version: 1;
+  kdf: { name: "scrypt"; n: number; r: number; p: number; salt: string };
+  cipher: { name: "AES-256-GCM"; iv: string };
+  ciphertext: string;
+}
+
+async function ticketKey(password: string, salt: Uint8Array, n: number, r: number, p: number) {
+  const raw = await scryptAsync(new TextEncoder().encode(password.normalize("NFKC")), salt, {
+    N: n,
+    r,
+    p,
+    dkLen: 32,
+  });
+  return crypto.subtle.importKey("raw", Uint8Array.from(raw), { name: "AES-GCM" }, false, [
+    "encrypt",
+    "decrypt",
+  ]);
+}
+
+export function isEncryptedTicket(data: unknown): data is EncryptedTicket {
+  const d = data as Partial<EncryptedTicket> | null;
+  return !!d && d.format === ENCRYPTED_TICKET_FORMAT && d.version === 1;
+}
+
+/** Encrypts any JSON value (an escape ticket) with a password; decrypted once as a self-check. */
+export async function encryptTicket(
+  value: unknown,
+  password: string,
+  n = KEYSTORE_N,
+): Promise<EncryptedTicket> {
+  const salt = crypto.getRandomValues(new Uint8Array(32));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await ticketKey(password, salt, n, 8, 1);
+  const plain = new TextEncoder().encode(JSON.stringify(value));
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain),
+  );
+  const out: EncryptedTicket = {
+    format: ENCRYPTED_TICKET_FORMAT,
+    version: 1,
+    kdf: { name: "scrypt", n, r: 8, p: 1, salt: strip(bytesToHex(salt)) },
+    cipher: { name: "AES-256-GCM", iv: strip(bytesToHex(iv)) },
+    ciphertext: strip(bytesToHex(ciphertext)),
+  };
+  if (JSON.stringify(await decryptTicket(out, password)) !== JSON.stringify(value))
+    throw new Error("The encrypted ticket failed its check. Nothing was saved; try again.");
+  return out;
+}
+
+/** Decrypts an encrypted ticket; throws "Wrong password." for a bad password or an altered file. */
+export async function decryptTicket(file: EncryptedTicket, password: string): Promise<unknown> {
+  const { n, r, p, salt } = file.kdf;
+  if (![n, r, p].every((x) => Number.isInteger(x) && x > 0) || n > 1 << 20)
+    throw new Error("This ticket file is damaged.");
+  const key = await ticketKey(password, hexToBytes(`0x${salt}`), n, r, p);
+  let plain: ArrayBuffer;
+  try {
+    plain = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: Uint8Array.from(hexToBytes(`0x${file.cipher.iv}`)) },
+      key,
+      Uint8Array.from(hexToBytes(`0x${file.ciphertext}`)),
+    );
+  } catch {
+    throw new Error("Wrong password, or the ticket file was changed.");
+  }
+  return JSON.parse(new TextDecoder().decode(plain));
+}
