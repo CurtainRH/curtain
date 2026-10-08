@@ -41,4 +41,10 @@ Third-party backends call `https://operator.curtainrh.com/v1` with a Bearer API 
 Stealth/split parameters and smart-contract wallet authentication are not supported by this
 first developer release. Key-specific limits persist in PostgreSQL across restarts.
 
+Keeper integrations use the public `GET /keeper/v1/settlements/pending?privacyRoute=v2` or
+`privacyRoute=v3` feed. It returns operator-signed settlements plus the chain and vault address;
+any funded wallet can submit each settlement directly to the returned vault and receive its keeper
+fee. No API key is required. The legacy `/settlements/pending` endpoint remains available for
+existing keepers.
+
 Security checks: `cd backend && bun test services/operator/test/developer.test.ts`.

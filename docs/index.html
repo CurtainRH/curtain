@@ -174,6 +174,26 @@
             cannot satisfy its minimum output.
           </p>
         </section>
+        <section id="keepers">
+          <div class="endpoint"><span>GET</span><code>/keeper/v1/settlements/pending</code></div>
+          <h2>Run a permissionless keeper.</h2>
+          <p>
+            Poll the public feed with <code>privacyRoute=v2</code> or <code>privacyRoute=v3</code>.
+            Each response contains operator-signed settlement data, the correct vault, and the
+            chain ID. Simulate <code>vault.settle(...)</code> and submit it from your own funded
+            wallet. The vault pays the keeper fee to the submitting address.
+          </p>
+          <div class="code">
+            <div class="code-title">Pending V2 settlements <button type="button" class="copy">Copy</button></div>
+            <pre><code>curl --get https://operator.curtainrh.com/keeper/v1/settlements/pending \
+  --data-urlencode 'privacyRoute=v2'</code></pre>
+          </div>
+          <p>
+            No API key is required. A keeper cannot alter recipients, amounts, fees, or swap data:
+            the vault verifies the operator signature. The legacy
+            <code>/settlements/pending</code> endpoint remains available for existing keepers.
+          </p>
+        </section>
         <section id="intents">
           <div class="endpoint"><span class="post">POST</span><code>/v1/intents</code></div>
           <h2>Prepare the swap.</h2>

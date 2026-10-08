@@ -13,6 +13,8 @@
  *                                 Keep `deadline` and `salt`: they unlock the escape hatch.
  *   GET  /intents/:id             status of your swap
  *   GET  /settlements/pending     signed settlements any keeper may submit (keeper earns the fees)
+ *   GET  /keeper/v1/settlements/pending?privacyRoute=v2|v3
+ *                                public, versioned keeper feed with vault metadata
  *   GET  /pool                    deposits waiting to be paid, per input token (FEATURE_ANONYMITY_SET)
  *   GET  /sync/:id                an encrypted escape-ticket backup (FEATURE_TICKET_SYNC)
  *   PUT  /sync/:id                { authKey, blob }: store it; the first write pins keccak256(authKey)
@@ -243,8 +245,25 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         return json(await active.operator.waitingDeposits());
       }
 
-      if (req.method === "GET" && pathname === "/settlements/pending") {
-        return json(await active.operator.pendingSettlements(now()));
+      if (req.method === "GET" && (pathname === "/settlements/pending" || pathname === "/keeper/v1/settlements/pending")) {
+        const routeParam = url.searchParams.get("privacyRoute");
+        if (routeParam !== null && routeParam !== "v2" && routeParam !== "v3") {
+          return json({ error: 'privacyRoute must be "v2" or "v3"' }, 400);
+        }
+        const route = routeParam === "v3" ? "v3" : routeParam === "v2" ? "v2" : version;
+        if (pathname === "/keeper/v1/settlements/pending" && !checkRate(`keeper:${route}:${clientIp}`, 60)) {
+          return json({ error: "Too many keeper feed requests. Please wait a moment." }, 429);
+        }
+        const keeperContext = cfg.contexts?.[route] ?? (route === "v2" ? cfg : undefined);
+        if (!keeperContext) return json({ error: "V3 operator context is not configured" }, 503);
+        const settlements = await keeperContext.operator.pendingSettlements(now());
+        if (pathname === "/settlements/pending") return json(settlements);
+        return json({
+          chainId: cfg.chainId ?? 4663,
+          privacyRoute: route,
+          vault: keeperContext.vault,
+          settlements,
+        });
       }
 
       return json({ error: "not found" }, 404);

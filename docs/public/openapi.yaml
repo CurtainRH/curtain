@@ -11,6 +11,36 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /keeper/v1/settlements/pending:
+    get:
+      operationId: getPendingSettlements
+      summary: Public signed settlements for permissionless keepers
+      security: []
+      servers:
+        - url: https://operator.curtainrh.com
+      parameters:
+        - {
+            name: privacyRoute,
+            in: query,
+            required: true,
+            schema: { type: string, enum: [v2, v3] },
+          }
+      responses:
+        "200":
+          description: Settlements that any funded wallet may submit to the returned vault
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [chainId, privacyRoute, vault, settlements]
+                properties:
+                  chainId: { type: integer, example: 4663 }
+                  privacyRoute: { type: string, enum: [v2, v3] }
+                  vault: { $ref: "#/components/schemas/Address" }
+                  settlements:
+                    type: array
+                    items: { $ref: "#/components/schemas/PendingSettlement" }
+        default: { $ref: "#/components/responses/Error" }
   /config:
     get:
       operationId: getConfig
@@ -227,3 +257,31 @@ components:
           properties:
             approval: { $ref: "#/components/schemas/Transaction" }
             deposit: { $ref: "#/components/schemas/Transaction" }
+    PendingSettlement:
+      type: object
+      required: [swap, payouts, deadline, nonce, signature]
+      properties:
+        swap:
+          type: object
+          required: [router, tokenIn, amountIn, tokenOut, minOut, data]
+          properties:
+            router: { $ref: "#/components/schemas/Address" }
+            tokenIn: { $ref: "#/components/schemas/Address" }
+            amountIn: { type: string }
+            tokenOut: { $ref: "#/components/schemas/Address" }
+            minOut: { type: string }
+            data: { type: string, pattern: "^0x[a-fA-F0-9]*$" }
+        payouts:
+          type: array
+          items:
+            type: object
+            required: [recipient, amount, protocolFee, keeperFee, tag]
+            properties:
+              recipient: { $ref: "#/components/schemas/Address" }
+              amount: { type: string }
+              protocolFee: { type: string }
+              keeperFee: { type: string }
+              tag: { type: string }
+        deadline: { type: string }
+        nonce: { type: string }
+        signature: { type: string, pattern: "^0x[a-fA-F0-9]*$" }

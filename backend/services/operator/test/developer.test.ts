@@ -70,9 +70,11 @@ beforeAll(async () => {
   await migrate(v3db);
   const operator = {
     quoteForUser: async () => ({ available: true, minOutSuggested: "99" }),
+    pendingSettlements: async () => [],
   } as unknown as Operator;
   const v3operator = {
     quoteForUser: async () => ({ available: true, minOutSuggested: "88" }),
+    pendingSettlements: async () => [],
   } as unknown as Operator;
   handle = createApi({
     db,
@@ -180,6 +182,22 @@ describe("developer access and V2/V3 API", () => {
         )
       ).status,
     ).toBe(400);
+  });
+  test("exposes the public, versioned keeper feed without API authentication", async () => {
+    const v2 = await request("/keeper/v1/settlements/pending?privacyRoute=v2");
+    expect(v2.status).toBe(200);
+    expect(v2.body).toEqual({
+      chainId: 4663,
+      privacyRoute: "v2",
+      vault: VAULT,
+      settlements: [],
+    });
+    const v3 = await request("/keeper/v1/settlements/pending?privacyRoute=v3");
+    expect(v3.status).toBe(200);
+    expect(v3.body.privacyRoute).toBe("v3");
+    expect((await request("/keeper/v1/settlements/pending?privacyRoute=dynamic")).status).toBe(
+      400,
+    );
   });
   test("prepares accurate unsigned transactions and returns the same intent on retries", async () => {
     const created = await key();

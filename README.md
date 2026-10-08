@@ -98,7 +98,7 @@ cd contracts && forge test     # contracts
 | GET | `/config` | vault, tokens, keeper fee, max delay |
 | POST | `/intents` | `{ id, deadline, salt, deadlineHash, vault }` |
 | GET | `/intents/:id` | status, deposit id, output, payout tx |
-| GET | `/payouts/pending` | signed payouts any keeper may submit |
+| GET | `/keeper/v1/settlements/pending?privacyRoute=v2|v3` | public signed settlements any keeper may submit; response includes vault and chain metadata |
 
 ## Roadmap
 

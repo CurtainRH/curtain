@@ -39,9 +39,10 @@ export class Keeper {
 
   async pending(version: "v2" | "v3" = "v2"): Promise<PendingSettlement[]> {
     const base = this.cfg.operatorApi.replace(/\/+$/, "");
-    const res = await (this.cfg.fetch ?? fetch)(`${base}/settlements/pending`, { headers: { "x-curtain-version": version } });
+    const res = await (this.cfg.fetch ?? fetch)(`${base}/keeper/v1/settlements/pending?privacyRoute=${version}`);
     if (!res.ok) throw new Error(`operator API: HTTP ${res.status}`);
-    return (await res.json()) as PendingSettlement[];
+    const body = (await res.json()) as { settlements?: PendingSettlement[] };
+    return body.settlements ?? [];
   }
 
   /** One pass: lands every worthwhile, unexpired, not-yet-landed settlement. Returns tx hashes. */
