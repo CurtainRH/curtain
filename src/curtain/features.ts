@@ -12,6 +12,7 @@ const OFF: Features = {
   anonymitySet: false,
   freshWallet: false,
   sameWalletWarning: false,
+  delayPresets: false,
 };
 
 let loaded: Promise<Features> | undefined;

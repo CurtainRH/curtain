@@ -662,3 +662,33 @@ const DEPOSITED_EVENT = {
     { name: "deadlineHash", type: "bytes32", indexed: false },
   ],
 } as const;
+
+/** #11 delay presets: each swap gets a random window inside its preset's range. */
+export const DELAY_PRESETS = {
+  quick: { label: "Quick", range: "1–6 hours", min: 3_600, max: 21_600 },
+  better: { label: "Better", range: "1–3 days", min: 86_400, max: 259_200 },
+  best: { label: "Best", range: "1–4 weeks", min: 604_800, max: 2_419_200 },
+} as const;
+export type DelayPreset = keyof typeof DELAY_PRESETS;
+
+/**
+ * A random window for `preset`, in whole minutes, so delays don't cluster on a few standard
+ * values. Never above `maxDelay` (the operator's limit).
+ */
+export function presetWindow(preset: DelayPreset, maxDelay: number): number {
+  const { min, max } = DELAY_PRESETS[preset];
+  const hi = Math.min(max, maxDelay);
+  const lo = Math.min(min, hi);
+  const minutes = Math.floor((hi - lo) / 60);
+  const pick = minutes > 0 ? crypto.getRandomValues(new Uint32Array(1))[0]! % (minutes + 1) : 0;
+  return lo + pick * 60;
+}
+
+/** "about 3 hours", "about 2 days", "about 2 weeks". */
+export function aboutDuration(seconds: number): string {
+  const unit = (n: number, w: string) => `about ${n} ${w}${n === 1 ? "" : "s"}`;
+  if (seconds < 3_570) return unit(Math.max(1, Math.round(seconds / 60)), "minute");
+  if (seconds < 84_600) return unit(Math.round(seconds / 3_600), "hour");
+  if (seconds < 1_177_200) return unit(Math.round(seconds / 86_400), "day");
+  return unit(Math.round(seconds / 604_800), "week");
+}

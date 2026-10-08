@@ -60,6 +60,10 @@ import {
   provider,
   recipientLinkWarnings,
   resolveStealthRecipient,
+  aboutDuration,
+  DELAY_PRESETS,
+  presetWindow,
+  type DelayPreset,
   roundSuggestions,
   type RecipientKind,
   stakeToken,
@@ -221,7 +225,16 @@ export default function Dashboard({ path }: { path: string }) {
   const requestNumber = useRef(0);
   const input = app.tokens.find((t) => t.symbol === from);
   const output = app.tokens.find((t) => t.symbol === to);
-  const delaySeconds = delayed ? Number(delay === "custom" ? customDelay : delay) : 0;
+  // #11: Quick / Better / Best presets. The random window is drawn when a preset is picked, so
+  // the score and the swap use the same value; picking again draws a new one.
+  const [delayPreset, setDelayPreset] = useState<DelayPreset | "custom">("better");
+  const [presetSeconds, setPresetSeconds] = useState(() => presetWindow("better", 15552000));
+  const usePresets = features.delayPresets && delayPreset !== "custom";
+  const delaySeconds = !delayed
+    ? 0
+    : usePresets
+      ? Math.min(presetSeconds, app.maxDelay)
+      : Number(delay === "custom" ? customDelay : delay);
   // Split timing (#5): the swap becomes 2-5 separate private swaps, each with its own escape
   // ticket and its own random delivery time inside the delay window. Separate deposits keep
   // every piece fully refundable on its own (one deposit paid in parts could not be).
@@ -1563,43 +1576,72 @@ export default function Dashboard({ path }: { path: string }) {
                     </button>
                   ))}
                 </div>
+                {delayed && features.delayPresets && (
+                  <>
+                    <div className="segmented v2-delay-presets">
+                      {(["quick", "better", "best", "custom"] as const).map((p) => (
+                        <button
+                          key={p}
+                          aria-pressed={delayPreset === p}
+                          onClick={() => {
+                            setDelayPreset(p);
+                            if (p !== "custom") setPresetSeconds(presetWindow(p, app.maxDelay));
+                          }}
+                        >
+                          {p === "custom" ? "Custom" : DELAY_PRESETS[p].label}
+                          {p !== "custom" && <small>{DELAY_PRESETS[p].range}</small>}
+                        </button>
+                      ))}
+                    </div>
+                    {usePresets && (
+                      <span className="field-help">
+                        This swap gets a window of {aboutDuration(delaySeconds)}, picked at random
+                        inside the preset so delays don't all look the same.
+                      </span>
+                    )}
+                  </>
+                )}
                 {delayed && (
                   <>
-                    <label className="field-label" htmlFor="swap-delay">
-                      Delay window
-                    </label>
-                    <select
-                      id="swap-delay"
-                      value={delay}
-                      onChange={(e) => setDelay(e.target.value)}
-                    >
-                      {[
-                        [3600, "1 hour"],
-                        [21600, "6 hours"],
-                        [86400, "1 day"],
-                        [604800, "7 days"],
-                        [2592000, "30 days"],
-                        [15552000, "180 days"],
-                      ].map(([s, label]) => (
-                        <option key={s} value={s} disabled={Number(s) > app.maxDelay}>
-                          {label}
-                        </option>
-                      ))}
-                      <option value="custom">Custom</option>
-                    </select>
-                    {delay === "custom" && (
+                    {!usePresets && (
                       <>
-                        <label className="field-label" htmlFor="custom-delay">
-                          Window in seconds (maximum {app.maxDelay})
+                        <label className="field-label" htmlFor="swap-delay">
+                          Delay window
                         </label>
-                        <input
-                          id="custom-delay"
-                          type="number"
-                          min={1}
-                          max={app.maxDelay}
-                          value={customDelay}
-                          onChange={(e) => setCustomDelay(e.target.value)}
-                        />
+                        <select
+                          id="swap-delay"
+                          value={delay}
+                          onChange={(e) => setDelay(e.target.value)}
+                        >
+                          {[
+                            [3600, "1 hour"],
+                            [21600, "6 hours"],
+                            [86400, "1 day"],
+                            [604800, "7 days"],
+                            [2592000, "30 days"],
+                            [15552000, "180 days"],
+                          ].map(([s, label]) => (
+                            <option key={s} value={s} disabled={Number(s) > app.maxDelay}>
+                              {label}
+                            </option>
+                          ))}
+                          <option value="custom">Custom</option>
+                        </select>
+                        {delay === "custom" && (
+                          <>
+                            <label className="field-label" htmlFor="custom-delay">
+                              Window in seconds (maximum {app.maxDelay})
+                            </label>
+                            <input
+                              id="custom-delay"
+                              type="number"
+                              min={1}
+                              max={app.maxDelay}
+                              value={customDelay}
+                              onChange={(e) => setCustomDelay(e.target.value)}
+                            />
+                          </>
+                        )}
                       </>
                     )}
                     <span className="field-help">

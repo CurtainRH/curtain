@@ -19,6 +19,7 @@ export const FEATURE_ENV = {
   anonymitySet: "FEATURE_ANONYMITY_SET", // #8 how many deposits of this token are waiting
   freshWallet: "FEATURE_FRESH_WALLET", // #9 create a new recipient wallet as an encrypted file
   sameWalletWarning: "FEATURE_SAME_WALLET_WARNING", // #10 warn when a recipient links back to you
+  delayPresets: "FEATURE_DELAY_PRESETS", // #11 Quick / Better / Best delay presets with jitter
 } as const;
 
 export type FeatureName = keyof typeof FEATURE_ENV;
