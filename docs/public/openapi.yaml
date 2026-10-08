@@ -3,7 +3,7 @@ info:
   title: Curtain Developer API
   version: 1.0.0
   description: >-
-    V2 or V3 private swap preparation on Robinhood Chain. Call from your server.
+    V2, V3, or dynamic private swap preparation on Robinhood Chain. Call from your server.
     API keys do not sign or broadcast transactions. Users retain wallet custody.
     Obtain a key in https://curtainrh.com/app/developer.
 servers:
@@ -24,7 +24,7 @@ paths:
                 type: object
                 properties:
                   chainId: { type: integer, example: 4663 }
-                  privacyRoutes: { type: array, items: { type: string, enum: [v2, v3] } }
+                  privacyRoutes: { type: array, items: { type: string, enum: [v2, v3, dynamic] } }
                   vault: { $ref: "#/components/schemas/Address" }
                   vaults:
                     { type: object, additionalProperties: { $ref: "#/components/schemas/Address" } }
@@ -36,13 +36,13 @@ paths:
   /quote:
     get:
       operationId: getQuote
-      summary: Quote a V2 swap in raw token units
+      summary: Quote a private swap in raw token units
       parameters:
         - {
             name: privacyRoute,
             in: query,
             required: true,
-            schema: { type: string, enum: [v2, v3] },
+            schema: { type: string, enum: [v2, v3, dynamic] },
           }
         - {
             name: tokenIn,
@@ -105,7 +105,7 @@ paths:
               type: object
               required: [privacyRoute, tokenIn, tokenOut, amountIn, minOut, depositor, recipient]
               properties:
-                privacyRoute: { type: string, enum: [v2, v3] }
+                privacyRoute: { type: string, enum: [v2, v3, dynamic] }
                 tokenIn: { $ref: "#/components/schemas/Address" }
                 tokenOut: { $ref: "#/components/schemas/Address" }
                 amountIn: { $ref: "#/components/schemas/PositiveUnits" }

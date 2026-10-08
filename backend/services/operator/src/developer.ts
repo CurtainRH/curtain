@@ -65,7 +65,7 @@ function units(value: unknown, name: string): string {
 const keyFields =
   'id, name, prefix, created_at AS "createdAt", revoked_at AS "revokedAt", last_used_at AS "lastUsedAt"';
 
-/** Authenticated developer API. V2 and explicit V3 contexts are supported. */
+/** Authenticated developer API. V2, V3, and automatic route selection are supported. */
 export function createDeveloperApi(root: ApiConfig) {
   const cfg = root.contexts?.v2 ?? root;
   const v3 = root.contexts?.v3;
@@ -73,11 +73,23 @@ export function createDeveloperApi(root: ApiConfig) {
   const now = root.now ?? (() => Math.floor(Date.now() / 1000));
   const chainId = root.chainId ?? 4663;
   const allowed = new Set(Object.values(cfg.tokens).map((token) => getAddress(token)));
-  const contextFor = (route: unknown) => {
+  type Route = {
+    context: ApiConfig;
+    table: "developer_intents" | "developer_v3_intents";
+    mode: "v2" | "v3";
+  };
+  const contextFor = (route: unknown, tokenIn?: Address, amount?: string): Route => {
     if (route === "v2") return { context: cfg, table: "developer_intents", mode: "v2" as const };
     if (route === "v3" && v3?.v3Mode)
       return { context: v3, table: "developer_v3_intents", mode: "v3" as const };
-    throw new ApiError(400, 'privacyRoute must be "v2" or "v3"');
+    if (route === "dynamic") {
+      if (!tokenIn || !amount)
+        throw new ApiError(400, "Dynamic privacy requires tokenIn and amountIn");
+      if (v3?.v3Mode && v3.fixedAmounts?.has(`${tokenIn}:${amount}`))
+        return { context: v3, table: "developer_v3_intents", mode: "v3" };
+      return { context: cfg, table: "developer_intents", mode: "v2" };
+    }
+    throw new ApiError(400, 'privacyRoute must be "v2", "v3", or "dynamic"');
   };
   const fixedDenominations = () => {
     if (!v3?.fixedAmounts) return [];
@@ -297,7 +309,6 @@ export function createDeveloperApi(root: ApiConfig) {
     const body = await bodyOf(req);
     if (body.stealth !== undefined || body.splits !== undefined)
       throw new ApiError(400, "This API currently supports single-recipient intents only");
-    const route = contextFor(body.privacyRoute);
     const params = {
       tokenIn: tokenAddress(body.tokenIn, "tokenIn"),
       tokenOut: tokenAddress(body.tokenOut, "tokenOut"),
@@ -307,6 +318,7 @@ export function createDeveloperApi(root: ApiConfig) {
       minOut: units(body.minOut, "minOut"),
       delaySeconds: body.delaySeconds ?? 0,
     };
+    const route = contextFor(body.privacyRoute, params.tokenIn, params.amountIn);
     if (
       typeof params.delaySeconds !== "number" ||
       !Number.isInteger(params.delaySeconds) ||
@@ -403,7 +415,7 @@ export function createDeveloperApi(root: ApiConfig) {
       if (path === "/v1/config" && req.method === "GET")
         return reply({
           chainId,
-          privacyRoutes: ["v2", ...(v3?.v3Mode ? ["v3"] : [])],
+          privacyRoutes: ["v2", ...(v3?.v3Mode ? ["v3", "dynamic"] : [])],
           vault: cfg.vault,
           vaults: { v2: cfg.vault, ...(v3?.v3Mode ? { v3: v3.vault } : {}) },
           tokens: cfg.tokens,
@@ -412,23 +424,24 @@ export function createDeveloperApi(root: ApiConfig) {
           ...(v3?.v3Mode ? { v3FixedAmounts: fixedDenominations() } : {}),
         });
       if (path === "/v1/quote" && req.method === "GET") {
-        const route = contextFor(url.searchParams.get("privacyRoute"));
         const tokenIn = tokenAddress(url.searchParams.get("tokenIn"), "tokenIn");
         const tokenOut = tokenAddress(url.searchParams.get("tokenOut"), "tokenOut");
+        const amount = units(url.searchParams.get("amountIn"), "amountIn");
+        const route = contextFor(url.searchParams.get("privacyRoute"), tokenIn, amount);
         const routeAllowed = new Set(
           Object.values(route.context.tokens).map((token) => getAddress(token)),
         );
         if (!routeAllowed.has(tokenIn) || !routeAllowed.has(tokenOut))
           throw new ApiError(400, "Token not supported");
-        const amount = units(url.searchParams.get("amountIn"), "amountIn");
         if (route.mode === "v3" && !route.context.fixedAmounts?.has(`${tokenIn}:${amount}`))
           throw new ApiError(400, "V3 only accepts an approved fixed denomination for this asset");
         const slippage = Number(url.searchParams.get("slippageBps") ?? 100);
         if (!Number.isInteger(slippage) || slippage < 0 || slippage > 5000)
           throw new ApiError(400, "slippageBps must be an integer from 0 to 5000");
-        return reply(
-          await route.context.operator.quoteForUser(tokenIn, tokenOut, BigInt(amount), slippage),
-        );
+        return reply({
+          ...(await route.context.operator.quoteForUser(tokenIn, tokenOut, BigInt(amount), slippage)),
+          privacyRoute: route.mode,
+        });
       }
       if (path === "/v1/intents" && req.method === "POST") return await newIntent(req, keyId);
       const intentId = path.match(/^\/v1\/intents\/([a-f0-9]{32})$/)?.[1];
@@ -445,7 +458,7 @@ export function createDeveloperApi(root: ApiConfig) {
             WHERE d.key_id = $1 AND i.id = $2`,
             [keyId, intentId],
           );
-          if (rows[0]) return reply(rows[0]);
+          if (rows[0]) return reply({ ...rows[0], privacyRoute: route.mode });
         }
         throw new ApiError(404, "Intent not found for this key");
       }

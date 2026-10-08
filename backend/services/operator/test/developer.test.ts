@@ -140,7 +140,7 @@ describe("developer access and V2/V3 API", () => {
       ).status,
     ).toBe(404);
   });
-  test("requires bearer auth and exposes explicit V2 and V3 quotes", async () => {
+  test("requires bearer auth and exposes explicit and dynamic route quotes", async () => {
     const created = await key();
     expect((await request("/v1/config")).status).toBe(401);
     expect((await request("/v1/config", undefined, created.apiKey)).body.vault).toBe(VAULT);
@@ -148,6 +148,7 @@ describe("developer access and V2/V3 API", () => {
     expect((await request("/v1/config", undefined, created.apiKey)).body.privacyRoutes).toEqual([
       "v2",
       "v3",
+      "dynamic",
     ]);
     expect(
       (await request(`/v1/quote?${query}&privacyRoute=v3`, undefined, created.apiKey)).body
@@ -157,6 +158,19 @@ describe("developer access and V2/V3 API", () => {
       (await request(`/v1/quote?${query}&privacyRoute=v2`, undefined, created.apiKey)).body
         .minOutSuggested,
     ).toBe("99");
+    expect(
+      (await request(`/v1/quote?${query}&privacyRoute=dynamic`, undefined, created.apiKey)).body
+        .privacyRoute,
+    ).toBe("v3");
+    expect(
+      (
+        await request(
+          `/v1/quote?${query.replace("10000000", "20000000")}&privacyRoute=dynamic`,
+          undefined,
+          created.apiKey,
+        )
+      ).body.privacyRoute,
+    ).toBe("v2");
     expect(
       (
         await request(
@@ -247,6 +261,15 @@ describe("developer access and V2/V3 API", () => {
     expect((await request(`/v1/intents/${first.body.id}`, undefined, created.apiKey)).status).toBe(
       200,
     );
+    const dynamic = await request(
+      "/v1/intents",
+      { ...params(), privacyRoute: "dynamic" },
+      created.apiKey,
+      "dynamic-v3-swap",
+    );
+    expect(dynamic.status).toBe(201);
+    expect(dynamic.body.privacyRoute).toBe("v3");
+    expect(dynamic.body.vault).toBe(V3_VAULT);
     expect((await request(`/intents/${first.body.id}`)).status).toBe(404);
   });
   test("rejects invalid amounts, missing idempotency keys and unsupported split parameters", async () => {
@@ -313,6 +336,10 @@ describe("developer access and V2/V3 API", () => {
       }),
     );
     expect(res.status).toBe(200);
-    expect(((await res.json()) as { privacyRoutes: string[] }).privacyRoutes).toEqual(["v2", "v3"]);
+    expect(((await res.json()) as { privacyRoutes: string[] }).privacyRoutes).toEqual([
+      "v2",
+      "v3",
+      "dynamic",
+    ]);
   });
 });

@@ -65,9 +65,11 @@
             </div>
           </div>
           <p>
-            Choose <code>privacyRoute: "v2"</code> for flexible amounts or <code>"v3"</code> for
-            approved fixed denominations. The API never switches routes silently. Split payouts and
-            stealth-address delivery are not part of this release.
+            Choose <code>privacyRoute: "v2"</code> for flexible amounts, <code>"v3"</code> for
+            approved fixed denominations, or <code>"dynamic"</code> to let Curtain select V3 for
+            approved denominations and fall back to V2. The selected route is returned in every
+            quote and intent response. Split payouts and stealth-address delivery are not part of
+            this release.
           </p>
         </section>
         <section id="quickstart">
@@ -140,10 +142,13 @@
           <div class="endpoint"><span>GET</span><code>/v1/quote</code></div>
           <h2>Get a quote.</h2>
           <p>
-            Supply <code>privacyRoute=v2</code> or <code>privacyRoute=v3</code>,
+            Supply <code>privacyRoute=v2</code>, <code>privacyRoute=v3</code>, or
+            <code>privacyRoute=dynamic</code>,
             <code>tokenIn</code>, <code>tokenOut</code>, and <code>amountIn</code>. Optional
             <code>slippageBps</code> defaults to 100 (1%) and accepts integers from 0 to 5000. V3
-            quotes are valid only for approved token denominations.
+            quotes are valid only for approved token denominations. Dynamic quotes use V3 when the
+            input amount is approved and V2 otherwise; the response includes the resolved
+            <code>privacyRoute</code>.
           </p>
           <div class="code">
             <div class="code-title">
@@ -189,8 +194,8 @@
                 <tr>
                   <td><code>privacyRoute</code></td>
                   <td>
-                    Required. <code>"v2"</code> for flexible amounts or <code>"v3"</code> for an
-                    approved fixed denomination.
+                    Required. <code>"v2"</code> for flexible amounts, <code>"v3"</code> for an
+                    approved fixed denomination, or <code>"dynamic"</code> to select automatically.
                   </td>
                 </tr>
                 <tr>
@@ -244,7 +249,7 @@ async function prepareSwap({ depositor, recipient, requestId }) {
   const tokenOut = "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC";
   const amountIn = "10000000";
   const query = new URLSearchParams({
-    privacyRoute: "v2", tokenIn, tokenOut, amountIn,
+    privacyRoute: "dynamic", tokenIn, tokenOut, amountIn,
   });
   const quote = await call(`/quote?${query}`);
   if (!quote.available) throw new Error("No quote available");
@@ -252,7 +257,7 @@ async function prepareSwap({ depositor, recipient, requestId }) {
   return call("/intents", {
     method: "POST",
     headers: { "Idempotency-Key": requestId },
-    body: JSON.stringify({ privacyRoute: "v2", tokenIn, tokenOut,
+    body: JSON.stringify({ privacyRoute: "dynamic", tokenIn, tokenOut,
       amountIn, minOut: quote.minOutSuggested,
       depositor, recipient, delaySeconds: 0 }),
   });
