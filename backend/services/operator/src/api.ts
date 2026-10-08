@@ -14,8 +14,10 @@
  *   GET  /intents/:id             status of your swap
  *   GET  /settlements/pending     signed settlements any keeper may submit (keeper earns the fees)
  *   GET  /pool                    deposits waiting to be paid, per input token (FEATURE_ANONYMITY_SET)
+ *   GET  /sync/:id                an encrypted escape-ticket backup (FEATURE_TICKET_SYNC)
+ *   PUT  /sync/:id                { authKey, blob }: store it; the first write pins keccak256(authKey)
  */
-import { getAddress, isAddress, type Address } from "viem";
+import { getAddress, isAddress, keccak256, type Address, type Hex } from "viem";
 import type { Db } from "@curtain/db";
 import { createIntent, IntentError, MAX_DELAY_SECONDS, MAX_SPLITS, minSplitShareBps } from "./intents";
 import type { Operator } from "./operator";
@@ -33,6 +35,9 @@ export interface ApiConfig {
   fixedAmounts?: Set<string>;
   contexts?: { v2: Omit<ApiConfig, "contexts">; v3?: Omit<ApiConfig, "contexts"> };
 }
+
+/** Largest ticket-sync request accepted: about 200 KB of encrypted tickets plus JSON overhead. */
+export const MAX_SYNC_BODY = 420_000;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body, (_, v) => (typeof v === "bigint" ? v.toString() : v)), {
@@ -72,7 +77,7 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
 
     try {
       if (req.method === "OPTIONS") {
-        return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST", "access-control-allow-headers": "content-type" } });
+        return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, PUT", "access-control-allow-headers": "content-type" } });
       }
       if (req.method === "GET" && pathname === "/health") return json({ status: "ok" });
 
@@ -89,6 +94,7 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
           vault: active.vault, tokens: active.tokens, keeperFeeBps: active.keeperFeeBps, maxDelaySeconds: MAX_DELAY_SECONDS,
           ...(stealth ? { stealth } : {}), ...(split ? { split } : {}),
           ...(active.operator.anonymitySetEnabled ? { pool: { enabled: true } } : {}),
+          ...(cfg.operator.ticketSyncEnabled ? { sync: { enabled: true } } : {}),
         });
       }
 
@@ -184,6 +190,45 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
           [m[1]],
         );
         return rows[0] ? json(rows[0]) : json({ error: "unknown intent" }, 404);
+      }
+
+      // Encrypted ticket backups. Always the main (V2) database, whatever context was asked for:
+      // a backup belongs to a wallet, not to a vault version. The operator only ever sees an id
+      // and an opaque blob, both derived in the browser from a wallet signature.
+      const syncMatch = pathname.match(/^\/sync\/(0x[0-9a-fA-F]{64})$/);
+      if (syncMatch) {
+        if (!cfg.operator.ticketSyncEnabled) return json({ error: "not found" }, 404);
+        const id = syncMatch[1]!.toLowerCase();
+        if (req.method === "GET") {
+          if (!checkRate(`sync-get:${clientIp}`, 60)) return json({ error: "Too many requests. Please wait a moment." }, 429);
+          const rows = await cfg.db.query<{ blob: string; updated_at: Date }>("SELECT blob, updated_at FROM ticket_sync WHERE id = $1", [id]);
+          return rows[0] ? json({ blob: rows[0].blob, updatedAt: new Date(rows[0].updated_at).toISOString() }) : json({ error: "no backup" }, 404);
+        }
+        if (req.method === "PUT") {
+          if (!checkRate(`sync-put:${clientIp}`, 30)) return json({ error: "Too many backups. Please wait a moment." }, 429);
+          if (Number(req.headers.get("content-length") ?? 0) > MAX_SYNC_BODY) return json({ error: "Backup too large" }, 413);
+          const text = await req.text();
+          if (text.length > MAX_SYNC_BODY) return json({ error: "Backup too large" }, 413);
+          const body = JSON.parse(text) as Record<string, unknown>;
+          const authKey = String(body["authKey"] ?? "");
+          const blob = String(body["blob"] ?? "");
+          if (!/^0x[0-9a-fA-F]{64}$/.test(authKey)) return json({ error: "authKey must be 32 bytes" }, 400);
+          // At least a 12-byte IV and a 16-byte GCM tag.
+          if (!/^0x(?:[0-9a-fA-F]{2}){28,}$/.test(blob)) return json({ error: "blob must be encrypted bytes" }, 400);
+          const authHash = keccak256(authKey.toLowerCase() as Hex);
+          const stored = await cfg.db.transaction(async (tx) => {
+            const existing = await tx.query<{ auth_hash: string }>("SELECT auth_hash FROM ticket_sync WHERE id = $1 FOR UPDATE", [id]);
+            if (existing[0] && existing[0].auth_hash !== authHash) return false;
+            await tx.query(
+              `INSERT INTO ticket_sync (id, auth_hash, blob) VALUES ($1, $2, $3)
+               ON CONFLICT (id) DO UPDATE SET blob = EXCLUDED.blob, updated_at = now()`,
+              [id, authHash, blob.toLowerCase()],
+            );
+            return true;
+          });
+          return stored ? json({ ok: true }) : json({ error: "This backup belongs to different keys." }, 403);
+        }
+        return json({ error: "method not allowed" }, 405);
       }
 
       if (req.method === "GET" && pathname === "/pool") {

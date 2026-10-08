@@ -85,7 +85,7 @@ export const fallbackVault = address(
 export const v3Vault = address(
   env["VITE_V3_VAULT_ADDR"] || "0xBF643c56D6f1775f9ABe97b7B7e89b0265D6c67a",
 );
-export const selectedVault = () => curtainMode() === "v3" ? v3Vault : fallbackVault;
+export const selectedVault = () => (curtainMode() === "v3" ? v3Vault : fallbackVault);
 export const stakingBlock = /^\d+$/.test(env["VITE_STAKING_FROM_BLOCK"] || "")
   ? BigInt(env["VITE_STAKING_FROM_BLOCK"])
   : 80903085n;
@@ -313,24 +313,26 @@ export function validTicket(value: unknown): value is EscapeTicket {
     /^0x[\da-f]{64}$/i.test(t.salt)
   );
 }
+/** A stored (or restored) ticket row with every field the app relies on. */
+export function isSavedTicket(r: unknown): r is SavedTicket {
+  const t = r as SavedTicket | null;
+  return (
+    !!t &&
+    validTicket(t.ticket) &&
+    typeof t.intentId === "string" &&
+    /^[\da-f]{32}$|^imported-\d+$/i.test(t.intentId) &&
+    typeof t.createdAt === "string" &&
+    typeof t.tokenIn === "string" &&
+    typeof t.tokenOut === "string" &&
+    typeof t.amountIn === "string" &&
+    typeof t.recipient === "string"
+  );
+}
 export function readTickets(wallet: string): SavedTicket[] {
   try {
     const data = JSON.parse(localStorage.getItem(storageKey) || "{}");
     const rows: unknown = data[wallet.toLowerCase()];
-    return Array.isArray(rows)
-      ? rows.filter(
-          (r): r is SavedTicket =>
-            !!r &&
-            validTicket(r.ticket) &&
-            typeof r.intentId === "string" &&
-            /^[\da-f]{32}$|^imported-\d+$/i.test(r.intentId) &&
-            typeof r.createdAt === "string" &&
-            typeof r.tokenIn === "string" &&
-            typeof r.tokenOut === "string" &&
-            typeof r.amountIn === "string" &&
-            typeof r.recipient === "string",
-        )
-      : [];
+    return Array.isArray(rows) ? rows.filter(isSavedTicket) : [];
   } catch {
     return [];
   }

@@ -95,6 +95,8 @@ export interface OperatorConfig {
   splitPayouts?: boolean;
   /** FEATURE_ANONYMITY_SET: serve how many deposits are waiting, per input token. */
   anonymitySet?: boolean;
+  /** FEATURE_TICKET_SYNC: store encrypted escape-ticket backups (GET/PUT /sync/:id). */
+  ticketSync?: boolean;
 }
 
 /** Most recipients one split payout may have. */
@@ -635,6 +637,10 @@ export class Operator {
       ...(stealthFee !== undefined ? { stealthFee: stealthFee.toString() } : {}),
       ...(split ? { splitParts: split.parts } : {}),
     };
+  }
+
+  get ticketSyncEnabled(): boolean {
+    return !!this.cfg.ticketSync;
   }
 
   get anonymitySetEnabled(): boolean {
