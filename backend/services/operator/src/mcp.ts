@@ -51,9 +51,10 @@ export function createMcpApi(api: ApiHandler) {
             tokenOut: z.string().describe("Output token contract address"),
             amountIn: z.string().describe("Positive input amount in raw token units"),
             slippageBps: z.number().int().min(0).max(5000).default(100),
+            integratorFee: z.object({ recipient: z.string(), bps: z.number().int().min(0).max(100) }).optional(),
           }),
         },
-        async ({ privacyRoute, tokenIn, tokenOut, amountIn, slippageBps }) => {
+        async ({ privacyRoute, tokenIn, tokenOut, amountIn, slippageBps, integratorFee }) => {
           const query = new URLSearchParams({
             privacyRoute,
             tokenIn,
@@ -61,6 +62,10 @@ export function createMcpApi(api: ApiHandler) {
             amountIn,
             slippageBps: String(slippageBps),
           });
+          if (integratorFee) {
+            query.set("integratorFeeRecipient", integratorFee.recipient);
+            query.set("integratorFeeBps", String(integratorFee.bps));
+          }
           return text(await callApi(`/v1/quote?${query}`));
         },
       );
@@ -78,16 +83,17 @@ export function createMcpApi(api: ApiHandler) {
             minOut: z.string().describe("Minimum output in raw token units from a fresh quote"),
             depositor: z.string().describe("Wallet that will sign and fund the deposit"),
             recipient: z.string().describe("Wallet receiving the output"),
+            integratorFee: z.object({ recipient: z.string(), bps: z.number().int().min(0).max(100) }).optional(),
             delaySeconds: z.number().int().min(0).max(15_552_000).default(0),
             idempotencyKey: z.string().min(1).max(128).regex(/^[A-Za-z0-9_.:-]+$/),
           }),
         },
-        async ({ privacyRoute, tokenIn, tokenOut, amountIn, minOut, depositor, recipient, delaySeconds, idempotencyKey }) =>
+        async ({ privacyRoute, tokenIn, tokenOut, amountIn, minOut, depositor, recipient, integratorFee, delaySeconds, idempotencyKey }) =>
           text(
             await callApi("/v1/intents", {
               method: "POST",
               headers: { "content-type": "application/json", "idempotency-key": idempotencyKey },
-              body: JSON.stringify({ privacyRoute, tokenIn, tokenOut, amountIn, minOut, depositor, recipient, delaySeconds }),
+              body: JSON.stringify({ privacyRoute, tokenIn, tokenOut, amountIn, minOut, depositor, recipient, integratorFee, delaySeconds }),
             }),
           ),
       );

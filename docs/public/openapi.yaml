@@ -97,6 +97,18 @@ paths:
             in: query,
             schema: { type: integer, minimum: 0, maximum: 5000, default: 100 },
           }
+        - {
+            name: integratorFeeBps,
+            in: query,
+            schema: { type: integer, minimum: 0, maximum: 100 },
+            description: Optional integrator fee in basis points; pair with integratorFeeRecipient.
+          }
+        - {
+            name: integratorFeeRecipient,
+            in: query,
+            schema: { $ref: "#/components/schemas/Address" },
+            description: Recipient of the optional integrator fee.
+          }
       responses:
         "200":
           description: Check available before using minOutSuggested; quotes do not reserve a price
@@ -112,6 +124,12 @@ paths:
                   minOutSuggested: { type: string }
                   protocolFee: { type: string }
                   keeperFee: { type: string }
+                  integratorFee:
+                    type: object
+                    properties:
+                      recipient: { $ref: "#/components/schemas/Address" }
+                      bps: { type: integer, minimum: 0, maximum: 100 }
+                      amount: { type: string }
                   venue: { type: string }
         default: { $ref: "#/components/responses/Error" }
   /intents:
@@ -142,6 +160,12 @@ paths:
                 minOut: { $ref: "#/components/schemas/PositiveUnits" }
                 depositor: { $ref: "#/components/schemas/Address" }
                 recipient: { $ref: "#/components/schemas/Address" }
+                integratorFee:
+                  type: object
+                  required: [recipient, bps]
+                  properties:
+                    recipient: { $ref: "#/components/schemas/Address" }
+                    bps: { type: integer, minimum: 0, maximum: 100 }
                 delaySeconds: { type: integer, minimum: 0, maximum: 15552000, default: 0 }
       responses:
         "201":

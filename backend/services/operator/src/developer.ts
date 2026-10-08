@@ -11,7 +11,7 @@ import {
 import { ERC20_ABI, VAULT_ABI } from "@curtain/sdk";
 import type { Db } from "@curtain/db";
 import type { ApiConfig } from "./api";
-import { createIntent, IntentError, MAX_DELAY_SECONDS } from "./intents";
+import { createIntent, IntentError, MAX_DELAY_SECONDS, MAX_INTEGRATOR_FEE_BPS } from "./intents";
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const id = () => randomBytes(16).toString("hex");
@@ -61,6 +61,19 @@ function units(value: unknown, name: string): string {
   if (typeof value !== "string" || !/^[1-9]\d{0,77}$/.test(value) || BigInt(value) >= 2n ** 256n)
     throw new ApiError(400, `${name} must be a positive uint256 decimal string in raw token units`);
   return value;
+}
+function integratorFee(value: unknown, vault: Address): { recipient: Address; bps: number } | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new ApiError(400, "integratorFee must be an object");
+  const raw = value as Record<string, unknown>;
+  const recipient = tokenAddress(raw.recipient, "integratorFee.recipient");
+  const bps = raw.bps;
+  if (typeof bps !== "number" || !Number.isInteger(bps) || bps < 0 || bps > MAX_INTEGRATOR_FEE_BPS)
+    throw new ApiError(400, `integratorFee.bps must be an integer from 0 to ${MAX_INTEGRATOR_FEE_BPS}`);
+  if (BigInt(recipient) === 0n || recipient === getAddress(vault))
+    throw new ApiError(400, "integratorFee.recipient can't be the zero address or the vault");
+  return bps > 0 ? { recipient, bps } : undefined;
 }
 const keyFields =
   'id, name, prefix, created_at AS "createdAt", revoked_at AS "revokedAt", last_used_at AS "lastUsedAt"';
@@ -319,6 +332,7 @@ export function createDeveloperApi(root: ApiConfig) {
       delaySeconds: body.delaySeconds ?? 0,
     };
     const route = contextFor(body.privacyRoute, params.tokenIn, params.amountIn);
+    const fee = integratorFee(body.integratorFee, route.context.vault);
     if (
       typeof params.delaySeconds !== "number" ||
       !Number.isInteger(params.delaySeconds) ||
@@ -326,7 +340,7 @@ export function createDeveloperApi(root: ApiConfig) {
       params.delaySeconds > MAX_DELAY_SECONDS
     )
       throw new ApiError(400, `delaySeconds must be an integer from 0 to ${MAX_DELAY_SECONDS}`);
-    const normalized = { ...params, delaySeconds: params.delaySeconds as number };
+    const normalized = { ...params, delaySeconds: params.delaySeconds as number, ...(fee ? { integratorFee: fee } : {}) };
     const requestId = req.headers.get("idempotency-key");
     if (!requestId || !/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId))
       throw new ApiError(
@@ -438,8 +452,13 @@ export function createDeveloperApi(root: ApiConfig) {
         const slippage = Number(url.searchParams.get("slippageBps") ?? 100);
         if (!Number.isInteger(slippage) || slippage < 0 || slippage > 5000)
           throw new ApiError(400, "slippageBps must be an integer from 0 to 5000");
+        const feeBps = url.searchParams.get("integratorFeeBps");
+        const feeRecipient = url.searchParams.get("integratorFeeRecipient");
+        const fee = feeBps !== null || feeRecipient !== null
+          ? integratorFee({ recipient: feeRecipient, bps: feeBps === null ? undefined : Number(feeBps) }, route.context.vault)
+          : undefined;
         return reply({
-          ...(await route.context.operator.quoteForUser(tokenIn, tokenOut, BigInt(amount), slippage)),
+          ...(await route.context.operator.quoteForUser(tokenIn, tokenOut, BigInt(amount), slippage, undefined, undefined, fee)),
           privacyRoute: route.mode,
         });
       }

@@ -244,6 +244,32 @@ describe("developer access and V2/V3 API", () => {
     ).toBe(200);
     expect((await request("/v1/config", undefined, created.apiKey)).status).toBe(401);
   });
+  test("accepts a capped integrator fee and persists its payout configuration", async () => {
+    const created = await key();
+    const feeRecipient = bob.address;
+    const first = await request(
+      "/v1/intents",
+      { ...params(), integratorFee: { recipient: feeRecipient, bps: 25 } },
+      created.apiKey,
+      "integrator-fee",
+    );
+    expect(first.status).toBe(201);
+    const row = await db.query<{ recipient: string; bps: number }>(
+      "SELECT integrator_fee_recipient AS recipient, integrator_fee_bps AS bps FROM intents WHERE id = $1",
+      [first.body.id],
+    );
+    expect(row[0]).toEqual({ recipient: feeRecipient, bps: 25 });
+    expect(
+      (
+        await request(
+          "/v1/intents",
+          { ...params(), integratorFee: { recipient: feeRecipient, bps: 101 } },
+          created.apiKey,
+          "integrator-fee-invalid",
+        )
+      ).status,
+    ).toBe(400);
+  });
   test("V3 prepares the V3 vault and tagged escape ticket, and validates fixed amounts", async () => {
     const created = await key();
     const first = await request(

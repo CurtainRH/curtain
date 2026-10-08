@@ -192,6 +192,11 @@
             <code>minOutSuggested</code> when creating an intent.
           </p>
           <p>
+            Integrators may optionally pass <code>integratorFeeBps</code> and
+            <code>integratorFeeRecipient</code>. The fee is capped at 100 bps, deducted from
+            <code>expectedOut</code>, and returned as <code>integratorFee</code> in the quote.
+          </p>
+          <p>
             A quote is an estimate, not a price reservation. A delayed swap may wait if the market
             cannot satisfy its minimum output.
           </p>
@@ -255,6 +260,13 @@
                 <tr>
                   <td><code>recipient</code></td>
                   <td>The address receiving the output. Required; there is no implicit default.</td>
+                </tr>
+                <tr>
+                  <td><code>integratorFee</code></td>
+                  <td>
+                    Optional object with <code>recipient</code> and <code>bps</code> (0–100). The fee
+                    is deducted from output and paid as a separate signed payout.
+                  </td>
                 </tr>
                 <tr>
                   <td><code>delaySeconds</code></td>

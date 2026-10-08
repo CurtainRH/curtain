@@ -9,6 +9,8 @@ import type { Db } from "@curtain/db";
 import { isCompressedPublicKey } from "@curtain/sdk/stealth";
 
 export const MAX_DELAY_SECONDS = 180 * 24 * 3600; // 180 days
+/** Integrator fee cap: 1% of the gross output. */
+export const MAX_INTEGRATOR_FEE_BPS = 100;
 /** Instant swaps are paid as soon as the deposit lands; this bounds how long the user has to
  * deposit and the operator has to pay before the escape hatch opens (deadline + 3 min). */
 export const INSTANT_DEADLINE_SECONDS = 600;
@@ -33,6 +35,8 @@ export interface IntentRequest {
   splits?: { recipient: string; stealth?: { ephemeralPublicKey: string; viewTag: string } }[];
   /** "random" (default): random shares, each at least half an equal share. "equal": even shares. */
   splitMode?: "random" | "equal";
+  /** Optional Developer API fee, deducted from the user's output and paid separately. */
+  integratorFee?: { recipient: string; bps: number };
 }
 
 export const MAX_SPLITS = 5;
@@ -107,6 +111,15 @@ export async function createIntent(db: Db, req: IntentRequest, allowedTokens: Se
   const minOut = BigInt(req.minOut);
   if (amountIn <= 0n) throw new IntentError("amountIn must be positive");
   if (minOut <= 0n) throw new IntentError("minOut must be positive");
+  let integratorFee: { recipient: Address; bps: number } | undefined;
+  if (req.integratorFee !== undefined) {
+    if (!Number.isInteger(req.integratorFee.bps) || req.integratorFee.bps < 0 || req.integratorFee.bps > MAX_INTEGRATOR_FEE_BPS)
+      throw new IntentError(`integratorFee.bps must be an integer from 0 to ${MAX_INTEGRATOR_FEE_BPS}`);
+    if (!isAddress(req.integratorFee.recipient)) throw new IntentError("integratorFee.recipient must be an address");
+    const feeRecipient = getAddress(req.integratorFee.recipient);
+    if (BigInt(feeRecipient) === 0n || feeRecipient === getAddress(vault)) throw new IntentError("integratorFee.recipient can't be the zero address or the vault");
+    if (req.integratorFee.bps > 0) integratorFee = { recipient: feeRecipient, bps: req.integratorFee.bps };
+  }
   let stealth: { eph: string; tag: string; fee: string } | null = null;
   if (req.stealth !== undefined) {
     if (req.splits) throw new IntentError("put stealth data on each split recipient instead");
@@ -158,12 +171,13 @@ export async function createIntent(db: Db, req: IntentRequest, allowedTokens: Se
   const intentParams = [
     id, deadlineHash, deadline.toString(), salt, payAt.toString(), instant ? "instant" : "delayed", tokenIn, amountIn.toString(),
     tokenOut, recipient, minOut.toString(), secret, getAddress(req.depositor), stealth?.eph ?? null, stealth?.tag ?? null, stealth?.fee ?? null,
+    integratorFee?.recipient ?? null, integratorFee?.bps ?? 0,
   ];
   const insertIntent = async (tx: Db) => {
     await tx.query(
       `INSERT INTO intents (id, deadline_hash, deadline, salt, pay_at, mode, token_in, amount_in, token_out, recipient, min_out, secret, depositor,
-                            stealth_ephemeral_pub, stealth_view_tag, stealth_fee)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`, intentParams,
+                            stealth_ephemeral_pub, stealth_view_tag, stealth_fee, integrator_fee_recipient, integrator_fee_bps)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`, intentParams,
     );
     for (const [position, sp] of (splits ?? []).entries()) {
       await tx.query(

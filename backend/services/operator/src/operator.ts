@@ -114,6 +114,8 @@ interface DueIntent {
   deposit_id: string;
   secret: Hex;
   stealth_fee: string | null;
+  integrator_fee_recipient: Address | null;
+  integrator_fee_bps: number;
   /** Split payouts only, in position order (loaded from intent_splits). */
   parts?: Part[];
 }
@@ -319,7 +321,7 @@ export class Operator {
     await db.transaction(async (tx) => {
       const due = await tx.query<DueIntent>(
         `SELECT id, token_in, token_out, deposited_amount::text, amount_in::text, min_out::text, recipient, deadline::text,
-                deposit_id::text, secret, stealth_fee::text
+                deposit_id::text, secret, stealth_fee::text, integrator_fee_recipient, integrator_fee_bps
          FROM intents WHERE status = 'deposited' AND pay_at <= $1 AND deadline > $2
          ORDER BY pay_at FOR UPDATE SKIP LOCKED`,
         [nowSec, nowSec + this.margin],
@@ -374,7 +376,8 @@ export class Operator {
     const kept: DueIntent[] = [];
     for (const i of intents) {
       let ok = true;
-      for (const part of partsOf(i)) if (!(await probe(part.recipient))) ok = false;
+        for (const part of partsOf(i)) if (!(await probe(part.recipient))) ok = false;
+        if (i.integrator_fee_bps > 0 && i.integrator_fee_recipient && !(await probe(i.integrator_fee_recipient))) ok = false;
       if (ok) kept.push(i);
       else await this.markBlocked(tx, i, "output token refuses transfers to this recipient");
     }
@@ -458,11 +461,18 @@ export class Operator {
         const payoutGross = grosses[k]! - part.stealthFee;
         const protocolFee = (payoutGross * feeBps) / BPS;
         const keeperFee = (payoutGross * keeperBps) / BPS;
+        const integratorFee = (payoutGross * BigInt(i.integrator_fee_bps)) / BPS;
         // Part 0 carries the deposit's refund-challenge tag; every other part gets its own.
         entries.push({
-          recipient: part.recipient, amount: payoutGross - protocolFee - keeperFee, protocolFee, keeperFee,
+          recipient: part.recipient, amount: payoutGross - protocolFee - keeperFee - integratorFee, protocolFee, keeperFee,
           tag: k === 0 ? (this.cfg.v3Mode ? v3Tag(i.secret) : payoutTag(depositId, i.secret)) : derivedTag(depositId, i.secret, `curtain:split:${k}`),
         });
+        if (integratorFee > 0n && i.integrator_fee_recipient) {
+          entries.push({
+            recipient: i.integrator_fee_recipient, amount: integratorFee, protocolFee: 0n, keeperFee: 0n,
+            tag: derivedTag(depositId, i.secret, `curtain:integrator-fee:${k}`),
+          });
+        }
         // The gas-drop fee is its own payout to the operator, so recipient payouts stay as
         // for a normal swap.
         if (part.stealthFee > 0n) {
@@ -548,7 +558,8 @@ export class Operator {
     for (const [k, part] of parts.entries()) {
       const g = grosses[k]! - part.stealthFee;
       if (g <= 0n) return 0n;
-      net += g - (g * feeBps) / BPS - (g * keeperBps) / BPS;
+      const integratorFee = (g * BigInt(i.integrator_fee_bps)) / BPS;
+      net += g - (g * feeBps) / BPS - (g * keeperBps) / BPS - integratorFee;
     }
     return net;
   }
@@ -607,7 +618,7 @@ export class Operator {
    */
   async quoteForUser(
     tokenIn: Address, tokenOut: Address, amountIn: bigint, userSlippageBps = 100, stealthFee?: bigint,
-    split?: { parts: number; minShareBps: number },
+    split?: { parts: number; minShareBps: number }, integratorFee?: { recipient: Address; bps: number },
   ) {
     const feeBps = BigInt(await this.feeBps());
     const keeperBps = BigInt(this.cfg.keeperFeeBps);
@@ -623,7 +634,8 @@ export class Operator {
     const positive = gross > 0n && smallestOk;
     const protocolFee = positive ? (gross * feeBps) / BPS : 0n;
     const keeperFee = positive ? (gross * keeperBps) / BPS : 0n;
-    const expectedOut = positive ? gross - protocolFee - keeperFee : 0n;
+    const integratorFeeAmount = positive ? (gross * BigInt(integratorFee?.bps ?? 0)) / BPS : 0n;
+    const expectedOut = positive ? gross - protocolFee - keeperFee - integratorFeeAmount : 0n;
     return {
       amountIn: amountIn.toString(),
       marketOut: q.amountOut.toString(),
@@ -631,6 +643,7 @@ export class Operator {
       minOutSuggested: ((expectedOut * (BPS - BigInt(userSlippageBps))) / BPS).toString(),
       protocolFee: protocolFee.toString(),
       keeperFee: keeperFee.toString(),
+      ...(integratorFee ? { integratorFee: { recipient: integratorFee.recipient, bps: integratorFee.bps, amount: integratorFeeAmount.toString() } } : {}),
       venue: same ? "none" : q.v4 ? `uniswap-v4 ${q.v4.key.fee / 10000}%` : q.fee !== undefined ? `uniswap-v3 ${q.fee / 10000}%` : "router",
       // A stealth fee larger than the output means the amount is too small to deliver.
       available: q.amountOut > 0n && expectedOut > 0n,

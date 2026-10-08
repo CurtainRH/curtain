@@ -33,6 +33,7 @@ The existing operator serves `/developer/*` for wallet-signature key management 
 `006_developer_v3_intents.sql` are applied by the operator's existing startup migration.
 API keys use the main database; V2 and V3 intent ownership maps live with their respective
 operator databases.
+`007_integrator_fees.sql` adds the optional Developer API integrator-fee fields to intents.
 No new operator, keeper, or main frontend environment variables are required.
 Deploy the backend before the main dashboard. The keeper and vault contracts are unchanged.
 
@@ -48,6 +49,8 @@ Connect an MCP-compatible agent with a Curtain Developer API key as its Bearer c
 server exposes configuration, quotes, Dynamic Privacy route selection, unsigned swap preparation,
 intent status, and public keeper discovery. User deposits are never signed or broadcast by MCP;
 the returned approval and deposit transactions must be reviewed and signed by the user's wallet.
+Developer API integrators may include an `integratorFee` with a recipient and basis-point rate up
+to 100 bps. The fee is deducted from the quoted output and paid as a separate settlement payout.
 
 Keeper integrations use the public `GET /keeper/v1/settlements/pending?privacyRoute=v2` or
 `privacyRoute=v3` feed. It returns operator-signed settlements plus the chain and vault address;
