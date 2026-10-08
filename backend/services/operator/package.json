@@ -14,8 +14,10 @@
   },
   "dependencies": {
     "@curtain/db": "workspace:*",
+    "@curtain/sdk": "workspace:*",
+    "@modelcontextprotocol/server": "^2.3.1",
     "viem": "2.57.0",
-    "@curtain/sdk": "workspace:*"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.0",

@@ -41,6 +41,14 @@ Third-party backends call `https://operator.curtainrh.com/v1` with a Bearer API 
 Stealth/split parameters and smart-contract wallet authentication are not supported by this
 first developer release. Key-specific limits persist in PostgreSQL across restarts.
 
+## MCP for agents
+
+The operator also serves a Streamable HTTP MCP endpoint at `https://operator.curtainrh.com/mcp`.
+Connect an MCP-compatible agent with a Curtain Developer API key as its Bearer credential. The
+server exposes configuration, quotes, Dynamic Privacy route selection, unsigned swap preparation,
+intent status, and public keeper discovery. User deposits are never signed or broadcast by MCP;
+the returned approval and deposit transactions must be reviewed and signed by the user's wallet.
+
 Keeper integrations use the public `GET /keeper/v1/settlements/pending?privacyRoute=v2` or
 `privacyRoute=v3` feed. It returns operator-signed settlements plus the chain and vault address;
 any funded wallet can submit each settlement directly to the returned vault and receive its keeper

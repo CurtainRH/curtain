@@ -138,6 +138,28 @@
             <code>0xBF643c56D6f1775f9ABe97b7B7e89b0265D6c67a</code>.
           </p>
         </section>
+        <section id="mcp">
+          <div class="endpoint"><span>POST</span><code>https://operator.curtainrh.com/mcp</code></div>
+          <h2>Connect an agent.</h2>
+          <p>
+            Curtain exposes the same Developer API through a Streamable HTTP MCP server. Connect an
+            MCP-compatible agent with your API key as its Bearer credential. Agents can discover
+            configuration, request quotes, select Dynamic Privacy, prepare unsigned swap
+            transactions, track intents, and inspect public keeper settlements.
+          </p>
+          <div class="callout">
+            MCP never receives a user private key and never broadcasts a user deposit. The agent
+            returns unsigned approval and deposit transactions for the user's wallet to review and
+            sign.
+          </div>
+          <pre><code>https://operator.curtainrh.com/mcp</code></pre>
+          <p>
+            Available tools include <code>curtain_get_config</code>,
+            <code>curtain_get_quote</code>, <code>curtain_prepare_swap</code>,
+            <code>curtain_get_intent_status</code>, and
+            <code>curtain_list_pending_settlements</code>.
+          </p>
+        </section>
         <section id="quotes">
           <div class="endpoint"><span>GET</span><code>/v1/quote</code></div>
           <h2>Get a quote.</h2>

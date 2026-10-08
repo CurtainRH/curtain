@@ -32,6 +32,7 @@ V3 supports fixed whole-token denominations: 1, 10, and 100 units for supported 
 | Stake-to-earn | Lock for 30 / 90 / 180 days to earn emissions at 1× / 1.5× / 2×. |
 | Lending | Morpho integration, after launch. |
 | Developer API | Create and revoke API keys in Dashboard → Developer. V2 flexible, V3 fixed-denomination, and dynamic route selection, with idempotent intents, unsigned wallet transactions, and per-key intent status. |
+| MCP for agents | Connect an MCP-compatible agent at `https://operator.curtainrh.com/mcp` for quotes, Dynamic Privacy, unsigned swap preparation, status, and keeper discovery. |
 
 Developer documentation frontend: [`docs/README.md`](docs/README.md), intended for [docs.curtainrh.com](https://docs.curtainrh.com). API keys are server-side credentials; users still sign and fund their own deposits.
 

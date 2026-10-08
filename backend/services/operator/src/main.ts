@@ -29,6 +29,7 @@ import { DEFAULT_TOKENS } from "@curtain/sdk";
 import { createPublicClient, createWalletClient, defineChain, getAddress, http, isAddress, parseAbi, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { createApi } from "./api";
+import { createMcpApi } from "./mcp";
 import { Operator, type StealthConfig } from "./operator";
 import { mockQuoter, mockRoute, uniswapQuoter, uniswapRoute } from "./routes";
 
@@ -150,16 +151,19 @@ if (v3Db) await migrate(v3Db);
 const v3Operator = v3Vault && v3Db ? await makeOperator(v3Db, v3Vault, true) : undefined;
 if (v3Operator) console.log(`V3 context ON: ${v3Vault}`);
 
+const api = createApi({
+  db, operator, vault, tokens, keeperFeeBps, chainId,
+  minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
+  contexts: v3Operator && v3Db && v3Vault ? {
+    v2: { db, operator, vault, tokens, keeperFeeBps, minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")) },
+    v3: { db: v3Db, operator: v3Operator, vault: v3Vault, tokens, keeperFeeBps, v3Mode: true, fixedAmounts: await makeFixedAmounts(), minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")) },
+  } : undefined,
+});
+const mcp = createMcpApi(api);
+
 const server = Bun.serve({
   port: Number(process.env["PORT"] ?? env("OPERATOR_PORT", "3100")),
-  fetch: createApi({
-    db, operator, vault, tokens, keeperFeeBps, chainId,
-    minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
-    contexts: v3Operator && v3Db && v3Vault ? {
-      v2: { db, operator, vault, tokens, keeperFeeBps, minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")) },
-      v3: { db: v3Db, operator: v3Operator, vault: v3Vault, tokens, keeperFeeBps, v3Mode: true, fixedAmounts: await makeFixedAmounts(), minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")) },
-    } : undefined,
-  }),
+  fetch: (request) => new URL(request.url).pathname === "/mcp" ? mcp(request) : api(request),
 });
 console.log(`@curtain/operator listening on :${server.port}`);
 
