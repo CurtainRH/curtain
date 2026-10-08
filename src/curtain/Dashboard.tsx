@@ -73,6 +73,8 @@ import {
   UserMessageError,
   validTicket,
   type SavedTicket,
+  curtainMode,
+  type CurtainMode,
 } from "./integration";
 import { balanceText, useCurtain, type TokenData } from "./useCurtain";
 const nav = [
@@ -159,12 +161,20 @@ export const CATEGORY_MAP: Record<string, { label: string; badgeClass: string }>
 export default function Dashboard({ path }: { path: string }) {
   const { wallet, connect, navigate } = useNav();
   const app = useCurtain(wallet);
+  const mode = curtainMode();
   const features = useFeatures();
   // "Receive" exists only while one of its features (FEATURE_STEALTH_KEYS / _INBOX) is on.
   const navItems = nav.filter(
     (n) => n.id !== "receive" || features.stealthKeys || features.stealthInbox,
   );
   const current = navItems.find((n) => n.id === (path.split("/")[2] || "overview")) || navItems[0]!;
+
+  function switchCurtain(nextMode: CurtainMode) {
+    if (nextMode === mode || busy) return;
+    localStorage.setItem("curtain-mode", nextMode);
+    window.location.reload();
+  }
+
   useWorkspaceTools(current.id, navigate);
   const [sideOpen, setSideOpen] = useState(false);
   const [retracted, setRetracted] = useState(() => {
@@ -1246,10 +1256,33 @@ export default function Dashboard({ path }: { path: string }) {
               {current.name}
             </span>
           </div>
-          <button className="wallet-button" onClick={connect}>
-            <Wallet size={16} />
-            {wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : "Connect wallet"}
-          </button>
+          <div className="app-topline-actions">
+            <div className="curtain-switch" role="group" aria-label="Choose Curtain vault">
+              <span className="curtain-switch-label">CURTAIN</span>
+              <button
+                type="button"
+                className={mode === "v2" ? "active" : ""}
+                aria-pressed={mode === "v2"}
+                onClick={() => switchCurtain("v2")}
+                title="Use Curtain II with flexible amounts"
+              >
+                V2
+              </button>
+              <button
+                type="button"
+                className={mode === "v3" ? "active" : ""}
+                aria-pressed={mode === "v3"}
+                onClick={() => switchCurtain("v3")}
+                title="Use Curtain III with fixed denominations"
+              >
+                V3
+              </button>
+            </div>
+            <button className="wallet-button" onClick={connect}>
+              <Wallet size={16} />
+              {wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : "Connect wallet"}
+            </button>
+          </div>
         </div>
         <div className="dashboard-body">
           <div className="dashboard-heading">

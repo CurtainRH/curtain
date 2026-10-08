@@ -302,6 +302,48 @@
 .wallet-button:hover {
   border-color: var(--gold);
 }
+.app-topline-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.curtain-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--line);
+  background: #081423cc;
+  padding: 4px;
+  min-height: 42px;
+}
+.curtain-switch-label {
+  padding: 0 7px;
+  color: var(--muted);
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+}
+.curtain-switch button {
+  border: 1px solid transparent;
+  background: transparent;
+  color: #9ca8b8;
+  cursor: pointer;
+  font-size: 0.67rem;
+  letter-spacing: 0.08em;
+  min-width: 38px;
+  min-height: 30px;
+  padding: 5px 9px;
+  transition: color 0.2s, background 0.2s, border-color 0.2s;
+}
+.curtain-switch button:hover,
+.curtain-switch button:focus-visible {
+  color: var(--ink);
+  border-color: var(--line);
+}
+.curtain-switch button.active {
+  color: #07111e;
+  background: var(--gold);
+  border-color: var(--gold);
+}
 .dashboard-body {
   padding: 38px;
   max-width: 1570px;
@@ -2065,6 +2107,28 @@
     height: 65px;
     padding: 0 14px;
     gap: 7px;
+  }
+  .app-topline-actions {
+    gap: 6px;
+  }
+  .curtain-switch {
+    min-height: 36px;
+    padding: 3px;
+  }
+  .curtain-switch-label {
+    display: none;
+  }
+  .curtain-switch button {
+    min-height: 28px;
+    min-width: 34px;
+    padding: 4px 7px;
+  }
+  .app-topline-actions .wallet-button {
+    min-height: 36px;
+    padding: 8px 10px;
+  }
+  .app-topline-actions .wallet-button svg {
+    display: none;
   }
   .breadcrumbs {
     font-size: 0;
