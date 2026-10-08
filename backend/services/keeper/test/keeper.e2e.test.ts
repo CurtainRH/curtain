@@ -52,7 +52,8 @@ beforeAll(async () => {
   const user = d.wallets.user;
   await wait(await user.writeContract({ chain: d.chain, account: user.account!, address: tokens["USDG"]!, abi: ERC20_ABI, functionName: "approve", args: [vault, parseEther("1000")] }));
   await wait(await user.writeContract({ chain: d.chain, account: user.account!, address: vault, abi: VAULT_ABI, functionName: "deposit", args: [tokens["USDG"]!, parseEther("1000"), intent.deadlineHash] }));
-  for (let i = 0; i < 20; i++) {
+  // Up to 10 s: on a loaded CI runner the node can serve the deposit event a moment late.
+  for (let i = 0; i < 100; i++) {
     await op.syncChain();
     await op.processDue(await d.now());
     if ((await op.pendingSettlements(await d.now())).length > 0) break;

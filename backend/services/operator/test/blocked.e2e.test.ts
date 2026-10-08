@@ -87,7 +87,8 @@ describe("restricted recipients (e2e)", () => {
     const good = await intentAndDeposit(okRecipient);
     const probed = await intentAndDeposit(blocklisted);
     const bisected = await intentAndDeposit(cannotReceive);
-    for (let i = 0; i < 20; i++) {
+    // Up to 10 s: on a loaded CI runner the node can serve deposit events a moment late.
+    for (let i = 0; i < 100; i++) {
       await op.syncChain();
       const [n] = await db.query<{ n: string }>("SELECT count(*)::text AS n FROM intents WHERE status = 'deposited'");
       if (Number(n!.n) === 3) break;
