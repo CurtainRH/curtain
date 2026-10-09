@@ -17,3 +17,7 @@ The existing operator and keeper now serve both vaults. Keep `VAULT_ADDR` pointe
 Set `V3_FIXED_AMOUNTS_JSON=default` to load the deployed policy automatically using each token's on-chain decimals. You can instead provide a JSON object of raw amounts for a custom policy.
 
 The frontend uses the same operator URL with an `X-Curtain-Version` request header and uses `VITE_V3_VAULT_ADDR` for its trusted vault address.
+
+## Naming note
+
+The product-level V4 route is separate from these V2/V3 vaults. Its Solidity implementation is internally named `CurtainPoolV2`; there is no separate `PoolV4` contract. The deployed V4 foundation and root manager are recorded in [`backend/contracts/README.md`](../backend/contracts/README.md) and [`backend/contracts/POOL_V4_RUNBOOK.md`](../backend/contracts/POOL_V4_RUNBOOK.md).

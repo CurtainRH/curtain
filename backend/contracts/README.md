@@ -1,3 +1,16 @@
+## Curtain V4 deployment naming
+
+Curtain calls the new shielded-pool route **V4** at the product and API boundary. The Solidity implementation remains deliberately named **Pool V2** so the contract history is explicit:
+
+| Product/API name | Internal contract boundary |
+|---|---|
+| V4 pool route | `CurtainPoolV2` |
+| V4 root publication | `PoolV2RootManager` |
+| V4 proof boundary | `PoolV2TransferVerifierAdapter` |
+| V4 generated verifier | production Groth16 verifier wired into the adapter |
+
+There is no separate `PoolV4.sol`. Use V4 in user-facing route selection and API responses; use the Pool V2 names in Solidity, ABIs, deployment scripts, and contract documentation. See [`POOL_V4_RUNBOOK.md`](POOL_V4_RUNBOOK.md) for the deployed addresses, roles, deployment sequence, and integration order.
+
 ## Foundry
 
 **Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**

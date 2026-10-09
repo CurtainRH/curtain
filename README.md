@@ -21,6 +21,14 @@ Private swaps and stake-to-earn on Robinhood Chain. Swap USDG and tokenized Stoc
 
 V3 supports fixed whole-token denominations: 1, 10, and 100 units for supported assets; USDG supports 10, 100, 1,000, and 10,000 units. V2 remains available for flexible amounts. The dashboard asks which vault to use before entering the app.
 
+**Pool route (product V4, internal Pool V2):**
+
+- `CurtainPoolV2`: `0xC9d52aD8eABc8Cb8DF87d56a0EfC52034FDa59d9`
+- `PoolV2RootManager`: `0xDE119b0F14208A3b775664E7975d5564EF48f219`
+- Groth16 verifier adapter: `0xa2D3c03A7768a30D4cCf60587c6E6dE81faCA9D8`
+
+V4 is the product/API name for this new shielded-pool route. It is not a separate `PoolV4.sol` contract: the deployed Solidity pool is internally named `CurtainPoolV2`. The V4 app and API integration is being rolled out separately from the existing V2 and V3 vault flows.
+
 ## Features
 
 | Feature | What it does |
