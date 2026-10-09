@@ -45,6 +45,13 @@ See
 [`LAMPS_EXPERIMENTAL.md`](LAMPS_EXPERIMENTAL.md) and the package
 [`README.md`](../backend/packages/lamps/README.md).
 
+## Host Network verification toolkit (experimental)
+
+`backend/packages/host-network` provides in-process host-claim, attestation-verifier, and
+performance-evidence interfaces. Integrators bring their own registry storage, identity and
+hardware trust roots, canary operation, and any bond/enforcement policy. It is not a hosted
+registry or attestation service. See [`HOST_NETWORK_EXPERIMENTAL.md`](HOST_NETWORK_EXPERIMENTAL.md).
+
 ## Rig Rate reference calculator (experimental)
 
 Rig Rate is a cloneable, in-process calculator for hourly GPU reference rates. It normalizes

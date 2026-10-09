@@ -30,6 +30,15 @@
         "typescript": "^5.6.3",
       },
     },
+    "packages/host-network": {
+      "name": "@curtain/host-network",
+      "version": "0.1.0-experimental",
+      "devDependencies": {
+        "@curtain/booths": "workspace:*",
+        "@types/bun": "latest",
+        "typescript": "^5.6.3",
+      },
+    },
     "packages/lamps": {
       "name": "@curtain/lamps",
       "version": "0.1.0-experimental",
@@ -108,6 +117,8 @@
     "@curtain/booths": ["@curtain/booths@workspace:packages/booths"],
 
     "@curtain/db": ["@curtain/db@workspace:packages/db"],
+
+    "@curtain/host-network": ["@curtain/host-network@workspace:packages/host-network"],
 
     "@curtain/keeper": ["@curtain/keeper@workspace:services/keeper"],
 
