@@ -12,7 +12,7 @@
 
 Private swaps and stake-to-earn on Robinhood Chain. Swap USDG and tokenized Stock Tokens without a direct wallet-to-recipient edge, instantly or on a random delay you choose, with an escape hatch that returns your deposit if Curtain can't pay. Tagline: *Draw the curtain.*
 
-**Contract address:** `0x66a844fcbf4705dbde3c97394d5a4c9822e8f35b`
+**$CRTN Contract address:** `0x66a844fcbf4705dbde3c97394d5a4c9822e8f35b`
 
 **Curtain privacy routes on Robinhood Chain:**
 

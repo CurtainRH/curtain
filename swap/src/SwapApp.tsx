@@ -9,7 +9,7 @@ import { chain, ensureChain, errorMessage, publicClient, provider, v3Vault } fro
 import { downloadFile } from "./curtain/domain";
 import { useCurtain, type TokenData } from "./curtain/useCurtain";
 import { pendingPoolV4Notes, poolV4Quote, poolV4Swap, recoverPoolV4Note, PoolV4FallbackError } from "./curtain/poolV4";
-import { POOL_V4_CLIENT_ENABLED } from "./curtain/routes";
+import { POOL_V2_CLIENT_ENABLED } from "./curtain/routes";
 import type { SavedTicket } from "./curtain/integration";
 import "@rainbow-me/rainbowkit/styles.css";
 import "./swap.css";
@@ -95,7 +95,7 @@ function SwapExperience() {
               args: [input.address, raw],
             })
           : false;
-        if (active) setRouteMode(POOL_V4_CLIENT_ENABLED && app.poolV4Enabled && v4Eligible ? "v4" : approved ? "v3" : "v2");
+        if (active) setRouteMode(POOL_V2_CLIENT_ENABLED && app.poolV4Enabled && v4Eligible ? "v4" : approved ? "v3" : "v2");
       } catch {
         if (active) setRouteMode("v2");
       } finally {

@@ -97,7 +97,7 @@ For the standalone Swap client and the main dashboard, enable the product V4 shi
 route after the operator environment above is deployed:
 
 ```text
-VITE_ENABLE_POOL_V4=true
+VITE_ENABLE_POOL_V2=true
 ```
 
 ### Step 4: GitHub Actions Auto-Deploy Hooks (Optional)

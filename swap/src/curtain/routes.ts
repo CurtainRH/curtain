@@ -17,7 +17,7 @@ export const POOL_V4_ADDRESSES: PoolV4Addresses = {
 };
 
 /** V4 is enabled only when the matching operator config is also live. */
-export const POOL_V4_CLIENT_ENABLED = import.meta.env["VITE_ENABLE_POOL_V4"] === "true";
+export const POOL_V2_CLIENT_ENABLED = import.meta.env["VITE_ENABLE_POOL_V2"] === "true";
 
 export function routeName(route: SwapRoute): string {
   if (route === "v2") return "Curtain V2";
@@ -32,6 +32,6 @@ export function routeDescription(route: SwapRoute): string {
 }
 
 export function canExecuteRoute(route: SwapRoute): boolean {
-  return route !== "v4" || POOL_V4_CLIENT_ENABLED;
+  return route !== "v4" || POOL_V2_CLIENT_ENABLED;
 }
 
