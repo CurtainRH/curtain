@@ -1,10 +1,18 @@
-# Lamps booking protocol — experimental
+# Lamps — experimental reserved-window toolkit
 
-Lamps is the booking layer around Booths. A Lamp represents capacity on a **specific, fixed UTC service window** for a named GPU class—not a fungible GPU-hour balance. A host publishes the window and its Booths provider capabilities; a buyer reserves one capacity unit; the host accepts and runs a Booths job during that window; the host submits a usage receipt; and the buyer confirms or disputes delivery.
+Lamps is reusable code for building fixed GPU service-window bookings around Booths. A Lamp names a particular host, GPU class, region, capacity, UTC start/end window, workload, and price. This package is a toolkit, not a Curtain-hosted marketplace or payment service. Integrators bring their own service, database, identity records, chain, token, and operating policies.
 
-This cloneable package is an in-process protocol/state-machine prototype. It is not a hosted API, persistent marketplace, smart contract, escrow, token, payment processor, or proof that the receipt describes correct execution. It does not move funds. Do not represent a `refunded` state from this prototype as an actual token refund.
+## What this package provides
 
-## Clone and test
+- Reservation lifecycle with host/buyer roles, request idempotency, fixed-window capacity checks, and Booths job linkage.
+- A Postgres store adapter with a transaction-locked capacity reservation. Apply [`sql/schema.sql`](sql/schema.sql) to the integrator's database, then use `postgresLampsStore` from `@curtain/lamps/postgres`.
+- EIP-712 host receipt verification from `@curtain/lamps/receipts`. The integrator maps `hostId` to an authorized signing address.
+- Escrow and signature-verification ports for a payment adapter chosen by the integrator.
+- A reference ERC-20 escrow contract at `backend/contracts/src/lamps/LampsWindowEscrow.sol`. It accepts the token, bond basis points, review window, and no-show grace at deployment; it has no owner or unilateral dispute resolver.
+
+Receipt signatures authenticate the submitting host and bind the receipt fields to a booking. They do **not** prove the host used the advertised hardware, that the result is correct, or that the workload completed honestly. Integrators need their own verification/acceptance policy.
+
+## Try it
 
 ```sh
 git clone https://github.com/CurtainRH/curtain.git
@@ -14,39 +22,32 @@ bun run --filter @curtain/lamps test
 bun run --filter @curtain/lamps typecheck
 ```
 
-## Use in your service
-
-In a monorepo, add `backend/packages/booths` and `backend/packages/lamps` as workspace packages, or vendor their source. Lamps uses Booths capabilities to ensure an offer only lists devices and tasks the host provider advertises. `devices` is per schedulable accelerator; repeated device names mean multiple GPUs of the same class, and offer capacity cannot exceed that count.
+The `createLampsToolkit` constructor requires a `LampsStore`, `LampsReceiptVerifier`, `LampsEscrow`, and explicit stake basis points. No token, chain, database URL, hosted endpoint, or default staking amount is imposed. Call `fund` as the buyer, `postHostBond` as the host, then accept/start/deliver. The escrow implementation must make operations idempotent or expose state checks so callers can safely recover after an RPC or database failure.
 
 ```ts
-import { createLampsBook, type LampsOffer } from "@curtain/lamps";
+import { createLampsToolkit } from "@curtain/lamps";
+import { postgresLampsStore } from "@curtain/lamps/postgres";
+import { eip712ReceiptVerifier } from "@curtain/lamps/receipts";
 
-const book = createLampsBook();
-const offer: LampsOffer = {
-  id: "offer-a10-2030-01-01-12z",
-  hostId: "host-operator-1",
-  gpuClass: "NVIDIA A10",
-  region: "us-west",
-  startsAt: "2030-01-01T12:00:00.000Z",
-  endsAt: "2030-01-01T14:00:00.000Z",
-  capacity: 1,
-  priceAsset: "USDG",
-  priceAmount: "25000000",
-  tasks: ["inference"],
-};
-
-book.publish(offer, await boothsProvider.capabilities());
-const reservation = book.reserve(offer.id, "buyer-1", "checkout-123");
+const lamps = createLampsToolkit({
+  store: postgresLampsStore(yourDb),
+  receipts: eip712ReceiptVerifier({
+    chainId: yourChainId,
+    verifyingContract: yourEscrowAddress,
+    hostAddress: (hostId) => yourIdentityStore.addressFor(hostId),
+  }),
+  escrow: yourEscrowAdapter,
+  stakePolicy: { hostBondBps: 2_000, buyerDisputeStakeBps: 500 }, // example only
+  reviewWindowSeconds: 24 * 60 * 60,
+});
 ```
 
-All timestamps must be canonical ISO UTC; windows must be future, positive, and whole-hour duration. Price is currently descriptive metadata only. `reserve` is idempotent per buyer/request ID and enforces the offer's capacity. The lifecycle methods enforce host/buyer roles and the receipt's link to a Booths request ID.
+Apply the schema from this package before constructing the Postgres adapter. The store serializes competing reservations by locking the offer row, but the external database and chain cannot share a single atomic transaction; integrators must reconcile chain events and retry idempotently.
 
-## What remains before escrow or a marketplace
+## Escrow and dispute rules
 
-- Durable storage, signed host offers, and cross-process reservation locking.
-- A receipt signature/verification format and a meaningful way to dispute incorrect or partial work.
-- The payment asset and exact commercial definition of a window/capacity unit.
-- Audited escrow contracts with explicit acceptance, seller non-delivery, buyer dispute, timeout, and refund paths.
-- Host onboarding, availability monitoring, cancellation policy, and real hardware/benchmark verification.
+The reference contract escrows buyer payment and a host bond, supports buyer-confirmed release, permissionless release after the review window, and an objective no-show refund if the host never starts. A buyer dispute requires a configured stake. Disputed funds are released only when **both buyer and host sign the same EIP-712 settlement**; neither Curtain nor a single operator can decide the outcome.
 
-The unit tests use a mock provider and fake clock. They validate the protocol only; they do not test GPU execution, payment, chain settlement, seller reliability, or contractual enforceability.
+Mutual-only resolution has an important consequence: if either side disappears or refuses to sign, disputed funds remain locked indefinitely. There is no hidden admin recovery path. Integrators should disclose this plainly and decide whether that trade-off fits their use case before deploying. The contract is reference code, not audited or deployed by this package change; review and test it before handling real funds.
+
+The stake percentages and payment token are deployment/configuration choices. Example basis points above are illustrations, not a recommended economic policy. Host and buyer bonds use the same token as the booking payment in the reference contract.

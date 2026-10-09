@@ -33,6 +33,10 @@
     "packages/lamps": {
       "name": "@curtain/lamps",
       "version": "0.1.0-experimental",
+      "dependencies": {
+        "@curtain/db": "workspace:*",
+        "viem": "2.57.0",
+      },
       "devDependencies": {
         "@curtain/booths": "workspace:*",
         "@types/bun": "latest",

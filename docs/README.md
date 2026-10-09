@@ -37,8 +37,11 @@ package [`README.md`](../backend/packages/booths/README.md).
 ## Lamps reserved-window protocol (experimental)
 
 Lamps models reservations for a specific GPU service window and links delivery to a Booths job.
-The current cloneable state-machine package is `backend/packages/lamps`; it is in-process only
-and does not implement persistent listings, signatures, payments, or escrow. See
+The cloneable toolkit at `backend/packages/lamps` now includes a Postgres persistence adapter,
+EIP-712 receipt verification, pluggable escrow integration, and reference ERC-20 escrow contract.
+Mutual-only disputes require both buyer and host signatures; unresolved disputes remain locked.
+It is code for integrators to bring into their own service, not a Curtain-hosted marketplace.
+See
 [`LAMPS_EXPERIMENTAL.md`](LAMPS_EXPERIMENTAL.md) and the package
 [`README.md`](../backend/packages/lamps/README.md).
 
