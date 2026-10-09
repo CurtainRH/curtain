@@ -24,7 +24,6 @@ import type { Db } from "@curtain/db";
 import { createIntent, IntentError, MAX_DELAY_SECONDS, MAX_SPLITS, minSplitShareBps } from "./intents";
 import type { Operator } from "./operator";
 import { createDeveloperApi } from "./developer";
-import { createBoothsApi, type BoothsConfig } from "./booths";
 import type { PoolV2RootPublisher } from "./poolV2";
 import { createRpcProxy } from "./rpc";
 
@@ -44,7 +43,6 @@ export interface ApiConfig {
   poolV4?: { publisher: PoolV2RootPublisher; pool: Address; rootManager: Address };
   poolV4Legacy?: { publisher: PoolV2RootPublisher; pool: Address; rootManager: Address }[];
   contexts?: { v2: Omit<ApiConfig, "contexts">; v3?: Omit<ApiConfig, "contexts"> };
-  booths?: BoothsConfig;
 }
 
 /** Largest ticket-sync request accepted: about 200 KB of encrypted tickets plus JSON overhead. */
@@ -78,12 +76,9 @@ function checkRate(key: string, limit: number, windowMs = 60_000): boolean {
 export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
   const now = cfg.now ?? (() => Math.floor(Date.now() / 1000));
   const developerApi = createDeveloperApi(cfg);
-  const boothsApi = cfg.booths ? createBoothsApi(cfg.booths) : undefined;
   const rpcProxy = cfg.rpcUrl ? createRpcProxy(cfg.rpcUrl) : undefined;
 
   return async (req) => {
-    const boothsResponse = await boothsApi?.(req);
-    if (boothsResponse) return boothsResponse;
     const developerResponse = await developerApi(req);
     if (developerResponse) return developerResponse;
     const version = req.headers.get("x-curtain-version")?.trim().toLowerCase() === "v3" ? "v3" : "v2";

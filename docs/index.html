@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#07111e" />
     <meta
       name="description"
-      content="Build with Curtain. V2 private swap APIs, wallet transaction preparation, and integration guides for Robinhood Chain."
+      content="Build with Curtain. Private swap APIs and experimental, cloneable Booths compute runtime."
     />
     <title>Curtain — Developer documentation</title>
     <link rel="stylesheet" href="/src/style.css" />
@@ -28,7 +28,8 @@
           ><a href="#quotes">Quotes</a><a href="#intents">Create an intent</a>
           <a href="#transactions">Wallet transactions</a><a href="#status">Track delivery</a
           ><a href="#refunds">Escape tickets &amp; refunds</a>
-          <a href="#compute">Booths compute (experimental)</a><a href="#errors">Errors &amp; limits</a><a href="#privacy">Privacy model</a>
+          <a href="#booths">Booths runtime · experimental</a><a href="#errors">Errors &amp; limits</a
+          ><a href="#privacy">Privacy model</a>
         </nav>
         <a class="spec-link" href="/openapi.yaml" download>Download OpenAPI specification ↓</a>
         <div class="network">
@@ -459,38 +460,6 @@ if (receipt.status !== "success") throw new Error("Deposit reverted");
             recovery even when its API key or the operator is unavailable.
           </p>
         </section>
-        <section id="compute">
-          <p class="eyebrow">EXPERIMENTAL · ASYNC JOBS</p>
-          <h2>Booths compute jobs.</h2>
-          <p>
-            Integrate an asynchronous compute queue into your backend. Submit a named task and JSON
-            input with <code>POST /v1/compute/jobs</code>, then poll the returned job ID. An
-            authenticated worker claims jobs and posts a result. Idempotency keys, bounded payloads,
-            leases, and per-key active-job limits are built in.
-          </p>
-          <div class="callout">
-            Experimental job orchestration only: Curtain does not currently provide a hosted model,
-            GPU allocation, confidential-compute attestation, or arbitrary-code execution. A worker
-            must be connected separately. Do not send secrets or sensitive prompts; completed job
-            payloads/results become inaccessible through the API after 24 hours.
-          </div>
-          <div class="code">
-            <div class="code-title">Submit from your backend <button type="button" class="copy">Copy</button></div>
-            <pre><code>POST https://operator.curtainrh.com/v1/compute/jobs
-Authorization: Bearer $CURTAIN_API_KEY
-Idempotency-Key: summarise-doc-123
-Content-Type: application/json
-
-{"task":"my-app.summarize","input":{"documentId":"doc_123"}}</code></pre>
-          </div>
-          <p>
-            Use <code>GET /v1/compute/jobs/{id}</code> to check status. Server-side helpers for
-            integrators and allowlisted worker handlers are available from
-            <code>@curtain/sdk/booths</code>. Keep both API and worker credentials in server-side
-            secret storage. The current worker interface is CPU-compatible; GPU and attested
-            confidential compute are future work, not part of this experimental endpoint.
-          </p>
-        </section>
         <section id="errors">
           <h2>Predictable errors. Clear limits.</h2>
           <p>
@@ -550,6 +519,44 @@ Content-Type: application/json
             Never automatically broadcast the same deposit again after an API or wallet timeout.
             Check for an existing receipt and reconcile the intent first. The API’s idempotency
             guarantee covers intent creation, not repeated on-chain transactions.
+          </p>
+        </section>
+        <section id="booths">
+          <p class="eyebrow">EXPERIMENTAL · OPEN SOURCE RUNTIME</p>
+          <h2>Bring your own compute.</h2>
+          <p>
+            Booths is code to clone or vendor into your own service—not a Curtain-hosted API.
+            Integrate the runtime in-process and connect hardware through a provider you control.
+            The included example provider targets a local CUDA GPU and local model weights.
+          </p>
+          <div class="code">
+            <div class="code-title">Clone and test <button type="button" class="copy">Copy</button></div>
+            <pre><code>git clone https://github.com/CurtainRH/curtain.git
+cd curtain/backend
+bun install
+bun run --filter @curtain/booths test</code></pre>
+          </div>
+          <div class="code">
+            <div class="code-title">Call it from your service <button type="button" class="copy">Copy</button></div>
+            <pre><code>import { createBoothsRuntime } from "@curtain/booths";
+
+const booths = createBoothsRuntime({ provider: yourGpuProvider });
+const result = await booths.run({
+  requestId: crypto.randomUUID(),
+  task: "inference",
+  model: "local-model-id",
+  input: { prompt: "Summarize this text." },
+});</code></pre>
+          </div>
+          <div class="callout">
+            Experimental integration code only. You supply the GPU, drivers, model, and provider.
+            Curtain does not host compute or provide GPU allocation, attestation, or a privacy
+            guarantee. The sample CUDA provider loads local weights only and currently supports
+            inference, not fine-tuning.
+          </div>
+          <p>
+            Follow the <a href="https://github.com/CurtainRH/curtain/blob/main/docs/BOOTHS_RUNTIME.md">Booths clone-and-use guide</a> or inspect the
+            <a href="https://github.com/CurtainRH/curtain/tree/main/backend/packages/booths">source and GPU adapter example</a>.
           </p>
         </section>
         <section id="privacy">

@@ -199,9 +199,6 @@ const api = createApi({
   minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
   ...(poolV2Publisher && poolV2Address && poolV2ManagerAddress ? { poolV4: { publisher: poolV2Publisher, pool: poolV2Address, rootManager: poolV2ManagerAddress } } : {}),
   ...(poolV2LegacyPublisher && poolV2LegacyAddress && poolV2LegacyManagerAddress ? { poolV4Legacy: [{ publisher: poolV2LegacyPublisher, pool: poolV2LegacyAddress, rootManager: poolV2LegacyManagerAddress }] } : {}),
-  ...(process.env["FEATURE_BOOTHS"]?.trim().toLowerCase() === "true"
-    ? { booths: { db, workerToken: env("BOOTHS_WORKER_TOKEN") } }
-    : {}),
   contexts: v3Operator && v3Db && v3Vault ? {
     v2: {
       db, operator, vault, tokens, keeperFeeBps,
@@ -218,8 +215,6 @@ const api = createApi({
     },
   } : undefined,
 });
-if (process.env["FEATURE_BOOTHS"]?.trim().toLowerCase() === "true")
-  console.log("Booths experimental compute-job API ON (execution workers are separately operated)");
 const mcp = createMcpApi(api);
 
 const server = Bun.serve({

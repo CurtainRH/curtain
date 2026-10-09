@@ -26,6 +26,14 @@ Create a separate project using the private repo, branch `main`:
 No environment variables or API keys are needed for this static documentation site.
 It does not make authenticated API calls or offer a browser API-key playground.
 
+## Booths runtime (experimental)
+
+Booths is a cloneable, in-process compute runtime at `backend/packages/booths`; it is not a
+Curtain-hosted API. Integrators bring the GPU/provider and call the runtime from their own service.
+The included local CUDA example is inference-only and requires the integrator's own hardware,
+drivers, dependencies, and model weights. See [`BOOTHS_RUNTIME.md`](BOOTHS_RUNTIME.md) and the
+package [`README.md`](../backend/packages/booths/README.md).
+
 ## Developer API deployment
 
 The existing operator serves `/developer/*` for wallet-signature key management and
@@ -42,14 +50,6 @@ Developer API responses expose both the requested and resolved route. Dynamic re
 `008_limit_orders.sql` adds explicit limit-order intent metadata; limit orders reuse the existing
 on-chain `minOut` settlement guard and accept `orderType: "limit"` plus `expiresInSeconds`.
 No new operator, keeper, or main frontend environment variables are required.
-
-The experimental Booths compute queue is exposed as `/v1/compute/*` when the operator has
-`FEATURE_BOOTHS=true` and `BOOTHS_WORKER_TOKEN` configured; its worker token is distinct from
-integrator keys. Migration `011_booths_jobs.sql` creates durable jobs. Integrators can use the
-server-side helpers in `@curtain/sdk/booths`. This is queue/worker orchestration only: no hosted
-GPU, model execution, or attested confidential-compute service is included. See
-`BOOTHS_EXPERIMENTAL_API.md` for its scope, payload limits, worker contract, and
-data-retention behavior.
 Deploy the backend before the main dashboard. The keeper and vault contracts are unchanged.
 
 Dashboard management uses the existing same-origin `/api/curtain/developer/*` proxy.
