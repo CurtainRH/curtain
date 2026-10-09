@@ -22,6 +22,10 @@ Required before deployment:
 - Trusted setup or a transparent proving system, with ceremony artifacts pinned
 - Generated Solidity verifier and test vectors
 
+The screening circuit is intentionally exposed through a separate registry boundary. The pool
+must not accept a screening proof until the generated verifier, screening policy, root publisher,
+and consumer wiring have all been reviewed together.
+
 Compile after installing dependencies with:
 
 ```sh
