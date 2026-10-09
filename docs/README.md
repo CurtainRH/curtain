@@ -42,6 +42,14 @@ Developer API responses expose both the requested and resolved route. Dynamic re
 `008_limit_orders.sql` adds explicit limit-order intent metadata; limit orders reuse the existing
 on-chain `minOut` settlement guard and accept `orderType: "limit"` plus `expiresInSeconds`.
 No new operator, keeper, or main frontend environment variables are required.
+
+The experimental Booths compute queue is exposed as `/v1/compute/*` when the operator has
+`FEATURE_BOOTHS=true` and `BOOTHS_WORKER_TOKEN` configured; its worker token is distinct from
+integrator keys. Migration `011_booths_jobs.sql` creates durable jobs. Integrators can use the
+server-side helpers in `@curtain/sdk/booths`. This is queue/worker orchestration only: no hosted
+GPU, model execution, or attested confidential-compute service is included. See
+`BOOTHS_EXPERIMENTAL_API.md` for its scope, payload limits, worker contract, and
+data-retention behavior.
 Deploy the backend before the main dashboard. The keeper and vault contracts are unchanged.
 
 Dashboard management uses the existing same-origin `/api/curtain/developer/*` proxy.

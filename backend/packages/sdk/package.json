@@ -10,7 +10,8 @@
     ".": "./src/index.ts",
     "./abi": "./src/abi.ts",
     "./stealth": "./src/stealth.ts",
-    "./sync": "./src/sync.ts"
+    "./sync": "./src/sync.ts",
+    "./booths": "./src/booths.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

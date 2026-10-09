@@ -5,7 +5,8 @@ info:
   description: >-
     V2, V3, or dynamic private swap preparation on Robinhood Chain. Call from your server.
     API keys do not sign or broadcast transactions. Users retain wallet custody.
-    Obtain a key in https://curtainrh.com/app/developer.
+    Obtain a key in https://curtainrh.com/app/developer. Experimental Booths routes provide
+    durable job orchestration only; execution workers are operated separately.
 servers:
   - url: https://operator.curtainrh.com/v1
 security:
@@ -240,12 +241,129 @@ paths:
                   payoutTx: { type: string, nullable: true }
                   blockedReason: { type: string, nullable: true }
         default: { $ref: "#/components/responses/Error" }
+  /compute/jobs:
+    post:
+      operationId: submitBoothsComputeJob
+      summary: Submit an experimental asynchronous compute job
+      description: >-
+        Stores a bounded JSON job for a separately operated worker. This does not provide a hosted
+        model, GPU allocation, attestation, or arbitrary-code execution. Results become inaccessible
+        through the API 24 hours after completion. Use an idempotency key for safe retries.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9_.:-]+$" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [task, input]
+              properties:
+                task: { type: string, minLength: 1, maxLength: 80, pattern: "^[a-z][a-z0-9._-]*$" }
+                input:
+                  oneOf:
+                    - { type: object, additionalProperties: true }
+                    - { type: array, items: {} }
+      responses:
+        "202":
+          description: Job queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoothsJob" }
+        "200": { description: Existing job returned for an identical idempotent retry }
+        default: { $ref: "#/components/responses/Error" }
+  /compute/jobs/{id}:
+    get:
+      operationId: getBoothsComputeJob
+      summary: Poll a compute job created with this API key
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[a-f0-9]{32}$" }
+      responses:
+        "200":
+          description: Job state, with output/error when terminal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoothsJob" }
+        default: { $ref: "#/components/responses/Error" }
+  /compute/worker/claim:
+    post:
+      operationId: claimBoothsComputeJob
+      summary: Claim one queued job with the experimental worker credential
+      security: [{ workerBearerAuth: [] }]
+      responses:
+        "200":
+          description: Leased job or null when the queue is empty
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job: { allOf: [{ $ref: "#/components/schemas/BoothsJob" }, { nullable: true }] }
+                  leaseSeconds: { type: integer, example: 180 }
+        default: { $ref: "#/components/responses/Error" }
+  /compute/worker/jobs/{id}/heartbeat:
+    post:
+      operationId: heartbeatBoothsComputeJob
+      summary: Extend a running job lease
+      security: [{ workerBearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: "^[a-f0-9]{32}$" } }
+      responses:
+        "200": { description: Lease extended }
+        default: { $ref: "#/components/responses/Error" }
+  /compute/worker/jobs/{id}/complete:
+    post:
+      operationId: completeBoothsComputeJob
+      summary: Submit a worker result
+      security: [{ workerBearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: "^[a-f0-9]{32}$" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [output]
+              properties:
+                output: { description: JSON-compatible task result, maximum encoded size 48 KB }
+      responses:
+        "200": { description: Job marked succeeded }
+        default: { $ref: "#/components/responses/Error" }
+  /compute/worker/jobs/{id}/fail:
+    post:
+      operationId: failBoothsComputeJob
+      summary: Mark a worker job failed
+      security: [{ workerBearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: "^[a-f0-9]{32}$" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error: { type: string, maxLength: 500 }
+      responses:
+        "200": { description: Job marked failed }
+        default: { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       description: Server-side API key generated in the Curtain dashboard
+    workerBearerAuth:
+      type: http
+      scheme: bearer
+      description: Server-side BOOTHS_WORKER_TOKEN; never expose it to integrator users or browsers
   responses:
     Error:
       description: >-
@@ -264,6 +382,20 @@ components:
             properties:
               error: { type: string }
   schemas:
+    BoothsJob:
+      type: object
+      properties:
+        id: { type: string, pattern: "^[a-f0-9]{32}$" }
+        task: { type: string }
+        status: { type: string, enum: [queued, running, succeeded, failed] }
+        input:
+          oneOf:
+            - { type: object, additionalProperties: true }
+            - { type: array, items: {} }
+        output: { description: JSON-compatible task result, nullable: true }
+        error: { type: string, nullable: true }
+        attempts: { type: integer }
+        experimental: { type: boolean, example: true }
     Address:
       type: string
       pattern: "^0x[a-fA-F0-9]{40}$"

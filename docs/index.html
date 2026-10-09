@@ -28,7 +28,7 @@
           ><a href="#quotes">Quotes</a><a href="#intents">Create an intent</a>
           <a href="#transactions">Wallet transactions</a><a href="#status">Track delivery</a
           ><a href="#refunds">Escape tickets &amp; refunds</a>
-          <a href="#errors">Errors &amp; limits</a><a href="#privacy">Privacy model</a>
+          <a href="#compute">Booths compute (experimental)</a><a href="#errors">Errors &amp; limits</a><a href="#privacy">Privacy model</a>
         </nav>
         <a class="spec-link" href="/openapi.yaml" download>Download OpenAPI specification ↓</a>
         <div class="network">
@@ -457,6 +457,38 @@ if (receipt.status !== "success") throw new Error("Deposit reverted");
           <p>
             Revoking an API key does not change these contract rules. Your integration should offer
             recovery even when its API key or the operator is unavailable.
+          </p>
+        </section>
+        <section id="compute">
+          <p class="eyebrow">EXPERIMENTAL · ASYNC JOBS</p>
+          <h2>Booths compute jobs.</h2>
+          <p>
+            Integrate an asynchronous compute queue into your backend. Submit a named task and JSON
+            input with <code>POST /v1/compute/jobs</code>, then poll the returned job ID. An
+            authenticated worker claims jobs and posts a result. Idempotency keys, bounded payloads,
+            leases, and per-key active-job limits are built in.
+          </p>
+          <div class="callout">
+            Experimental job orchestration only: Curtain does not currently provide a hosted model,
+            GPU allocation, confidential-compute attestation, or arbitrary-code execution. A worker
+            must be connected separately. Do not send secrets or sensitive prompts; completed job
+            payloads/results become inaccessible through the API after 24 hours.
+          </div>
+          <div class="code">
+            <div class="code-title">Submit from your backend <button type="button" class="copy">Copy</button></div>
+            <pre><code>POST https://operator.curtainrh.com/v1/compute/jobs
+Authorization: Bearer $CURTAIN_API_KEY
+Idempotency-Key: summarise-doc-123
+Content-Type: application/json
+
+{"task":"my-app.summarize","input":{"documentId":"doc_123"}}</code></pre>
+          </div>
+          <p>
+            Use <code>GET /v1/compute/jobs/{id}</code> to check status. Server-side helpers for
+            integrators and allowlisted worker handlers are available from
+            <code>@curtain/sdk/booths</code>. Keep both API and worker credentials in server-side
+            secret storage. The current worker interface is CPU-compatible; GPU and attested
+            confidential compute are future work, not part of this experimental endpoint.
           </p>
         </section>
         <section id="errors">
