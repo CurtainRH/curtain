@@ -5,6 +5,7 @@
   "scripts": {
     "compile:pool": "circom2 src/pool_note.circom --r1cs --wasm --sym -l node_modules",
     "compile:spend": "circom2 src/pool_spend.circom --r1cs --wasm --sym -l node_modules",
+    "compile:screening": "circom2 src/pool_screening.circom --r1cs --wasm --sym -l node_modules",
     "test": "node --test src/*.test.mjs",
     "prove:local": "node src/proveLocal.mjs"
   },
