@@ -86,31 +86,35 @@ export function createDeveloperApi(root: ApiConfig) {
   const now = root.now ?? (() => Math.floor(Date.now() / 1000));
   const chainId = root.chainId ?? 4663;
   const allowed = new Set(Object.values(cfg.tokens).map((token) => getAddress(token)));
+  const allowedV3 = v3 ? new Set(Object.values(v3.tokens).map((token) => getAddress(token))) : allowed;
+  const fixedDenominationCache = v3?.fixedAmounts
+    ? [...v3.fixedAmounts].map((entry) => {
+        const [token, amount] = entry.split(":");
+        return { token, amount };
+      })
+    : [];
   type Route = {
     context: ApiConfig;
     table: "developer_intents" | "developer_v3_intents";
     mode: "v2" | "v3";
+    allowed: Set<Address>;
     reason: "explicit_v2" | "explicit_v3" | "approved_fixed_denomination" | "amount_not_in_v3_denomination_set";
   };
   const contextFor = (route: unknown, tokenIn?: Address, amount?: string): Route => {
-    if (route === "v2") return { context: cfg, table: "developer_intents", mode: "v2" as const, reason: "explicit_v2" };
+    if (route === "v2") return { context: cfg, table: "developer_intents", mode: "v2" as const, allowed, reason: "explicit_v2" };
     if (route === "v3" && v3?.v3Mode)
-      return { context: v3, table: "developer_v3_intents", mode: "v3" as const, reason: "explicit_v3" };
+      return { context: v3, table: "developer_v3_intents", mode: "v3" as const, allowed: allowedV3, reason: "explicit_v3" };
     if (route === "dynamic") {
       if (!tokenIn || !amount)
         throw new ApiError(400, "Dynamic privacy requires tokenIn and amountIn");
       if (v3?.v3Mode && v3.fixedAmounts?.has(`${tokenIn}:${amount}`))
-        return { context: v3, table: "developer_v3_intents", mode: "v3", reason: "approved_fixed_denomination" };
-      return { context: cfg, table: "developer_intents", mode: "v2", reason: "amount_not_in_v3_denomination_set" };
+        return { context: v3, table: "developer_v3_intents", mode: "v3", allowed: allowedV3, reason: "approved_fixed_denomination" };
+      return { context: cfg, table: "developer_intents", mode: "v2", allowed, reason: "amount_not_in_v3_denomination_set" };
     }
     throw new ApiError(400, 'privacyRoute must be "v2", "v3", or "dynamic"');
   };
   const fixedDenominations = () => {
-    if (!v3?.fixedAmounts) return [];
-    return [...v3.fixedAmounts].map((entry) => {
-      const [token, amount] = entry.split(":");
-      return { token, amount };
-    });
+    return fixedDenominationCache;
   };
   const authBuckets = new Map<string, { start: number; count: number }>();
   let lastChallengeCleanup = 0;
@@ -401,7 +405,7 @@ export function createDeveloperApi(root: ApiConfig) {
       const intent = await createIntent(
         tx,
         normalized,
-        new Set(Object.values(route.context.tokens).map((token) => getAddress(token))),
+        route.allowed,
         route.context.vault,
         now(),
         route.mode === "v3",
@@ -472,10 +476,7 @@ export function createDeveloperApi(root: ApiConfig) {
         const amount = units(url.searchParams.get("amountIn"), "amountIn");
         const requestedPrivacyRoute = url.searchParams.get("privacyRoute");
         const route = contextFor(requestedPrivacyRoute, tokenIn, amount);
-        const routeAllowed = new Set(
-          Object.values(route.context.tokens).map((token) => getAddress(token)),
-        );
-        if (!routeAllowed.has(tokenIn) || !routeAllowed.has(tokenOut))
+        if (!route.allowed.has(tokenIn) || !route.allowed.has(tokenOut))
           throw new ApiError(400, "Token not supported");
         if (route.mode === "v3" && !route.context.fixedAmounts?.has(`${tokenIn}:${amount}`))
           throw new ApiError(400, "V3 only accepts an approved fixed denomination for this asset");
