@@ -10,7 +10,8 @@
 .swap-recovery-button:hover { color: #c5a059; }
 .swap-recovery-button:disabled { opacity: .45; cursor: wait; }
 .swap-card { max-width: 620px; margin: auto; background: #0b192b; border: 1px solid #d2ae6f30; box-shadow: 0 25px 90px #0006; padding: clamp(25px, 6vw, 54px); }
-.swap-intro { margin-bottom: 30px; }
+.swap-intro { position: relative; margin-bottom: 30px; }
+.swap-intro .swap-recovery-button { position: absolute; top: 0; right: 0; }
 .swap-eyebrow { display: flex; align-items: center; gap: 7px; color: #c5a059; font-size: .65rem; letter-spacing: .16em; }
 .swap-intro h1 { font: 400 clamp(2.7rem, 8vw, 4.8rem) "Playfair Display", serif; letter-spacing: -.04em; margin: 16px 0 10px; }
 .swap-intro p, .swap-help, .swap-footnote { color: #9daabc; font-size: .82rem; line-height: 1.65; }

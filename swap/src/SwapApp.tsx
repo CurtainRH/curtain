@@ -281,12 +281,12 @@ function SwapExperience() {
           <span>Curtain</span>
         </a>
         <a className="swap-header-link" href="https://curtainrh.com/app"><Home size={14} /> main</a>
-        <button className="swap-recovery-button" type="button" onClick={() => void recover()} disabled={recovering} aria-label="Recover pending private notes" title="Recover pending private notes">
-          <Rewind size={15} />
-        </button>
       </header>
       <section className="swap-card" aria-labelledby="swap-title">
         <div className="swap-intro">
+          <button className="swap-recovery-button" type="button" onClick={() => void recover()} disabled={recovering} aria-label="Recover pending private notes" title="Recover pending private notes">
+            <Rewind size={17} />
+          </button>
           <h1 id="swap-title">Swap simply.</h1>
           <p>Choose what you send, what you receive, and where it should arrive...privately</p>
         </div>
