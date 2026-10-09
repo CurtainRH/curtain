@@ -3,6 +3,7 @@ pragma solidity 0.8.26;
 
 import {Script, console} from "forge-std/Script.sol";
 import {CurtainPoolV2} from "../src/pool/CurtainPoolV2.sol";
+import {PoolV2RootManager} from "../src/pool/PoolV2RootManager.sol";
 import {PoolV2TransferVerifierAdapter} from "../src/pool/PoolV2TransferVerifierAdapter.sol";
 
 /// @notice Deploys the externally named Curtain V4 pool after a production verifier is reviewed.
@@ -10,7 +11,8 @@ import {PoolV2TransferVerifierAdapter} from "../src/pool/PoolV2TransferVerifierA
 /// Required environment:
 ///   PRIVATE_KEY                         deployment wallet
 ///   POOL_V2_GENERATED_VERIFIER_ADDR     deployed Groth16 verifier, with bytecode
-///   POOL_V2_ROOT_MANAGER                append-only root publisher
+///   POOL_V2_ROOT_MANAGER_OWNER          final owner/admin of the root manager (optional: deployer)
+///   POOL_V2_ROOT_PUBLISHER              root publishing service (optional: deployer)
 ///   POOL_V2_TOKEN_ADDRS                  comma-separated ERC-20 addresses
 ///
 /// This script deliberately does not deploy a generated verifier. The verifier must be built,
@@ -23,31 +25,38 @@ contract DeployPoolV4Script is Script {
     error MissingTokens();
     error InvalidTokenList();
 
-    function run() external returns (PoolV2TransferVerifierAdapter adapter, CurtainPoolV2 pool) {
+    function run() external returns (PoolV2TransferVerifierAdapter adapter, PoolV2RootManager manager, CurtainPoolV2 pool) {
         address generatedVerifier = vm.envAddress("POOL_V2_GENERATED_VERIFIER_ADDR");
-        address rootManager = vm.envAddress("POOL_V2_ROOT_MANAGER");
         string memory rawTokens = vm.envString("POOL_V2_TOKEN_ADDRS");
         uint256 key = vm.envUint("PRIVATE_KEY");
 
         if (generatedVerifier == address(0) || generatedVerifier.code.length == 0) revert MissingVerifier();
-        if (rootManager == address(0)) revert MissingRootManager();
         address[] memory tokens = _parseAddresses(rawTokens);
         if (tokens.length == 0) revert MissingTokens();
 
         address deployer = vm.addr(key);
+        address rootOwner = vm.envOr("POOL_V2_ROOT_MANAGER_OWNER", deployer);
+        address rootPublisher = vm.envOr("POOL_V2_ROOT_PUBLISHER", deployer);
+        if (rootOwner == address(0) || rootPublisher == address(0)) revert MissingRootManager();
         console.log("Deployer:             ", deployer);
         console.log("Generated verifier:   ", generatedVerifier);
-        console.log("Root manager:         ", rootManager);
+        console.log("Root manager owner:   ", rootOwner);
+        console.log("Root publisher:       ", rootPublisher);
         console.log("Token count:          ", tokens.length);
         if (block.chainid == RHC_CHAIN_ID) console.log("Network:              Robinhood Chain");
 
         vm.startBroadcast(key);
         adapter = new PoolV2TransferVerifierAdapter(generatedVerifier);
-        pool = new CurtainPoolV2(address(adapter), tokens, rootManager);
+        // The deployer is the temporary root-manager owner so it can initialize the pool.
+        manager = new PoolV2RootManager(deployer, rootPublisher);
+        pool = new CurtainPoolV2(address(adapter), tokens, address(manager));
+        manager.setPool(address(pool));
+        if (rootOwner != deployer) manager.transferOwnership(rootOwner);
         vm.stopBroadcast();
 
         console.log("Pool V4:              ", address(pool));
         console.log("Pool V4 verifier:     ", address(adapter));
+        console.log("Pool V4 root manager: ", address(manager));
     }
 
     function _parseAddresses(string memory raw) internal pure returns (address[] memory result) {
