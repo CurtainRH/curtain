@@ -25,9 +25,11 @@ import { createIntent, IntentError, MAX_DELAY_SECONDS, MAX_SPLITS, minSplitShare
 import type { Operator } from "./operator";
 import { createDeveloperApi } from "./developer";
 import type { PoolV2RootPublisher } from "./poolV2";
+import { createRpcProxy } from "./rpc";
 
 export interface ApiConfig {
   chainId?: number;
+  rpcUrl?: string;
   db: Db;
   operator: Operator;
   vault: Address;
@@ -74,6 +76,7 @@ function checkRate(key: string, limit: number, windowMs = 60_000): boolean {
 export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
   const now = cfg.now ?? (() => Math.floor(Date.now() / 1000));
   const developerApi = createDeveloperApi(cfg);
+  const rpcProxy = cfg.rpcUrl ? createRpcProxy(cfg.rpcUrl) : undefined;
 
   return async (req) => {
     const developerResponse = await developerApi(req);
@@ -88,6 +91,11 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
     try {
       if (req.method === "OPTIONS") {
         return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, PUT", "access-control-allow-headers": "content-type" } });
+      }
+      if (pathname === "/rpc") {
+        if (!rpcProxy) return json({ error: "RPC proxy is not configured" }, 503);
+        if (!checkRate(`rpc:${clientIp}`, 600)) return json({ error: "RPC request limit reached" }, 429);
+        return await rpcProxy(req);
       }
       if (req.method === "GET" && pathname === "/health") return json({ status: "ok" });
 

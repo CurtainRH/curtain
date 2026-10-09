@@ -53,8 +53,9 @@ export const chain = defineChain({
 export const publicClient = createPublicClient({
   chain,
   batch: { multicall: true },
-  transport: http(env["VITE_RPC_URL"] || "https://rpc.mainnet.chain.robinhood.com", {
-    batch: true,
+  // Browser reads stay same-origin and are relayed by the operator server to RPC_HTTP.
+  transport: http("/api/rpc", {
+    batch: { batchSize: 50, wait: 8 },
     retryCount: 3,
     timeout: 12_000,
   }),

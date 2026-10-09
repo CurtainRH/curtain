@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/api/rpc", "destination": "https://operator.curtainrh.com/rpc" },
     { "source": "/api/curtain-v3/:path*", "destination": "https://operator.curtainrh.com/:path*" },
     { "source": "/api/curtain/:path*", "destination": "https://operator.curtainrh.com/:path*" }
   ]

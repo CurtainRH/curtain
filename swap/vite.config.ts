@@ -11,6 +11,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      "/api/rpc": { target: "https://operator.curtainrh.com", changeOrigin: true, rewrite: () => "/rpc" },
       "/api/curtain-v3": { target: "https://operator.curtainrh.com", changeOrigin: true, rewrite: (path) => path.replace(/^\/api\/curtain-v3/, "") },
       "/api/curtain": { target: "https://operator.curtainrh.com", changeOrigin: true, rewrite: (path) => path.replace(/^\/api\/curtain/, "") },
     },
