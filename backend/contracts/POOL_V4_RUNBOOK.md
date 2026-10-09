@@ -16,16 +16,16 @@ This is the operational record for the new shielded-pool route on Robinhood Chai
 
 | Component | Address |
 |---|---|
-| `CurtainPoolV2` (product route V4) | `0xf8f47571A55dB8745b7642515aF051D7B1e09dd3` |
-| `PoolV2RootManager` | `0xccB2e48e229435d64b42fe664dA880992C481365` |
-| `PoolV2TransferVerifierAdapter` | `0x97e1a6401418d6F2B72839065C48A17c9e8Aa731` |
-| `PoolV2UnshieldVerifierAdapter` | `0xB7e12f83B8404019Acd7c3677B1B5026a642b8A0` |
-| Generated transfer Groth16 verifier | `0x0DF4b72342e67455eAB6680Fdb4ddD93A5eb8f9A` |
-| Generated unshield Groth16 verifier | `0xD24eA37425CF5D3476FB366caBb80339Ad11862b` |
+| `CurtainPoolV2` (product route V4) | `0x38147c547cDE831812CD075166E279B77FF164Cc` |
+| `PoolV2RootManager` | `0x51E2aCaC1Fe6b1915D7Eafd24b96B7781cd9AFEf` |
+| `PoolV2TransferVerifierAdapter` | `0x0a997c29065e765DF0C66FB746D2683fDfEc8fd5` |
+| `PoolV2UnshieldVerifierAdapter` | `0x64260f018073e5E9710A150C2a0938A4Cb57100B` |
+| Generated transfer Groth16 verifier | `0x32F392E471977E5378D77ecfD3e0b36CE3AF69a4` |
+| Generated unshield Groth16 verifier | `0x9315A7D43165B3aa1044a9d458D2496867AC22eD` |
 
 The canonical deployment record is [`deployments/4663.json`](deployments/4663.json).
 
-The final swap-enabled pool was created in block `84108016`. The operator must start its
+The corrected pool was created in block `84199146`. The operator must start its
 event scan at that block (or an earlier block) so the first shielded notes are
 included in the published tree.
 
@@ -55,14 +55,14 @@ The production verifier workflow uses the published BN254 Hermez Powers of Tau a
 Example deployment configuration:
 
 ```sh
-POOL_V2_GENERATED_VERIFIER_ADDR=0x...
 POOL_V2_TOKEN_ADDRS=0x...,0x...
 POOL_V2_ROOT_MANAGER_OWNER=0x...
 POOL_V2_ROOT_PUBLISHER=0x...
+POOL_V2_SWAP_TARGETS=0x...,0x...
 PRIVATE_KEY=0x...
 
-forge script script/DeployPoolV4.s.sol:DeployPoolV4Script \
-  --rpc-url "$RPC_HTTP" --broadcast --legacy
+forge script script/DeployPoolV2.s.sol:DeployPoolV2Script \
+  --rpc-url "$RPC_HTTP" --broadcast
 ```
 
 ## Integration order
@@ -80,16 +80,17 @@ The product rollout is intentionally staged:
 Operator configuration:
 
 ```text
-POOL_V4_ADDR=0xf8f47571A55dB8745b7642515aF051D7B1e09dd3
-POOL_V4_ROOT_MANAGER_ADDR=0xccB2e48e229435d64b42fe664dA880992C481365
-POOL_V4_START_BLOCK=84108016
+POOL_V2_ADDR=0x38147c547cDE831812CD075166E279B77FF164Cc
+POOL_V2_ROOT_MANAGER_ADDR=0x51E2aCaC1Fe6b1915D7Eafd24b96B7781cd9AFEf
+POOL_V2_START_BLOCK=84199146
 POOL_V2_SWAP_TARGETS=0x...
 ```
 
 The operator's existing `OPERATOR_PRIVATE_KEY` must be the manager publisher
-account for root publication. Do not enable these variables until the address
-values have been checked against the deployment record and the operator wallet
-has enough native gas.
+account for root publication. The service accepts the former `POOL_V4_*` names
+as temporary compatibility aliases, but new deployments must use `POOL_V2_*`.
+Do not enable these variables until the address values have been checked against
+the deployment record and the operator wallet has enough native gas.
 
 The final pool deployment also allowlists the existing Uniswap V3 router and
 Uniswap V4 adapter as `POOL_V2_SWAP_TARGETS`. The browser receives quote calldata

@@ -10,7 +10,6 @@ template PoolUnshield(DEPTH) {
     signal input secret;
     signal input tokenId;
     signal input amount;
-    signal input nullifierNonce;
     signal input siblings[DEPTH];
     signal input pathBits[DEPTH];
     signal input recipient;
@@ -53,7 +52,9 @@ template PoolUnshield(DEPTH) {
     root <== level[DEPTH];
     component nullifierHash = Poseidon(2);
     nullifierHash.inputs[0] <== secret;
-    nullifierHash.inputs[1] <== nullifierNonce;
+    // The nullifier must be fixed by the note itself. A caller-selected nonce
+    // would allow multiple nullifiers, and therefore multiple spends, per note.
+    nullifierHash.inputs[1] <== inputLeaf.out;
     nullifier <== nullifierHash.out;
     publicTokenId <== tokenId;
     publicAmount <== amount;

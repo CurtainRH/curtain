@@ -5,8 +5,8 @@ import { buildPoolTransferWitness, DEPTH } from "./poolTransferWitness.mjs";
 
 const root = new URL("..", import.meta.url).pathname;
 const wasm = `${root}pool_transfer_js/pool_transfer.wasm`;
-const zkey = `${root}pool_transfer_groth16_dev.zkey`;
-const vkeyPath = `${root}pool_transfer_groth16_dev.vkey.json`;
+const zkey = `${root}pool_transfer_v2.zkey`;
+const vkeyPath = `${root}pool_transfer_v2.vkey.json`;
 
 if (!existsSync(wasm) || !existsSync(zkey)) {
   throw new Error("Compile the transfer circuit and create pool_transfer_groth16_dev.zkey first.");
@@ -16,7 +16,6 @@ const input = await buildPoolTransferWitness({
   secret: 11n,
   tokenId: 22n,
   amount: 33n,
-  nullifierNonce: 44n,
   siblings: Array.from({ length: DEPTH }, (_, i) => BigInt(i + 100)),
   pathBits: Array.from({ length: DEPTH }, (_, i) => i % 2),
   outputSecrets: [55n, 66n],
@@ -29,7 +28,6 @@ const circuitInput = {
   secret: input.secret,
   tokenId: input.tokenId,
   amount: input.amount,
-  nullifierNonce: input.nullifierNonce,
   siblings: input.siblings,
   pathBits: input.pathBits,
   outputSecret: input.outputSecret,

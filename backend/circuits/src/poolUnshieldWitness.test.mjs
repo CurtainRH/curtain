@@ -7,7 +7,6 @@ test("builds an unshield witness with the contract public outputs", async () => 
     secret: 11n,
     tokenId: 22n,
     amount: 33n,
-    nullifierNonce: 44n,
     siblings: Array.from({ length: DEPTH }, (_, i) => BigInt(i + 100)),
     pathBits: Array.from({ length: DEPTH }, (_, i) => i % 2),
     recipient: 55n,

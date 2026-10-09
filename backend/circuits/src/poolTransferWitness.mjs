@@ -13,7 +13,6 @@ export async function buildPoolTransferWitness({
   secret,
   tokenId,
   amount,
-  nullifierNonce,
   siblings,
   pathBits,
   outputSecrets,
@@ -29,7 +28,6 @@ export async function buildPoolTransferWitness({
   const s = assertField(secret, "secret");
   const t = assertField(tokenId, "tokenId");
   const a = assertField(amount, "amount");
-  const nonce = assertField(nullifierNonce, "nullifierNonce");
   const outputs = outputAmounts.map((value, i) => assertField(value, `outputAmounts[${i}]`));
   if (a !== outputs[0] + outputs[1]) throw new Error("amount must equal the two output amounts");
   if (outputs.some((value) => value === 0n)) throw new Error("output amounts must be non-zero");
@@ -44,12 +42,12 @@ export async function buildPoolTransferWitness({
     const sibling = assertField(siblings[i], `siblings[${i}]`);
     level = bits[i] === 0 ? poseidon([level, sibling]) : poseidon([sibling, level]);
   }
-  const nullifier = poseidon([s, nonce]);
+  const nullifier = poseidon([s, poseidon([s, t, a])]);
   const commitments = outputSecrets.map((value, i) => poseidon([
     assertField(value, `outputSecrets[${i}]`), t, outputs[i],
   ]));
   return {
-    secret: s.toString(), tokenId: t.toString(), amount: a.toString(), nullifierNonce: nonce.toString(),
+    secret: s.toString(), tokenId: t.toString(), amount: a.toString(),
     siblings: siblings.map((value, i) => assertField(value, `siblings[${i}]`).toString()),
     pathBits: bits,
     outputSecret: outputSecrets.map((value, i) => assertField(value, `outputSecrets[${i}]`).toString()),

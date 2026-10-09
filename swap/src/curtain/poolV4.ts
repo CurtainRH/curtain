@@ -43,7 +43,6 @@ export async function poolV4Swap({
 }): Promise<{ swapTx: Hex; unshieldTx: Hex; amountOut: bigint; commitment: Hex }> {
   const account = walletClient.account!.address;
   const secret = randomField();
-  const nonce = randomField();
   const params = new URLSearchParams({ tokenIn, tokenOut, amountIn: amountIn.toString(), slippageBps: "100" });
   let quote: { available?: boolean; router?: Address; data?: Hex; minOut?: string; error?: string };
   try {
@@ -58,7 +57,7 @@ export async function poolV4Swap({
   // Persist the recovery material before any approval or shield transaction is signed.
   // It stays in this browser origin and is never sent to the operator.
   localStorage.setItem(`${PENDING_NOTE_PREFIX}${noteCommitment.toLowerCase()}`, JSON.stringify({
-    secret: secret.toString(), nonce: nonce.toString(), tokenOut, amount: quotedOutput.toString(), recipient,
+    secret: secret.toString(), tokenOut, amount: quotedOutput.toString(), recipient,
     createdAt: new Date().toISOString(),
   }));
   onStatus?.("Approve the pool");
@@ -90,7 +89,7 @@ export async function poolV4Swap({
   onStatus?.("Generating your private proof");
   const wasm = "/pool-v4/pool_unshield.wasm";
   const zkey = "/pool-v4/pool_unshield_production.zkey";
-  const input = { secret: secret.toString(), tokenId: BigInt(tokenOut).toString(), amount: amountOut.toString(), nullifierNonce: nonce.toString(), siblings: witness.siblings.map(String), pathBits: witness.pathBits.map(Number), recipient: BigInt(recipient).toString() };
+  const input = { secret: secret.toString(), tokenId: BigInt(tokenOut).toString(), amount: amountOut.toString(), siblings: witness.siblings.map(String), pathBits: witness.pathBits.map(Number), recipient: BigInt(recipient).toString() };
   const { proof, publicSignals } = await snarkjs.groth16.fullProve(input, wasm, zkey);
   onStatus?.("Confirm the private delivery");
   const unshieldTx = await walletClient.writeContract({

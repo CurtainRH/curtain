@@ -4,7 +4,7 @@ import { buildPoolSpendWitness, DEPTH } from "./poolSpendWitness.mjs";
 
 test("builds a deterministic Pool v2 spend witness", async () => {
   const input = {
-    secret: 11n, tokenId: 22n, amount: 33n, nullifierNonce: 44n, recipientHash: 55n,
+    secret: 11n, tokenId: 22n, amount: 33n, recipientHash: 55n,
     siblings: Array.from({ length: DEPTH }, (_, i) => BigInt(i + 100)),
     pathBits: Array.from({ length: DEPTH }, (_, i) => i % 2),
   };
@@ -18,7 +18,7 @@ test("builds a deterministic Pool v2 spend witness", async () => {
 
 test("rejects malformed Merkle paths", async () => {
   await assert.rejects(
-    buildPoolSpendWitness({ secret: 1, tokenId: 2, amount: 3, nullifierNonce: 4, recipientHash: 5, siblings: [], pathBits: [] }),
+    buildPoolSpendWitness({ secret: 1, tokenId: 2, amount: 3, recipientHash: 5, siblings: [], pathBits: [] }),
     /siblings must contain 16 entries/,
   );
 });

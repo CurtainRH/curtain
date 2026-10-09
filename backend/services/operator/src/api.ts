@@ -24,7 +24,7 @@ import type { Db } from "@curtain/db";
 import { createIntent, IntentError, MAX_DELAY_SECONDS, MAX_SPLITS, minSplitShareBps } from "./intents";
 import type { Operator } from "./operator";
 import { createDeveloperApi } from "./developer";
-import type { PoolV4RootPublisher } from "./poolV4";
+import type { PoolV2RootPublisher } from "./poolV2";
 
 export interface ApiConfig {
   chainId?: number;
@@ -38,7 +38,7 @@ export interface ApiConfig {
   now?: () => number; // unix seconds
   v3Mode?: boolean;
   fixedAmounts?: Set<string>;
-  poolV4?: { publisher: PoolV4RootPublisher; pool: Address; rootManager: Address };
+  poolV4?: { publisher: PoolV2RootPublisher; pool: Address; rootManager: Address };
   contexts?: { v2: Omit<ApiConfig, "contexts">; v3?: Omit<ApiConfig, "contexts"> };
 }
 

@@ -11,7 +11,6 @@ template PoolTransfer(DEPTH) {
     signal input secret;
     signal input tokenId;
     signal input amount;
-    signal input nullifierNonce;
     signal input siblings[DEPTH];
     signal input pathBits[DEPTH];
     signal input outputSecret[2];
@@ -64,7 +63,7 @@ template PoolTransfer(DEPTH) {
 
     component nullifierHash = Poseidon(2);
     nullifierHash.inputs[0] <== secret;
-    nullifierHash.inputs[1] <== nullifierNonce;
+    nullifierHash.inputs[1] <== inputLeaf.out;
 
     root <== level[DEPTH];
     nullifier <== nullifierHash.out;

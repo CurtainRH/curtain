@@ -4,15 +4,16 @@ import { buildPoseidon } from "circomlibjs";
 import { decodeEventLog, getAddress, parseAbi, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 import type { Db } from "@curtain/db";
 
-export const POOL_V4_ABI = parseAbi([
+export const POOL_V2_ABI = parseAbi([
   "event NoteShielded(address indexed token,uint256 amount,bytes32 indexed commitment)",
   "function publishRoot(bytes32 root)",
 ]);
 const ROOT_MANAGER_ABI = parseAbi(["function publishRoot(bytes32 root)"]);
+const ROOT_STATUS_ABI = parseAbi(["function knownRoot(bytes32 root) view returns (bool)"]);
 const DEPTH = 16;
 const LOG_CHUNK_SIZE = 2_000n;
 
-export interface PoolV4Config {
+export interface PoolV2Config {
   db: Db;
   publicClient: PublicClient;
   walletClient: WalletClient;
@@ -22,7 +23,7 @@ export interface PoolV4Config {
   rescanBlocks?: bigint;
 }
 
-export interface PoolV4Witness {
+export interface PoolV2Witness {
   commitment: Hex;
   token: Address;
   amount: string;
@@ -31,12 +32,12 @@ export interface PoolV4Witness {
   pathBits: number[];
 }
 
-/** Indexes public V4 commitments and publishes the corresponding append-only Poseidon root. */
-export class PoolV4RootPublisher {
+/** Indexes Pool V2 commitments for the V4 product route. Legacy SQL names stay compatible. */
+export class PoolV2RootPublisher {
   private readonly rescan: bigint;
   private readonly poseidonPromise = buildPoseidon();
 
-  constructor(private cfg: PoolV4Config) {
+  constructor(private cfg: PoolV2Config) {
     this.rescan = cfg.rescanBlocks ?? 200n;
   }
 
@@ -50,7 +51,6 @@ export class PoolV4RootPublisher {
       : cursor[0] ? BigInt(cursor[0].block) + 1n : this.cfg.startBlock;
     const head = await this.cfg.publicClient.getBlockNumber();
     const from = next - this.rescan > this.cfg.startBlock ? next - this.rescan : this.cfg.startBlock;
-    if (from > head) return { added: 0 };
 
     // Robinhood RPC providers cap eth_getLogs ranges. Chunk the initial backfill and every
     // rescan so a fresh operator can recover instead of retrying one oversized request forever.
@@ -62,8 +62,12 @@ export class PoolV4RootPublisher {
     let added = 0;
     await this.cfg.db.transaction(async (tx) => {
       for (const log of logs) {
+        let event;
         try {
-          const event = decodeEventLog({ abi: POOL_V4_ABI, data: log.data, topics: log.topics });
+          event = decodeEventLog({ abi: POOL_V2_ABI, data: log.data, topics: log.topics });
+        } catch {
+          continue; // Other pool events are not deposits. Database errors must propagate.
+        }
           if (event.eventName !== "NoteShielded") continue;
           const args = event.args as unknown as { token: Address; amount: bigint; commitment: Hex };
           const result = await tx.query(
@@ -72,9 +76,6 @@ export class PoolV4RootPublisher {
             [args.commitment.toLowerCase(), getAddress(args.token), args.amount.toString(), log.blockNumber?.toString() ?? "0", Number(log.logIndex ?? 0), log.transactionHash],
           );
           if (result.length) added++;
-        } catch {
-          // Ignore logs from a different ABI topic or an RPC reorg duplicate.
-        }
       }
       await tx.query(
         `INSERT INTO pool_v4_cursor (id, block) VALUES (1, $1)
@@ -82,8 +83,11 @@ export class PoolV4RootPublisher {
         [head.toString()],
       );
     });
-    if (!added) return { added };
+    if (!added && indexed[0]?.count === "0") return { added };
     const root = await this.root();
+    // A previous publication may have failed after indexing committed. Retry even
+    // when no new deposits arrived, and do not submit already accepted roots.
+    if (await this.cfg.publicClient.readContract({ address: this.cfg.pool, abi: ROOT_STATUS_ABI, functionName: "knownRoot", args: [root] })) return { added, root };
     const hash = await this.cfg.walletClient.writeContract({
       chain: this.cfg.walletClient.chain,
       account: this.cfg.walletClient.account!,
@@ -92,7 +96,8 @@ export class PoolV4RootPublisher {
       functionName: "publishRoot",
       args: [root],
     });
-    await this.cfg.publicClient.waitForTransactionReceipt({ hash });
+    const receipt = await this.cfg.publicClient.waitForTransactionReceipt({ hash });
+    if (receipt.status !== "success") throw new Error("Pool V2 root publication reverted");
     return { added, root, txHash: hash };
   }
 
@@ -101,7 +106,7 @@ export class PoolV4RootPublisher {
     return this.formatRoot((await this.buildTree(rows.map((row) => BigInt(row.commitment)))).root);
   }
 
-  async witness(commitment: Hex): Promise<PoolV4Witness | undefined> {
+  async witness(commitment: Hex): Promise<PoolV2Witness | undefined> {
     const rows = await this.cfg.db.query<{ commitment: string; token: Address; amount: string }>(
       "SELECT commitment, token, amount FROM pool_v4_notes ORDER BY block, log_index",
     );
@@ -125,7 +130,7 @@ export class PoolV4RootPublisher {
 
   /** Build only occupied branches; empty subtrees use precomputed zero hashes. */
   private async buildTree(leaves: bigint[]): Promise<{ root: bigint; levels: Map<number, bigint>[]; zeroHashes: bigint[] }> {
-    if (leaves.length > 2 ** DEPTH) throw new Error("Pool V4 Merkle tree is full");
+    if (leaves.length > 2 ** DEPTH) throw new Error("Pool V2 Merkle tree is full");
     const poseidon = await this.poseidonPromise;
     const hashPair = (left: bigint, right: bigint) => poseidon.F.toObject(poseidon([left, right]));
     const zeroHashes = [0n];

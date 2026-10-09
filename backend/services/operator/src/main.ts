@@ -23,9 +23,10 @@
  *   FEATURE_SPLIT_PAYOUTS     "true" lets one swap pay 2-5 recipients; anything else = off
  *   FEATURE_ANONYMITY_SET     "true" serves GET /pool (deposits waiting, per token); anything else = off
  *   FEATURE_TICKET_SYNC       "true" serves GET/PUT /sync/:id (encrypted ticket backups); anything else = off
- *   POOL_V4_ADDR               deployed CurtainPoolV2 address (enables the V4 root publisher)
- *   POOL_V4_ROOT_MANAGER_ADDR  deployed PoolV2RootManager address
- *   POOL_V4_START_BLOCK        first block to scan for V4 NoteShielded events (required to backfill existing notes)
+ *   POOL_V2_ADDR               deployed CurtainPoolV2 address (enables the product V4 root publisher)
+ *   POOL_V2_ROOT_MANAGER_ADDR  deployed PoolV2RootManager address
+ *   POOL_V2_START_BLOCK        first block to scan for Pool V2 NoteShielded events
+ *                              (POOL_V4_* aliases remain temporarily compatible)
  */
 import { bunSqlDb, migrate } from "@curtain/db";
 import { DEFAULT_TOKENS } from "@curtain/sdk";
@@ -35,7 +36,7 @@ import { createApi } from "./api";
 import { createMcpApi } from "./mcp";
 import { Operator, type StealthConfig } from "./operator";
 import { mockQuoter, mockRoute, uniswapQuoter, uniswapRoute } from "./routes";
-import { PoolV4RootPublisher } from "./poolV4";
+import { PoolV2RootPublisher } from "./poolV2";
 
 const env = (k: string, d?: string) => {
   const v = process.env[k] ?? d;
@@ -93,15 +94,18 @@ const vault = env("VAULT_ADDR") as Address;
 const router = env("DEX_ROUTER_ADDR") as Address;
 const keeperFeeBps = Number(env("KEEPER_FEE_BPS", "5"));
 const tokens = parseTokens(process.env["TOKENS"]);
-const poolV4 = process.env["POOL_V4_ADDR"] ? getAddress(process.env["POOL_V4_ADDR"] as Address) : undefined;
-const poolV4RootManager = process.env["POOL_V4_ROOT_MANAGER_ADDR"] ? getAddress(process.env["POOL_V4_ROOT_MANAGER_ADDR"] as Address) : undefined;
-const poolV4Publisher = poolV4 && poolV4RootManager
-  ? new PoolV4RootPublisher({
-      db, publicClient, walletClient, pool: poolV4, rootManager: poolV4RootManager,
-      startBlock: process.env["POOL_V4_START_BLOCK"] ? BigInt(process.env["POOL_V4_START_BLOCK"]!) : await publicClient.getBlockNumber(),
+const poolV2 = process.env["POOL_V2_ADDR"] ?? process.env["POOL_V4_ADDR"];
+const poolV2RootManager = process.env["POOL_V2_ROOT_MANAGER_ADDR"] ?? process.env["POOL_V4_ROOT_MANAGER_ADDR"];
+const poolV2StartBlock = process.env["POOL_V2_START_BLOCK"] ?? process.env["POOL_V4_START_BLOCK"];
+const poolV2Address = poolV2 ? getAddress(poolV2 as Address) : undefined;
+const poolV2ManagerAddress = poolV2RootManager ? getAddress(poolV2RootManager as Address) : undefined;
+const poolV2Publisher = poolV2Address && poolV2ManagerAddress
+  ? new PoolV2RootPublisher({
+      db, publicClient, walletClient, pool: poolV2Address, rootManager: poolV2ManagerAddress,
+      startBlock: poolV2StartBlock ? BigInt(poolV2StartBlock) : await publicClient.getBlockNumber(),
     })
   : undefined;
-if (poolV4Publisher) console.log(`V4 root publisher ON: ${poolV4}`);
+if (poolV2Publisher) console.log(`Pool V2 root publisher ON for product V4: ${poolV2Address}`);
 
 /** Stealth payouts are off unless the flag is exactly "true"; when on, misconfiguration stops startup. */
 async function stealthConfig(): Promise<StealthConfig | undefined> {
@@ -167,18 +171,18 @@ if (v3Operator) console.log(`V3 context ON: ${v3Vault}`);
 const api = createApi({
   db, operator, vault, tokens, keeperFeeBps, chainId,
   minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
-  ...(poolV4Publisher && poolV4 && poolV4RootManager ? { poolV4: { publisher: poolV4Publisher, pool: poolV4, rootManager: poolV4RootManager } } : {}),
+  ...(poolV2Publisher && poolV2Address && poolV2ManagerAddress ? { poolV4: { publisher: poolV2Publisher, pool: poolV2Address, rootManager: poolV2ManagerAddress } } : {}),
   contexts: v3Operator && v3Db && v3Vault ? {
     v2: {
       db, operator, vault, tokens, keeperFeeBps,
       minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
-      ...(poolV4Publisher && poolV4 && poolV4RootManager ? { poolV4: { publisher: poolV4Publisher, pool: poolV4, rootManager: poolV4RootManager } } : {}),
+      ...(poolV2Publisher && poolV2Address && poolV2ManagerAddress ? { poolV4: { publisher: poolV2Publisher, pool: poolV2Address, rootManager: poolV2ManagerAddress } } : {}),
     },
     v3: {
       db: v3Db, operator: v3Operator, vault: v3Vault, tokens, keeperFeeBps, v3Mode: true,
       fixedAmounts: await makeFixedAmounts(),
       minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
-      ...(poolV4Publisher && poolV4 && poolV4RootManager ? { poolV4: { publisher: poolV4Publisher, pool: poolV4, rootManager: poolV4RootManager } } : {}),
+      ...(poolV2Publisher && poolV2Address && poolV2ManagerAddress ? { poolV4: { publisher: poolV2Publisher, pool: poolV2Address, rootManager: poolV2ManagerAddress } } : {}),
     },
   } : undefined,
 });
@@ -196,7 +200,7 @@ for (;;) {
   const now = Math.floor(started / 1000);
   try {
     await operator.syncChain();
-    if (poolV4Publisher) await poolV4Publisher.sync();
+    if (poolV2Publisher) await poolV2Publisher.sync();
     await operator.cleanupExpiredIntents();
     await operator.processDue(now);
     await operator.submitSettlements(now);

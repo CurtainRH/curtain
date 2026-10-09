@@ -14,7 +14,6 @@ export async function buildPoolUnshieldWitness({
   secret,
   tokenId,
   amount,
-  nullifierNonce,
   siblings,
   pathBits,
   recipient,
@@ -27,12 +26,11 @@ export async function buildPoolUnshieldWitness({
     if (pathBits[i] !== 0 && pathBits[i] !== 1) throw new Error("pathBits must be binary");
     level = pathBits[i] === 0 ? hash2(poseidon, level, siblings[i]) : hash2(poseidon, siblings[i], level);
   }
-  const nullifier = poseidon.F.toObject(poseidon([BigInt(secret), BigInt(nullifierNonce)]));
+  const nullifier = poseidon.F.toObject(poseidon([BigInt(secret), leaf]));
   return {
     secret: BigInt(secret).toString(),
     tokenId: BigInt(tokenId).toString(),
     amount: BigInt(amount).toString(),
-    nullifierNonce: BigInt(nullifierNonce).toString(),
     siblings: siblings.map((v) => BigInt(v).toString()),
     pathBits: pathBits.map((v) => Number(v)),
     recipient: BigInt(recipient).toString(),
