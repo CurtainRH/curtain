@@ -1,8 +1,8 @@
 # Rig Rate — experimental
 
-Rig Rate is a cloneable, in-process calculator for a public hourly compute reference rate by GPU class and payment asset. It accepts normalized observations from paid Booths sessions, completed Lamps reservations, and public boards, calculates a median price per GPU-hour, and exposes source and market-quality flags.
+Rig Rate is a cloneable, in-process calculator for a public hourly compute reference rate by GPU class, region, time window, and payment asset. It accepts normalized observations from paid Booths sessions, completed Lamps reservations, and public boards; calculates a deterministic median price per GPU-hour; retains provenance; excludes configured outliers; and returns explicit `ok`, `thin_market`, or `insufficient_data` results with confidence reasons.
 
-It is not an oracle, marketplace, price feed, attestation service, or payment verifier. Integrators authenticate every source themselves and only set `settled: true` after independently confirming settlement. Public-board observations remain flagged `low-quality`; small, single-source, aging, or expired data must not be represented as a reliable market price.
+It is not an oracle, marketplace, price feed, attestation service, or payment verifier. Integrators authenticate every source themselves and only set `settled: true` after independently confirming settlement. Source adapters and persistence are optional interfaces owned by the integrator. Public-board observations remain lower confidence; estimates with small, single-source, aging, or expired data must not be represented as executable liquidity or a reliable market price.
 
 ## Use
 
