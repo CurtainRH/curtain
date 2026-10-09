@@ -34,6 +34,14 @@ The included local CUDA example is inference-only and requires the integrator's 
 drivers, dependencies, and model weights. See [`BOOTHS_RUNTIME.md`](BOOTHS_RUNTIME.md) and the
 package [`README.md`](../backend/packages/booths/README.md).
 
+## Lamps reserved-window protocol (experimental)
+
+Lamps models reservations for a specific GPU service window and links delivery to a Booths job.
+The current cloneable state-machine package is `backend/packages/lamps`; it is in-process only
+and does not implement persistent listings, signatures, payments, or escrow. See
+[`LAMPS_EXPERIMENTAL.md`](LAMPS_EXPERIMENTAL.md) and the package
+[`README.md`](../backend/packages/lamps/README.md).
+
 ## Developer API deployment
 
 The existing operator serves `/developer/*` for wallet-signature key management and

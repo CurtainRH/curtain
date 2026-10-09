@@ -28,7 +28,8 @@
           ><a href="#quotes">Quotes</a><a href="#intents">Create an intent</a>
           <a href="#transactions">Wallet transactions</a><a href="#status">Track delivery</a
           ><a href="#refunds">Escape tickets &amp; refunds</a>
-          <a href="#booths">Booths runtime · experimental</a><a href="#errors">Errors &amp; limits</a
+          <a href="#booths">Booths runtime · experimental</a><a href="#lamps">Lamps windows · experimental</a
+          ><a href="#errors">Errors &amp; limits</a
           ><a href="#privacy">Privacy model</a>
         </nav>
         <a class="spec-link" href="/openapi.yaml" download>Download OpenAPI specification ↓</a>
@@ -557,6 +558,32 @@ const result = await booths.run({
           <p>
             Follow the <a href="https://github.com/CurtainRH/curtain/blob/main/docs/BOOTHS_RUNTIME.md">Booths clone-and-use guide</a> or inspect the
             <a href="https://github.com/CurtainRH/curtain/tree/main/backend/packages/booths">source and GPU adapter example</a>.
+          </p>
+        </section>
+        <section id="lamps">
+          <p class="eyebrow">EXPERIMENTAL · RESERVED SERVICE WINDOWS</p>
+          <h2>Lamps books a specific window.</h2>
+          <p>
+            A Lamp is a reservation for a defined GPU class, capacity, and UTC service window.
+            The cloneable protocol connects host offers to a Booths provider, then tracks reserve,
+            accept, start, delivery receipt, buyer confirmation/dispute, and no-show refund
+            eligibility.
+          </p>
+          <div class="code">
+            <div class="code-title">Clone and test <button type="button" class="copy">Copy</button></div>
+            <pre><code>git clone https://github.com/CurtainRH/curtain.git
+cd curtain/backend
+bun install
+bun run --filter @curtain/lamps test</code></pre>
+          </div>
+          <div class="callout">
+            Prototype boundary: the current package is an in-process state machine. It does not
+            persist listings, verify signed receipts, hold funds, or execute payments/refunds.
+            Escrow and marketplace contracts come after delivery and dispute rules are validated.
+          </div>
+          <p>
+            Read the <a href="https://github.com/CurtainRH/curtain/blob/main/docs/LAMPS_EXPERIMENTAL.md">Lamps build notes</a>
+            and <a href="https://github.com/CurtainRH/curtain/tree/main/backend/packages/lamps">cloneable package</a>.
           </p>
         </section>
         <section id="privacy">

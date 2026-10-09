@@ -11,6 +11,7 @@ export interface BoothsWorkload<TInput = Record<string, unknown>> {
 
 export interface BoothsCapabilities {
   provider: string;
+  /** One entry per schedulable accelerator; repeat the model name for identical physical devices. */
   devices: string[];
   tasks: string[];
   /** Informational capability; enforcement remains provider-specific. */

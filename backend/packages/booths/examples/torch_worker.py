@@ -21,7 +21,8 @@ def main():
         raise RuntimeError("No CUDA GPU detected; this example does not silently fall back to CPU")
 
     if request.get("operation") == "capabilities":
-        reply({"provider": "pytorch-transformers", "devices": [torch.cuda.get_device_name(0)], "tasks": ["inference"]})
+        devices = [torch.cuda.get_device_name(index) for index in range(torch.cuda.device_count())]
+        reply({"provider": "pytorch-transformers", "devices": devices, "tasks": ["inference"]})
         return
 
     workload = request.get("workload", {})

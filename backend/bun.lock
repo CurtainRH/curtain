@@ -30,6 +30,15 @@
         "typescript": "^5.6.3",
       },
     },
+    "packages/lamps": {
+      "name": "@curtain/lamps",
+      "version": "0.1.0-experimental",
+      "devDependencies": {
+        "@curtain/booths": "workspace:*",
+        "@types/bun": "latest",
+        "typescript": "^5.6.3",
+      },
+    },
     "packages/sdk": {
       "name": "@curtain/sdk",
       "version": "0.0.1",
@@ -89,6 +98,8 @@
     "@curtain/db": ["@curtain/db@workspace:packages/db"],
 
     "@curtain/keeper": ["@curtain/keeper@workspace:services/keeper"],
+
+    "@curtain/lamps": ["@curtain/lamps@workspace:packages/lamps"],
 
     "@curtain/multiplier-view": ["@curtain/multiplier-view@workspace:services/multiplier-view"],
 
