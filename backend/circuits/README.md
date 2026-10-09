@@ -13,6 +13,9 @@ Current primitive:
 - `poolSpendWitness.mjs`: deterministic Poseidon root/nullifier and witness-input builder.
 - `poolScreeningWitness.mjs`: deterministic screening-root/nullifier and witness-input builder.
 - `poolTransferWitness.mjs`: deterministic transfer-root/nullifier/commitment and witness-input builder.
+- `proveTransferGroth16.mjs`: JavaScript Groth16 reference prover for a prepared proving key.
+- `proveTransferRapidsnark.mjs`: native Rapidsnark-compatible Groth16 prover path; it reuses the
+  same circuit and proving key, then verifies the result with `snarkjs`.
 
 Required before deployment:
 
@@ -35,6 +38,19 @@ a disposable CI Plonk setup, prove and verify a transfer witness, and export the
 Solidity verifier. The workflow uploads the verification key, verifier, and circuit artifact for
 review; it does not deploy or commit ceremony artifacts. A production ceremony must use a reviewed
 universal Powers of Tau artifact and a separately documented release process.
+
+## Faster proving path
+
+The circuit does not change between Plonk and Groth16. Once a reviewed Groth16 proving key exists,
+the native command can be used instead of the JavaScript prover:
+
+```sh
+RAPIDSNARK_BIN=/path/to/rapidsnark/prover npm run prove:transfer:rapidsnark
+```
+
+The command expects `pool_transfer_groth16_dev.zkey`, calculates the witness, generates a proof
+with Rapidsnark, and verifies it against the exported verification key. Rapidsnark accelerates
+proof generation; it does not replace the one-time proving-key setup or ceremony review.
 
 Compile after installing dependencies with:
 
