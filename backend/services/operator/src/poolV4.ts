@@ -10,6 +10,7 @@ export const POOL_V4_ABI = [
 ] as const;
 const ROOT_MANAGER_ABI = ["function publishRoot(bytes32 root)"] as const;
 const DEPTH = 16;
+const LOG_CHUNK_SIZE = 2_000n;
 
 export interface PoolV4Config {
   db: Db;
@@ -46,7 +47,13 @@ export class PoolV4RootPublisher {
     const from = next - this.rescan > this.cfg.startBlock ? next - this.rescan : this.cfg.startBlock;
     if (from > head) return { added: 0 };
 
-    const logs = await this.cfg.publicClient.getLogs({ address: this.cfg.pool, fromBlock: from, toBlock: head });
+    // Robinhood RPC providers cap eth_getLogs ranges. Chunk the initial backfill and every
+    // rescan so a fresh operator can recover instead of retrying one oversized request forever.
+    const logs = [] as Awaited<ReturnType<PublicClient["getLogs"]>>;
+    for (let chunkFrom = from; chunkFrom <= head; chunkFrom += LOG_CHUNK_SIZE) {
+      const chunkTo = chunkFrom + LOG_CHUNK_SIZE - 1n < head ? chunkFrom + LOG_CHUNK_SIZE - 1n : head;
+      logs.push(...await this.cfg.publicClient.getLogs({ address: this.cfg.pool, fromBlock: chunkFrom, toBlock: chunkTo }));
+    }
     let added = 0;
     await this.cfg.db.transaction(async (tx) => {
       for (const log of logs) {
