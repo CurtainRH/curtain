@@ -1,0 +1,14 @@
+{
+  "name": "@curtain/circuits",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "compile:pool": "circom2 src/pool_note.circom --r1cs --wasm --sym -l node_modules"
+  },
+  "dependencies": {
+    "circomlib": "2.0.5"
+  },
+  "devDependencies": {
+    "circom2": "0.2.23"
+  }
+}
