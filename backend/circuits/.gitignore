@@ -7,3 +7,8 @@ node_modules/
 verification_key.json
 .local-*
 pool_spend_dev.*
+pool_transfer_dev.*
+pool_transfer_plonk_dev.*
+pool_ci_*.ptau
+*.vkey.json
+PoolTransferPlonkVerifier.sol

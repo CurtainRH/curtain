@@ -28,6 +28,14 @@ The screening circuit is intentionally exposed through a separate registry bound
 must not accept a screening proof until the generated verifier, screening policy, root publisher,
 and consumer wiring have all been reviewed together.
 
+## CI verifier build
+
+Run the manual `pool-v2-verifier` GitHub Actions workflow to compile the transfer circuit, create
+a disposable CI Plonk setup, prove and verify a transfer witness, and export the development
+Solidity verifier. The workflow uploads the verification key, verifier, and circuit artifact for
+review; it does not deploy or commit ceremony artifacts. A production ceremony must use a reviewed
+universal Powers of Tau artifact and a separately documented release process.
+
 Compile after installing dependencies with:
 
 ```sh
