@@ -16,8 +16,11 @@ This is the operational record for the new shielded-pool route on Robinhood Chai
 
 | Component | Address |
 |---|---|
-| `CurtainPoolV2` (product route V4) | `0x38147c547cDE831812CD075166E279B77FF164Cc` |
-| `PoolV2RootManager` | `0x51E2aCaC1Fe6b1915D7Eafd24b96B7781cd9AFEf` |
+| Current `CurtainPoolV2` (product route V4) | `0xA6fcb7A43aE6F26c86EA637D8BA9aaA1fd506971` |
+| Current `PoolV2RootManager` | `0x13197b48E467A306F612D0eFBA745963E914B55F` |
+| Exact-output `UniswapV4Adapter` for Pool V2 | `0x86FACa7029Ac9c8d6a457DA6c38E12b84eba67a7` |
+| Legacy `CurtainPoolV2` (recovery only) | `0x38147c547cDE831812CD075166E279B77FF164Cc` |
+| Legacy `PoolV2RootManager` | `0x51E2aCaC1Fe6b1915D7Eafd24b96B7781cd9AFEf` |
 | `PoolV2TransferVerifierAdapter` | `0x0a997c29065e765DF0C66FB746D2683fDfEc8fd5` |
 | `PoolV2UnshieldVerifierAdapter` | `0x64260f018073e5E9710A150C2a0938A4Cb57100B` |
 | Generated transfer Groth16 verifier | `0x32F392E471977E5378D77ecfD3e0b36CE3AF69a4` |
@@ -25,9 +28,31 @@ This is the operational record for the new shielded-pool route on Robinhood Chai
 
 The canonical deployment record is [`deployments/4663.json`](deployments/4663.json).
 
-The corrected pool was created in block `84199146`. The operator must start its
-event scan at that block (or an earlier block) so the first shielded notes are
-included in the published tree.
+The current swap-ready pool was created in block `84297845`. Start its event
+scan at that block (or earlier). The legacy pool began at block `84199146` and
+must remain indexed for recovery of any notes created there. The two pools have
+separate database cursors and Merkle trees; never combine their notes or roots.
+
+The current pool was deployed with the existing production transfer and unshield
+verifier adapters, the configured supported-token set, the existing Uniswap V3
+SwapRouter02, and the new exact-output Uniswap V4 adapter. The earlier pool is
+not upgraded in place: immutable allowlists and its former swap behavior require
+a fresh deployment.
+
+### Production smoke test
+
+The deployed path was exercised on Robinhood Chain from the operator wallet:
+
+- Swap transaction: `0x3ce8cfe269b6d87f7dce1087feb7e15c5579274525ebd174dad991e6798340e0`
+- Root publication: `0xd868fadb2da0591283bc96801be34fa14cec5f2b47855d263109c6d59e517436`
+- Unshield transaction: `0x0eae023a17c0df5ce39b9f0afd566b2c4016d28ebf940f0026029444522843cc`
+- Input: `0.5 USDG`; exact-output route spent `0.495001 USDG` and returned the remainder.
+- Output: `0.002153102797079207 NVDA` was shielded, then unshielded to the operator wallet.
+- The unshield receipt succeeded and the note nullifier is marked spent.
+
+The guarded repeatable smoke-test tool is `../circuits/src/testPoolV2MainnetSwap.mjs`.
+It requires `POOL_V2_TEST_CONFIRM=EXECUTE_MAINNET_TEST_SWAP` and persists its
+recovery note with restrictive file permissions before any transaction.
 
 ## Roles and root policy
 
@@ -71,19 +96,24 @@ The product rollout is intentionally staged:
 
 1. **Curtain Swap (`swap.curtainrh.com`)** — add the V4 route choice, point the client at the deployed V4 addresses, and validate shield/proof/unshield flows while leaving existing V2 and V3 vault flows unchanged.
 2. **Main dashboard** — add V4 to the existing version/privacy choice and dynamic-privacy routing after the standalone Swap flow is validated.
-3. **Operator/API/keeper** — the first operator layer is now available: it indexes
+3. **Operator/API/keeper** — the operator layer indexes
    `NoteShielded` events, persists note metadata, publishes the append-only Poseidon
    root through `PoolV2RootManager`, and serves witnesses at
    `GET /pool-v4/witness/:commitment`. V4 settlement and client proof submission
    remain gated until the shield/unshield flow is validated end to end.
 
-Operator configuration:
+Operator configuration for a future controlled rollout (do not set the feature
+flag until the frontend integration is ready):
 
 ```text
-POOL_V2_ADDR=0x38147c547cDE831812CD075166E279B77FF164Cc
-POOL_V2_ROOT_MANAGER_ADDR=0x51E2aCaC1Fe6b1915D7Eafd24b96B7781cd9AFEf
-POOL_V2_START_BLOCK=84199146
-POOL_V2_SWAP_TARGETS=0x...
+POOL_V2_ADDR=0xA6fcb7A43aE6F26c86EA637D8BA9aaA1fd506971
+POOL_V2_ROOT_MANAGER_ADDR=0x13197b48E467A306F612D0eFBA745963E914B55F
+POOL_V2_START_BLOCK=84297845
+POOL_V2_DEX_ADAPTER_ADDR=0x86FACa7029Ac9c8d6a457DA6c38E12b84eba67a7
+POOL_V2_LEGACY_ADDR=0x38147c547cDE831812CD075166E279B77FF164Cc
+POOL_V2_LEGACY_ROOT_MANAGER_ADDR=0x51E2aCaC1Fe6b1915D7Eafd24b96B7781cd9AFEf
+POOL_V2_LEGACY_START_BLOCK=84199146
+FEATURE_POOL_V2_ROUTE=true
 ```
 
 The operator's existing `OPERATOR_PRIVATE_KEY` must be the manager publisher
@@ -92,8 +122,13 @@ as temporary compatibility aliases, but new deployments must use `POOL_V2_*`.
 Do not enable these variables until the address values have been checked against
 the deployment record and the operator wallet has enough native gas.
 
-The final pool deployment also allowlists the existing Uniswap V3 router and
-Uniswap V4 adapter as `POOL_V2_SWAP_TARGETS`. The browser receives quote calldata
-from `/pool-v4/quote`; it never invents router calldata locally.
+The new pool allowlists the existing Uniswap V3 router and the new exact-output
+Uniswap V4 adapter. The operator API builds exact-output calldata for the quoted
+output, caps input at the user's deposit, and refunds unused input. Its dedicated
+`POOL_V2_DEX_ADAPTER_ADDR` must point to the new adapter; do not replace the
+legacy global `V4_ADAPTER_ADDR`, which serves the existing vault routes. The
+browser receives quote calldata from `/pool-v4/quote`; it never invents router
+calldata locally. The route and UI remain disabled until the operator deployment
+and frontend wiring are deliberately enabled.
 
 Do not rename the Solidity contracts or deployment keys to `PoolV4`; reserve V4 for the product/API boundary.

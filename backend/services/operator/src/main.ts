@@ -23,9 +23,13 @@
  *   FEATURE_SPLIT_PAYOUTS     "true" lets one swap pay 2-5 recipients; anything else = off
  *   FEATURE_ANONYMITY_SET     "true" serves GET /pool (deposits waiting, per token); anything else = off
  *   FEATURE_TICKET_SYNC       "true" serves GET/PUT /sync/:id (encrypted ticket backups); anything else = off
- *   POOL_V2_ADDR               deployed CurtainPoolV2 address (enables the product V4 root publisher)
- *   POOL_V2_ROOT_MANAGER_ADDR  deployed PoolV2RootManager address
+ *   FEATURE_POOL_V2_ROUTE      "true" enables product V4 quote/root APIs; defaults off
+ *   POOL_V2_ADDR               active deployed CurtainPoolV2 address
+ *   POOL_V2_ROOT_MANAGER_ADDR  active PoolV2RootManager address
  *   POOL_V2_START_BLOCK        first block to scan for Pool V2 NoteShielded events
+ *   POOL_V2_LEGACY_ADDR        optional prior pool retained for recovery witness lookup
+ *   POOL_V2_LEGACY_ROOT_MANAGER_ADDR  prior pool's root manager
+ *   POOL_V2_LEGACY_START_BLOCK first block to scan for legacy note recovery
  *                              (POOL_V4_* aliases remain temporarily compatible)
  */
 import { bunSqlDb, migrate } from "@curtain/db";
@@ -38,10 +42,8 @@ import { Operator, type StealthConfig } from "./operator";
 import { mockQuoter, mockRoute, uniswapQuoter, uniswapRoute } from "./routes";
 import { PoolV2RootPublisher } from "./poolV2";
 
-// Product V4 (internally Pool V2) is intentionally paused. Keep deployment
-// configuration compatible, but do not index, publish roots, or advertise its
-// API while the replacement pool flow is being prepared.
-const POOL_V2_PRODUCT_ROUTE_ENABLED = false;
+// Product V4 stays opt-in until the operator configuration and frontend rollout are ready.
+const POOL_V2_PRODUCT_ROUTE_ENABLED = process.env["FEATURE_POOL_V2_ROUTE"]?.trim().toLowerCase() === "true";
 
 const env = (k: string, d?: string) => {
   const v = process.env[k] ?? d;
@@ -112,6 +114,17 @@ const poolV2Publisher = POOL_V2_PRODUCT_ROUTE_ENABLED && poolV2Address && poolV2
   : undefined;
 if (poolV2Publisher) console.log(`Pool V2 root publisher ON for product V4: ${poolV2Address}`);
 else if (poolV2Address || poolV2ManagerAddress) console.log("Product V4 route is paused; Pool V2 publisher is disabled.");
+const poolV2LegacyAddress = process.env["POOL_V2_LEGACY_ADDR"] ? getAddress(process.env["POOL_V2_LEGACY_ADDR"] as Address) : undefined;
+const poolV2LegacyManagerAddress = process.env["POOL_V2_LEGACY_ROOT_MANAGER_ADDR"]
+  ? getAddress(process.env["POOL_V2_LEGACY_ROOT_MANAGER_ADDR"] as Address)
+  : undefined;
+const poolV2LegacyPublisher = poolV2LegacyAddress && poolV2LegacyManagerAddress
+  ? new PoolV2RootPublisher({
+      db, publicClient, walletClient, pool: poolV2LegacyAddress, rootManager: poolV2LegacyManagerAddress,
+      startBlock: process.env["POOL_V2_LEGACY_START_BLOCK"] ? BigInt(process.env["POOL_V2_LEGACY_START_BLOCK"]) : 84199146n,
+    })
+  : undefined;
+if (poolV2LegacyPublisher) console.log(`Pool V2 legacy recovery indexer ON for ${poolV2LegacyAddress}`);
 
 /** Stealth payouts are off unless the flag is exactly "true"; when on, misconfiguration stops startup. */
 async function stealthConfig(): Promise<StealthConfig | undefined> {
@@ -160,6 +173,13 @@ const makeOperator = async (contextDb: typeof db, contextVault: Address, v3 = fa
     client: publicClient, v3Router: router, v3Quoter: env("UNISWAP_QUOTER_ADDR") as Address,
     v4Adapter: process.env["V4_ADAPTER_ADDR"] as Address | undefined, v4Quoter: process.env["V4_QUOTER_ADDR"] as Address | undefined,
   }),
+  ...(!mock && process.env["POOL_V2_DEX_ADAPTER_ADDR"] ? {
+    poolQuote: uniswapQuoter({
+      client: publicClient, v3Router: router, v3Quoter: env("UNISWAP_QUOTER_ADDR") as Address,
+      v4Adapter: getAddress(process.env["POOL_V2_DEX_ADAPTER_ADDR"] as Address),
+      v4Quoter: env("V4_QUOTER_ADDR") as Address,
+    }),
+  } : {}),
   slippageBps: Number(env("SLIPPAGE_BPS", "50")), keeperFeeBps, v3Mode: v3,
   startBlock: process.env[v3 ? "V3_START_BLOCK" : "START_BLOCK"] ? BigInt(process.env[v3 ? "V3_START_BLOCK" : "START_BLOCK"]!) : await publicClient.getBlockNumber(),
   ...(stealth ? { stealth } : {}),
@@ -178,17 +198,20 @@ const api = createApi({
   db, operator, vault, tokens, keeperFeeBps, chainId,
   minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
   ...(poolV2Publisher && poolV2Address && poolV2ManagerAddress ? { poolV4: { publisher: poolV2Publisher, pool: poolV2Address, rootManager: poolV2ManagerAddress } } : {}),
+  ...(poolV2LegacyPublisher && poolV2LegacyAddress && poolV2LegacyManagerAddress ? { poolV4Legacy: [{ publisher: poolV2LegacyPublisher, pool: poolV2LegacyAddress, rootManager: poolV2LegacyManagerAddress }] } : {}),
   contexts: v3Operator && v3Db && v3Vault ? {
     v2: {
       db, operator, vault, tokens, keeperFeeBps,
       minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
       ...(poolV2Publisher && poolV2Address && poolV2ManagerAddress ? { poolV4: { publisher: poolV2Publisher, pool: poolV2Address, rootManager: poolV2ManagerAddress } } : {}),
+      ...(poolV2LegacyPublisher && poolV2LegacyAddress && poolV2LegacyManagerAddress ? { poolV4Legacy: [{ publisher: poolV2LegacyPublisher, pool: poolV2LegacyAddress, rootManager: poolV2LegacyManagerAddress }] } : {}),
     },
     v3: {
       db: v3Db, operator: v3Operator, vault: v3Vault, tokens, keeperFeeBps, v3Mode: true,
       fixedAmounts: await makeFixedAmounts(),
       minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
       ...(poolV2Publisher && poolV2Address && poolV2ManagerAddress ? { poolV4: { publisher: poolV2Publisher, pool: poolV2Address, rootManager: poolV2ManagerAddress } } : {}),
+      ...(poolV2LegacyPublisher && poolV2LegacyAddress && poolV2LegacyManagerAddress ? { poolV4Legacy: [{ publisher: poolV2LegacyPublisher, pool: poolV2LegacyAddress, rootManager: poolV2LegacyManagerAddress }] } : {}),
     },
   } : undefined,
 });
@@ -207,6 +230,7 @@ for (;;) {
   try {
     await operator.syncChain();
     if (poolV2Publisher) await poolV2Publisher.sync();
+    if (poolV2LegacyPublisher) await poolV2LegacyPublisher.sync();
     await operator.cleanupExpiredIntents();
     await operator.processDue(now);
     await operator.submitSettlements(now);

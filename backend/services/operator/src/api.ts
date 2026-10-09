@@ -39,6 +39,7 @@ export interface ApiConfig {
   v3Mode?: boolean;
   fixedAmounts?: Set<string>;
   poolV4?: { publisher: PoolV2RootPublisher; pool: Address; rootManager: Address };
+  poolV4Legacy?: { publisher: PoolV2RootPublisher; pool: Address; rootManager: Address }[];
   contexts?: { v2: Omit<ApiConfig, "contexts">; v3?: Omit<ApiConfig, "contexts"> };
 }
 
@@ -109,11 +110,13 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
       }
 
       if (req.method === "GET" && pathname.startsWith("/pool-v4/witness/")) {
-        if (!active.poolV4) return json({ error: "V4 pool is not enabled" }, 404);
         const commitment = pathname.slice("/pool-v4/witness/".length);
         if (!/^0x[\da-f]{64}$/i.test(commitment)) return json({ error: "commitment must be a bytes32 hex value" }, 400);
-        const witness = await active.poolV4.publisher.witness(commitment as `0x${string}`);
-        return witness ? json(witness) : json({ error: "note not found" }, 404);
+        for (const pool of [...(active.poolV4 ? [active.poolV4] : []), ...(active.poolV4Legacy ?? [])]) {
+          const witness = await pool.publisher.witness(commitment as `0x${string}`);
+          if (witness) return json({ ...witness, pool: pool.pool });
+        }
+        return json({ error: "note not found" }, 404);
       }
 
       if (req.method === "GET" && pathname === "/pool-v4/quote") {
@@ -126,7 +129,7 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         if (!allowed.has(getAddress(tokenIn)) || !allowed.has(getAddress(tokenOut))) return json({ error: "token not supported" }, 400);
         const slippage = Number(url.searchParams.get("slippageBps") ?? 100);
         if (!Number.isInteger(slippage) || slippage < 0 || slippage > 5000) return json({ error: "slippageBps must be 0..5000" }, 400);
-        return json(await active.operator.quoteForPool(active.poolV4.pool, getAddress(tokenIn), getAddress(tokenOut), BigInt(amountIn), slippage));
+        return json({ pool: active.poolV4.pool, ...await active.operator.quoteForPool(active.poolV4.pool, getAddress(tokenIn), getAddress(tokenOut), BigInt(amountIn), slippage) });
       }
 
       if (req.method === "GET" && pathname === "/quote") {

@@ -28,6 +28,8 @@ export interface SwapRequest {
   tokenOut: Address;
   amountIn: bigint;
   minOut: bigint;
+  /** Pool swaps use exact output so a note can commit to the amount before signing. */
+  exactOutput?: boolean;
   /** Pool fee tier picked by the quoter (Uniswap v3). */
   fee?: number;
   /** Uniswap v4 pool picked by the quoter; routes through the v4 adapter. */
@@ -58,16 +60,23 @@ export const mockRoute: RouteBuilder = (r) =>
 const V3_ABI = parseAbi([
   "struct ExactInputSingleParams { address tokenIn; address tokenOut; uint24 fee; address recipient; uint256 amountIn; uint256 amountOutMinimum; uint160 sqrtPriceLimitX96; }",
   "function exactInputSingle(ExactInputSingleParams params) payable returns (uint256 amountOut)",
+  "struct ExactOutputSingleParams { address tokenIn; address tokenOut; uint24 fee; address recipient; uint256 amountOut; uint256 amountInMaximum; uint160 sqrtPriceLimitX96; }",
+  "function exactOutputSingle(ExactOutputSingleParams params) payable returns (uint256 amountIn)",
 ]);
 
 /** Uniswap SwapRouter02 `exactInputSingle` through the fee tier the quoter picked. */
 export function uniswapV3Route(defaultFeeTier: number): RouteBuilder {
-  return (r) =>
-    encodeFunctionData({
-      abi: V3_ABI,
-      functionName: "exactInputSingle",
-      args: [{ tokenIn: r.tokenIn, tokenOut: r.tokenOut, fee: r.fee ?? defaultFeeTier, recipient: r.vault, amountIn: r.amountIn, amountOutMinimum: r.minOut, sqrtPriceLimitX96: 0n }],
-    });
+  return (r) => r.exactOutput
+    ? encodeFunctionData({
+        abi: V3_ABI,
+        functionName: "exactOutputSingle",
+        args: [{ tokenIn: r.tokenIn, tokenOut: r.tokenOut, fee: r.fee ?? defaultFeeTier, recipient: r.vault, amountOut: r.minOut, amountInMaximum: r.amountIn, sqrtPriceLimitX96: 0n }],
+      })
+    : encodeFunctionData({
+        abi: V3_ABI,
+        functionName: "exactInputSingle",
+        args: [{ tokenIn: r.tokenIn, tokenOut: r.tokenOut, fee: r.fee ?? defaultFeeTier, recipient: r.vault, amountIn: r.amountIn, amountOutMinimum: r.minOut, sqrtPriceLimitX96: 0n }],
+      });
 }
 
 export interface Quote {
@@ -124,6 +133,7 @@ export function uniswapV3Quoter(client: PublicClient, quoter: Address, tiers: nu
 const V4_ADAPTER_ABI = parseAbi([
   "struct PoolKey { address currency0; address currency1; uint24 fee; int24 tickSpacing; address hooks; }",
   "function swapExactIn(PoolKey key, bool zeroForOne, uint256 amountIn, uint256 minOut, address recipient) returns (uint256)",
+  "function swapExactOut(PoolKey key, bool zeroForOne, uint256 amountOut, uint256 maxIn, address recipient) returns (uint256)",
 ]);
 
 const V4_QUOTER_ABI = parseAbi([
@@ -193,8 +203,10 @@ export function uniswapRoute(defaultV3FeeTier = 3000): RouteBuilder {
     const k = r.v4.key;
     return encodeFunctionData({
       abi: V4_ADAPTER_ABI,
-      functionName: "swapExactIn",
-      args: [{ currency0: k.currency0, currency1: k.currency1, fee: k.fee, tickSpacing: k.tickSpacing, hooks: k.hooks }, r.v4.zeroForOne, r.amountIn, r.minOut, r.vault],
+      functionName: r.exactOutput ? "swapExactOut" : "swapExactIn",
+      args: r.exactOutput
+        ? [{ currency0: k.currency0, currency1: k.currency1, fee: k.fee, tickSpacing: k.tickSpacing, hooks: k.hooks }, r.v4.zeroForOne, r.minOut, r.amountIn, r.vault]
+        : [{ currency0: k.currency0, currency1: k.currency1, fee: k.fee, tickSpacing: k.tickSpacing, hooks: k.hooks }, r.v4.zeroForOne, r.amountIn, r.minOut, r.vault],
     });
   };
 }

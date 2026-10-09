@@ -42,13 +42,12 @@ export class PoolV2RootPublisher {
   }
 
   async sync(): Promise<{ added: number; root?: Hex; txHash?: Hex }> {
-    const cursor = await this.cfg.db.query<{ block: string }>("SELECT block FROM pool_v4_cursor WHERE id = 1");
-    // If an earlier worker advanced the cursor without decoding any notes, replay from
-    // the configured start block so a later fixed decoder can recover that history.
-    const indexed = await this.cfg.db.query<{ count: string }>("SELECT count(*)::text AS count FROM pool_v4_notes");
-    const next = indexed[0]?.count === "0"
-      ? this.cfg.startBlock
-      : cursor[0] ? BigInt(cursor[0].block) + 1n : this.cfg.startBlock;
+    const poolKey = this.cfg.pool.toLowerCase();
+    const cursor = await this.cfg.db.query<{ block: string }>("SELECT block FROM pool_v4_cursor WHERE pool_address = $1", [poolKey]);
+    // Migration 010 rewinds the legacy pool cursor once to recover events an older decoder
+    // skipped. New pools start without a cursor; thereafter both use persisted progress.
+    const indexed = await this.cfg.db.query<{ count: string }>("SELECT count(*)::text AS count FROM pool_v4_notes WHERE pool_address = $1", [poolKey]);
+    const next = cursor[0] ? BigInt(cursor[0].block) + 1n : this.cfg.startBlock;
     const head = await this.cfg.publicClient.getBlockNumber();
     const from = next - this.rescan > this.cfg.startBlock ? next - this.rescan : this.cfg.startBlock;
 
@@ -71,16 +70,16 @@ export class PoolV2RootPublisher {
           if (event.eventName !== "NoteShielded") continue;
           const args = event.args as unknown as { token: Address; amount: bigint; commitment: Hex };
           const result = await tx.query(
-            `INSERT INTO pool_v4_notes (commitment, token, amount, block, log_index, tx_hash)
-             VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (commitment) DO NOTHING RETURNING commitment`,
-            [args.commitment.toLowerCase(), getAddress(args.token), args.amount.toString(), log.blockNumber?.toString() ?? "0", Number(log.logIndex ?? 0), log.transactionHash],
+            `INSERT INTO pool_v4_notes (pool_address, commitment, token, amount, block, log_index, tx_hash)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (pool_address, commitment) DO NOTHING RETURNING commitment`,
+            [poolKey, args.commitment.toLowerCase(), getAddress(args.token), args.amount.toString(), log.blockNumber?.toString() ?? "0", Number(log.logIndex ?? 0), log.transactionHash],
           );
           if (result.length) added++;
       }
       await tx.query(
-        `INSERT INTO pool_v4_cursor (id, block) VALUES (1, $1)
-         ON CONFLICT (id) DO UPDATE SET block = GREATEST(pool_v4_cursor.block, EXCLUDED.block)`,
-        [head.toString()],
+        `INSERT INTO pool_v4_cursor (id, pool_address, block) VALUES (1, $1, $2)
+         ON CONFLICT (pool_address) DO UPDATE SET block = GREATEST(pool_v4_cursor.block, EXCLUDED.block)`,
+        [poolKey, head.toString()],
       );
     });
     if (!added && indexed[0]?.count === "0") return { added };
@@ -102,13 +101,14 @@ export class PoolV2RootPublisher {
   }
 
   async root(): Promise<Hex> {
-    const rows = await this.cfg.db.query<{ commitment: string }>("SELECT commitment FROM pool_v4_notes ORDER BY block, log_index");
+    const rows = await this.cfg.db.query<{ commitment: string }>("SELECT commitment FROM pool_v4_notes WHERE pool_address = $1 ORDER BY block, log_index", [this.cfg.pool.toLowerCase()]);
     return this.formatRoot((await this.buildTree(rows.map((row) => BigInt(row.commitment)))).root);
   }
 
   async witness(commitment: Hex): Promise<PoolV2Witness | undefined> {
     const rows = await this.cfg.db.query<{ commitment: string; token: Address; amount: string }>(
-      "SELECT commitment, token, amount FROM pool_v4_notes ORDER BY block, log_index",
+      "SELECT commitment, token, amount FROM pool_v4_notes WHERE pool_address = $1 ORDER BY block, log_index",
+      [this.cfg.pool.toLowerCase()],
     );
     const index = rows.findIndex((row) => row.commitment.toLowerCase() === commitment.toLowerCase());
     if (index < 0) return undefined;

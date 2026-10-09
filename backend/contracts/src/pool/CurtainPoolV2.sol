@@ -114,6 +114,7 @@ contract CurtainPoolV2 {
         if (commitment == bytes32(0)) revert ZeroCommitment();
         if (commitments[commitment]) revert DuplicateCommitment(commitment);
 
+        uint256 beforeIn = IERC20(tokenIn).balanceOf(address(this));
         IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
         uint256 beforeOut = IERC20(tokenOut).balanceOf(address(this));
         IERC20(tokenIn).forceApprove(target, amountIn);
@@ -123,9 +124,14 @@ contract CurtainPoolV2 {
         uint256 afterOut = IERC20(tokenOut).balanceOf(address(this));
         amountOut = afterOut - beforeOut;
         if (amountOut < minOut) revert InsufficientSwapOutput(amountOut, minOut);
-        // The commitment binds the exact note amount. Until the pool has a public-output
-        // commitment witness, accepting surplus would make the client commitment ambiguous.
+        // The note commitment is bound to the exact minimum output. Exact-output routers should
+        // deliver this amount; reject any target that sends an unexpected surplus or shortfall.
         if (amountOut != minOut) revert ExactSwapOutputChanged(amountOut, minOut);
+
+        // Exact-output routers may spend less than the caller's maximum input. Return that
+        // difference instead of leaving user funds as unaccounted pool balance.
+        uint256 afterIn = IERC20(tokenIn).balanceOf(address(this));
+        if (afterIn > beforeIn) IERC20(tokenIn).safeTransfer(msg.sender, afterIn - beforeIn);
 
         commitments[commitment] = true;
         shieldedBalance[tokenOut] += amountOut;

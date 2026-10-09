@@ -66,6 +66,23 @@ contract UniswapV4AdapterTest is Test {
         adapter.swapExactIn(key, usdgIsToken0, 1_000 ether, 1_000 ether, address(0xB0B)); // fee makes 1:1 impossible
     }
 
+    function test_swapExactOut_sendsExactOutputAndRefundsUnusedInput() public {
+        address payer = address(0xA11CE);
+        uint256 maxIn = 110 ether;
+        uint256 exactOut = 100 ether;
+        usdg.mint(payer, maxIn);
+        vm.startPrank(payer);
+        usdg.approve(address(adapter), maxIn);
+        uint256 amountIn = adapter.swapExactOut(key, usdgIsToken0, exactOut, maxIn, address(0xB0B));
+        vm.stopPrank();
+
+        assertEq(nvda.balanceOf(address(0xB0B)), exactOut);
+        assertLe(amountIn, maxIn);
+        assertGt(usdg.balanceOf(payer), 0, "unused maximum input is refunded");
+        assertEq(usdg.balanceOf(address(adapter)), 0, "adapter retains no input");
+        assertEq(nvda.balanceOf(address(adapter)), 0);
+    }
+
     function test_unlockCallback_onlyPoolManager() public {
         vm.expectRevert(UniswapV4Adapter.NotPoolManager.selector);
         adapter.unlockCallback("");

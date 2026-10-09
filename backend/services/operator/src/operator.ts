@@ -73,6 +73,8 @@ export interface OperatorConfig {
   router: Address;
   route: RouteBuilder;
   quote: Quoter;
+  /** Optional exact-output-capable quote path used only for Pool V2 shielded swaps. */
+  poolQuote?: Quoter;
   /** Keeper fee as bps of each payout's output (vault caps it at 100). */
   keeperFeeBps: number;
   v3Mode?: boolean;
@@ -657,7 +659,7 @@ export class Operator {
   async quoteForPool(pool: Address, tokenIn: Address, tokenOut: Address, amountIn: bigint, userSlippageBps = 100) {
     const picked = getAddress(tokenIn) === getAddress(tokenOut)
       ? { amountOut: amountIn } as Quote
-      : await this.cfg.quote(getAddress(tokenIn), getAddress(tokenOut), amountIn);
+      : await (this.cfg.poolQuote ?? this.cfg.quote)(getAddress(tokenIn), getAddress(tokenOut), amountIn);
     if (picked.amountOut <= 0n) return { available: false as const };
     const minOut = (picked.amountOut * (BPS - BigInt(userSlippageBps))) / BPS;
     return {
@@ -667,7 +669,7 @@ export class Operator {
       router: picked.router ?? this.cfg.router,
       data: this.cfg.route({
         vault: pool, tokenIn: getAddress(tokenIn), tokenOut: getAddress(tokenOut), amountIn, minOut,
-        fee: picked.fee, v4: picked.v4,
+        fee: picked.fee, v4: picked.v4, exactOutput: true,
       }),
       venue: picked.v4 ? "uniswap-v4" : picked.fee !== undefined ? "uniswap-v3" : "router",
     };

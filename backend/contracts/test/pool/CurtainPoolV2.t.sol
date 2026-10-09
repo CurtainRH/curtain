@@ -12,6 +12,13 @@ contract PoolSwapTarget {
         MockERC20(tokenOut).mint(recipient, amountIn * 2);
         return amountIn * 2;
     }
+
+    function swapExactOut(address tokenIn, address tokenOut, uint256 amountOut, uint256 maxIn, address recipient) external returns (uint256) {
+        uint256 amountIn = maxIn / 2;
+        MockERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn);
+        MockERC20(tokenOut).mint(recipient, amountOut);
+        return amountIn;
+    }
 }
 
 contract PoolV2VerifierStub is IPoolV2Verifier {
@@ -72,6 +79,26 @@ contract CurtainPoolV2Test is Test {
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(CurtainPoolV2.ExactSwapOutputChanged.selector, 10 ether, 9 ether));
         pool.swapAndShield(address(swapTarget), address(token), 5 ether, address(output), 9 ether, data, bytes32(uint256(101)));
+    }
+
+    function testSwapAndShieldAcceptsExactOutputAndRefundsUnusedInput() public {
+        uint256 maxIn = 5 ether;
+        uint256 amountOut = 9 ether;
+        bytes memory data = abi.encodeCall(
+            PoolSwapTarget.swapExactOut, (address(token), address(output), amountOut, maxIn, address(pool))
+        );
+        uint256 balanceBefore = token.balanceOf(alice);
+
+        vm.prank(alice);
+        uint256 received = pool.swapAndShield(
+            address(swapTarget), address(token), maxIn, address(output), amountOut, data, bytes32(uint256(102))
+        );
+
+        assertEq(received, amountOut);
+        assertEq(token.balanceOf(alice), balanceBefore - (maxIn / 2));
+        assertEq(token.balanceOf(address(pool)), 0);
+        assertEq(output.balanceOf(address(pool)), amountOut);
+        assertEq(pool.shieldedBalance(address(output)), amountOut);
     }
 
     function testSwapAndShieldRejectsUnallowlistedTarget() public {

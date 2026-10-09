@@ -75,9 +75,14 @@ In Render Dashboard: **New → Web Service → Existing Image**
   - `KEEPER_FEE_BPS`: `5`
   - `TICK_MS`: `5000`
   - `START_BLOCK`: Deployment block of the vault
-  - `POOL_V2_ADDR`: `0x38147c547cDE831812CD075166E279B77FF164Cc` (product V4 / internal `CurtainPoolV2`)
-  - `POOL_V2_ROOT_MANAGER_ADDR`: `0x51E2aCaC1Fe6b1915D7Eafd24b96B7781cd9AFEf`
-  - `POOL_V2_START_BLOCK`: `84199146`
+  - `POOL_V2_ADDR`: `0xA6fcb7A43aE6F26c86EA637D8BA9aaA1fd506971` (product V4 / internal `CurtainPoolV2`)
+  - `POOL_V2_ROOT_MANAGER_ADDR`: `0x13197b48E467A306F612D0eFBA745963E914B55F`
+  - `POOL_V2_START_BLOCK`: `84297845`
+  - `POOL_V2_DEX_ADAPTER_ADDR`: `0x86FACa7029Ac9c8d6a457DA6c38E12b84eba67a7` (exact-output adapter used by Pool V2 only)
+  - `POOL_V2_LEGACY_ADDR`: `0x38147c547cDE831812CD075166E279B77FF164Cc` (old pool, retained for note recovery)
+  - `POOL_V2_LEGACY_ROOT_MANAGER_ADDR`: `0x51E2aCaC1Fe6b1915D7Eafd24b96B7781cd9AFEf`
+  - `POOL_V2_LEGACY_START_BLOCK`: `84199146`
+  - `FEATURE_POOL_V2_ROUTE`: leave unset/`false` until the operator and frontend rollout is explicitly approved
   - `MIN_OPERATOR_BALANCE_WEI`: `2000000000000000`
 
 ### Step 3: Create Keeper (Background Worker)
@@ -93,8 +98,9 @@ In Render Dashboard: **New → Background Worker → Existing Image**
   - `VAULT_ADDR`: `vault` address from `deployments/4663.json`
   - `KEEPER_TICK_MS`: `5000`
 
-For the standalone Swap client and the main dashboard, enable the product V4 shielded-pool
-route after the operator environment above is deployed:
+The product V4 route is currently kept disabled in both frontends. Do not set the
+frontend feature flag until the operator has deployed this code, applied the per-pool
+database migration, and the route is deliberately enabled:
 
 ```text
 VITE_ENABLE_POOL_V2=true
