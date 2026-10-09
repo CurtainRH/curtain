@@ -76,3 +76,5 @@ scripts/generate_audit_grade_pdf.py
 
 # Lovable metadata
 .lovable/
+
+.agents/**

@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Dual-Repository Synchronization & Workflow Rules
 
 When working on or modifying this codebase, follow these rules:
@@ -21,5 +25,4 @@ When working on or modifying this codebase, follow these rules:
 5. **Monorepo Directory Structure**:
    - Frontend files reside at the repo root.
    - All backend contracts, services, and packages reside under `backend/`.
-   - Do NOT create or leave behind legacy top-level folders like `/contracts`, `/circuits`, `/apps`, `/packages`, `/services`, or `.tools`.
    - Never delete or modify files in `/docs` unless explicitly requested.
