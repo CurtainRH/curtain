@@ -49,3 +49,6 @@ const publicSignals = JSON.parse(readFileSync(publicPath, "utf8"));
 const verified = await snarkjs.groth16.verify(verificationKey, publicSignals, proof);
 if (!verified) throw new Error("Rapidsnark transfer proof did not verify");
 console.log(JSON.stringify({ verified, publicSignals, prover }));
+// snarkjs verification can leave worker handles open; terminate explicitly so
+// CI reports the real proof duration instead of waiting for orphaned workers.
+process.exit(0);

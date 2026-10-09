@@ -42,3 +42,4 @@ const { proof, publicSignals } = await snarkjs.groth16.fullProve(circuitInput, w
 const verified = await snarkjs.groth16.verify(verificationKey, publicSignals, proof);
 if (!verified) throw new Error("local Groth16 transfer proof did not verify");
 console.log(JSON.stringify({ verified, publicSignals }));
+process.exit(0);

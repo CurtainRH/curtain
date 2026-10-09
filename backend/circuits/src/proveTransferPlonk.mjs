@@ -42,3 +42,4 @@ const { proof, publicSignals } = await snarkjs.plonk.fullProve(circuitInput, was
 const verified = await snarkjs.plonk.verify(verificationKey, publicSignals, proof);
 if (!verified) throw new Error("local Plonk transfer proof did not verify");
 console.log(JSON.stringify({ verified, publicSignals }));
+process.exit(0);
