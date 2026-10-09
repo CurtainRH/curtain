@@ -7,6 +7,7 @@ reviewed.
 Current primitive:
 
 - `pool_note.circom`: Poseidon commitment binding note secret, token identifier, and amount.
+- `pool_spend.circom`: fixed-depth Merkle membership and nullifier derivation primitive.
 
 Required before deployment:
 
