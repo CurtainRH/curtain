@@ -27,7 +27,7 @@ contract CurtainPoolV2Test is Test {
     function setUp() public {
         token = new MockERC20("USDG", "USDG");
         verifier = new PoolV2VerifierStub();
-        pool = new CurtainPoolV2(address(verifier), _tokens(address(token)), address(this));
+    pool = new CurtainPoolV2(address(verifier), address(verifier), _tokens(address(token)), address(this));
         token.mint(alice, 100 ether);
         vm.prank(alice);
         token.approve(address(pool), type(uint256).max);

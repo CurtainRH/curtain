@@ -7,11 +7,13 @@
     "compile:spend": "circom2 src/pool_spend.circom --r1cs --wasm --sym -l node_modules",
     "compile:screening": "circom2 src/pool_screening.circom --r1cs --wasm --sym -l node_modules",
     "compile:transfer": "circom2 src/pool_transfer.circom --r1cs --wasm --sym -l node_modules",
+    "compile:unshield": "circom2 src/pool_unshield.circom --r1cs --wasm --sym -l node_modules",
     "test": "node --test src/*.test.mjs",
     "prove:local": "node src/proveLocal.mjs",
     "prove:transfer:groth16": "node src/proveTransferGroth16.mjs",
     "prove:transfer:rapidsnark": "node src/proveTransferRapidsnark.mjs",
-    "prove:transfer:plonk": "node src/proveTransferPlonk.mjs"
+    "prove:transfer:plonk": "node src/proveTransferPlonk.mjs",
+    "prove:unshield:groth16": "node src/proveUnshieldGroth16.mjs"
   },
   "dependencies": {
     "circomlib": "2.0.5",

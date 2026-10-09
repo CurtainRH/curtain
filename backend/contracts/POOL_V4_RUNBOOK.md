@@ -16,10 +16,12 @@ This is the operational record for the new shielded-pool route on Robinhood Chai
 
 | Component | Address |
 |---|---|
-| `CurtainPoolV2` (product route V4) | `0xC9d52aD8eABc8Cb8DF87d56a0EfC52034FDa59d9` |
-| `PoolV2RootManager` | `0xDE119b0F14208A3b775664E7975d5564EF48f219` |
-| `PoolV2TransferVerifierAdapter` | `0xa2D3c03A7768a30D4cCf60587c6E6dE81faCA9D8` |
-| Generated Groth16 verifier | `0x0DF4b72342e67455eAB6680Fdb4ddD93A5eb8f9A` |
+| `CurtainPoolV2` (product route V4) | `0x80334FD4160245c2856C20526349c43E8597125E` |
+| `PoolV2RootManager` | `0x0C6153A8F30fF138A4B477C5a8A702D23fBa865D` |
+| `PoolV2TransferVerifierAdapter` | `0xC5DFb62f936402005Db9ca3dC9B1177679a8a0eF` |
+| `PoolV2UnshieldVerifierAdapter` | `0x84934df3E763244bA7b4989b63110B2Dae5bf682` |
+| Generated transfer Groth16 verifier | `0x0DF4b72342e67455eAB6680Fdb4ddD93A5eb8f9A` |
+| Generated unshield Groth16 verifier | `0xD24eA37425CF5D3476FB366caBb80339Ad11862b` |
 
 The canonical deployment record is [`deployments/4663.json`](deployments/4663.json).
 
@@ -33,18 +35,18 @@ The canonical deployment record is [`deployments/4663.json`](deployments/4663.js
 
 ## Production verifier provenance
 
-The production verifier workflow uses the published BN254 Hermez Powers of Tau artifact, verifies its pinned Blake2b-512 digest and transcript, adds a circuit-specific Groth16 contribution, verifies the resulting proving key, and exports the Solidity verifier. The disposable CI Plonk verifier is not used by this deployment.
+The production verifier workflow uses the published BN254 Hermez Powers of Tau artifact, verifies its pinned Blake2b-512 digest and transcript, adds circuit-specific Groth16 contributions for both the private-transfer and unshield circuits, verifies both proving keys, and exports both Solidity verifiers. The disposable CI Plonk verifier is not used by this deployment.
 
 ## Deployment sequence
 
 1. Generate and review the production verifier artifact.
-2. Deploy the generated verifier.
-3. Deploy `PoolV2TransferVerifierAdapter` against that verifier.
+2. Deploy the generated transfer and unshield verifiers.
+3. Deploy `PoolV2TransferVerifierAdapter` and `PoolV2UnshieldVerifierAdapter` against their matching verifiers.
 4. Deploy `PoolV2RootManager` with the intended temporary owner and publisher.
-5. Deploy `CurtainPoolV2` with the adapter, supported token list, and root manager.
+5. Deploy `CurtainPoolV2` with both verifier adapters, the supported token list, and root manager.
 6. Call `PoolV2RootManager.setPool` once.
 7. Transfer manager ownership if the final owner differs from the deployer.
-8. Verify all addresses, role values, bytecode, and deployment records on chain.
+8. Verify all addresses, role values, bytecode, public-input schemas, and deployment records on chain.
 
 Example deployment configuration:
 

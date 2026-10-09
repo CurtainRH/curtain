@@ -6,12 +6,14 @@ export interface PoolV4Addresses {
   pool: Address;
   rootManager: Address;
   verifierAdapter: Address;
+  unshieldVerifierAdapter: Address;
 }
 
 export const POOL_V4_ADDRESSES: PoolV4Addresses = {
-  pool: "0xC9d52aD8eABc8Cb8DF87d56a0EfC52034FDa59d9",
-  rootManager: "0xDE119b0F14208A3b775664E7975d5564EF48f219",
-  verifierAdapter: "0xa2D3c03A7768a30D4cCf60587c6E6dE81faCA9D8",
+  pool: "0x80334FD4160245c2856C20526349c43E8597125E",
+  rootManager: "0x0C6153A8F30fF138A4B477C5a8A702D23fBa865D",
+  verifierAdapter: "0xC5DFb62f936402005Db9ca3dC9B1177679a8a0eF",
+  unshieldVerifierAdapter: "0x84934df3E763244bA7b4989b63110B2Dae5bf682",
 };
 
 /**

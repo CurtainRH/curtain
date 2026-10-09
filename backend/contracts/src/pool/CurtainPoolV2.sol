@@ -15,6 +15,7 @@ contract CurtainPoolV2 {
     using SafeERC20 for IERC20;
 
     IPoolV2Verifier public immutable verifier;
+    IPoolV2Verifier public immutable unshieldVerifier;
     address public immutable rootManager;
     mapping(address => bool) public immutableToken;
     mapping(bytes32 => bool) public commitments;
@@ -43,11 +44,13 @@ contract CurtainPoolV2 {
     event NoteMoved(bytes32 indexed root, bytes32[] nullifiers, bytes32[] commitments);
     event NoteUnshielded(address indexed token, uint256 amount, address indexed recipient, bytes32 indexed nullifier);
 
-    constructor(address verifier_, address[] memory tokens, address rootManager_) {
+    constructor(address verifier_, address unshieldVerifier_, address[] memory tokens, address rootManager_) {
         if (verifier_ == address(0)) revert ZeroAddress();
+        if (unshieldVerifier_ == address(0)) revert ZeroAddress();
         if (rootManager_ == address(0)) revert ZeroAddress();
         if (tokens.length == 0) revert EmptyTokenSet();
         verifier = IPoolV2Verifier(verifier_);
+        unshieldVerifier = IPoolV2Verifier(unshieldVerifier_);
         rootManager = rootManager_;
         for (uint256 i; i < tokens.length; ++i) {
             address token = tokens[i];
@@ -184,7 +187,7 @@ contract CurtainPoolV2 {
         publicInputs[2] = bytes32(uint256(uint160(token)));
         publicInputs[3] = bytes32(amount);
         publicInputs[4] = bytes32(uint256(uint160(recipient)));
-        if (!verifier.verify(proof, publicInputs)) revert InvalidProof();
+        if (!unshieldVerifier.verify(proof, publicInputs)) revert InvalidProof();
 
         nullifierSpent[nullifier] = true;
         shieldedBalance[token] -= amount;

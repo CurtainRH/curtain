@@ -24,6 +24,8 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Compile transfer circuit
         run: npm run compile:transfer
+      - name: Compile unshield circuit
+        run: npm run compile:unshield
       - name: Download and verify public Powers of Tau
         run: |
           curl --fail --location --retry 3 --output pool_production.ptau \
@@ -43,6 +45,20 @@ jobs:
           npx snarkjs zkey export verificationkey pool_transfer_production.zkey pool_transfer_production.vkey.json
       - name: Export production Solidity verifier
         run: npx snarkjs zkey export solidityverifier pool_transfer_production.zkey PoolTransferGroth16Verifier.sol
+      - name: Generate unshield Groth16 key
+        run: npx snarkjs groth16 setup pool_unshield.r1cs pool_production.ptau pool_unshield_production_0000.zkey
+      - name: Add unshield ceremony contribution
+        run: |
+          entropy="$(openssl rand -hex 32)"
+          npx snarkjs zkey contribute pool_unshield_production_0000.zkey pool_unshield_production.zkey \
+            --name="Curtain Pool V2 unshield production contribution" -e="$entropy" -v
+      - name: Verify and export unshield verifier
+        run: |
+          npx snarkjs zkey verify pool_unshield.r1cs pool_production.ptau pool_unshield_production.zkey
+          npx snarkjs zkey export verificationkey pool_unshield_production.zkey pool_unshield_production.vkey.json
+          npx snarkjs zkey export solidityverifier pool_unshield_production.zkey PoolUnshieldGroth16Verifier.sol
+      - name: Prove and verify unshield witness
+        run: npm run prove:unshield:groth16
       - name: Upload production review artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -52,4 +68,8 @@ jobs:
             backend/circuits/pool_transfer_production.zkey
             backend/circuits/pool_transfer_production.vkey.json
             backend/circuits/PoolTransferGroth16Verifier.sol
+            backend/circuits/pool_unshield_production.zkey
+            backend/circuits/pool_unshield_production.vkey.json
+            backend/circuits/PoolUnshieldGroth16Verifier.sol
             backend/circuits/pool_transfer.r1cs
+            backend/circuits/pool_unshield.r1cs

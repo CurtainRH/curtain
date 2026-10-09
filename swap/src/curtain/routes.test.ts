@@ -3,9 +3,10 @@ import { POOL_V4_ADDRESSES, canExecuteRoute, routeDescription, routeName } from 
 
 describe("Swap privacy routes", () => {
   test("keeps the deployed V4 contract addresses at the Swap boundary", () => {
-    expect(POOL_V4_ADDRESSES.pool).toBe("0xC9d52aD8eABc8Cb8DF87d56a0EfC52034FDa59d9");
-    expect(POOL_V4_ADDRESSES.rootManager).toBe("0xDE119b0F14208A3b775664E7975d5564EF48f219");
-    expect(POOL_V4_ADDRESSES.verifierAdapter).toBe("0xa2D3c03A7768a30D4cCf60587c6E6dE81faCA9D8");
+    expect(POOL_V4_ADDRESSES.pool).toBe("0x80334FD4160245c2856C20526349c43E8597125E");
+    expect(POOL_V4_ADDRESSES.rootManager).toBe("0x0C6153A8F30fF138A4B477C5a8A702D23fBa865D");
+    expect(POOL_V4_ADDRESSES.verifierAdapter).toBe("0xC5DFb62f936402005Db9ca3dC9B1177679a8a0eF");
+    expect(POOL_V4_ADDRESSES.unshieldVerifierAdapter).toBe("0x84934df3E763244bA7b4989b63110B2Dae5bf682");
   });
 
   test("describes the three product routes without exposing Solidity naming", () => {

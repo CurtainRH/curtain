@@ -5,12 +5,14 @@ import {Script, console} from "forge-std/Script.sol";
 import {CurtainPoolV2} from "../src/pool/CurtainPoolV2.sol";
 import {PoolV2RootManager} from "../src/pool/PoolV2RootManager.sol";
 import {PoolV2TransferVerifierAdapter} from "../src/pool/PoolV2TransferVerifierAdapter.sol";
+import {PoolV2UnshieldVerifierAdapter} from "../src/pool/PoolV2UnshieldVerifierAdapter.sol";
 
 /// @notice Deploys the externally named Curtain V4 pool after a production verifier is reviewed.
 ///
 /// Required environment:
 ///   PRIVATE_KEY                         deployment wallet
-///   POOL_V2_GENERATED_VERIFIER_ADDR     deployed Groth16 verifier, with bytecode
+///   POOL_V2_GENERATED_VERIFIER_ADDR     deployed transfer Groth16 verifier, with bytecode
+///   POOL_V2_GENERATED_UNSHIELD_VERIFIER_ADDR deployed unshield Groth16 verifier, with bytecode
 ///   POOL_V2_ROOT_MANAGER_OWNER          final owner/admin of the root manager (optional: deployer)
 ///   POOL_V2_ROOT_PUBLISHER              root publishing service (optional: deployer)
 ///   POOL_V2_TOKEN_ADDRS                  comma-separated ERC-20 addresses
@@ -25,12 +27,14 @@ contract DeployPoolV4Script is Script {
     error MissingTokens();
     error InvalidTokenList();
 
-    function run() external returns (PoolV2TransferVerifierAdapter adapter, PoolV2RootManager manager, CurtainPoolV2 pool) {
+    function run() external returns (PoolV2TransferVerifierAdapter adapter, PoolV2UnshieldVerifierAdapter unshieldAdapter, PoolV2RootManager manager, CurtainPoolV2 pool) {
         address generatedVerifier = vm.envAddress("POOL_V2_GENERATED_VERIFIER_ADDR");
+        address generatedUnshieldVerifier = vm.envAddress("POOL_V2_GENERATED_UNSHIELD_VERIFIER_ADDR");
         string memory rawTokens = vm.envString("POOL_V2_TOKEN_ADDRS");
         uint256 key = vm.envUint("PRIVATE_KEY");
 
         if (generatedVerifier == address(0) || generatedVerifier.code.length == 0) revert MissingVerifier();
+        if (generatedUnshieldVerifier == address(0) || generatedUnshieldVerifier.code.length == 0) revert MissingVerifier();
         address[] memory tokens = _parseAddresses(rawTokens);
         if (tokens.length == 0) revert MissingTokens();
 
@@ -40,6 +44,7 @@ contract DeployPoolV4Script is Script {
         if (rootOwner == address(0) || rootPublisher == address(0)) revert MissingRootManager();
         console.log("Deployer:             ", deployer);
         console.log("Generated verifier:   ", generatedVerifier);
+        console.log("Generated unshield:   ", generatedUnshieldVerifier);
         console.log("Root manager owner:   ", rootOwner);
         console.log("Root publisher:       ", rootPublisher);
         console.log("Token count:          ", tokens.length);
@@ -47,15 +52,17 @@ contract DeployPoolV4Script is Script {
 
         vm.startBroadcast(key);
         adapter = new PoolV2TransferVerifierAdapter(generatedVerifier);
+        unshieldAdapter = new PoolV2UnshieldVerifierAdapter(generatedUnshieldVerifier);
         // The deployer is the temporary root-manager owner so it can initialize the pool.
         manager = new PoolV2RootManager(deployer, rootPublisher);
-        pool = new CurtainPoolV2(address(adapter), tokens, address(manager));
+        pool = new CurtainPoolV2(address(adapter), address(unshieldAdapter), tokens, address(manager));
         manager.setPool(address(pool));
         if (rootOwner != deployer) manager.transferOwnership(rootOwner);
         vm.stopBroadcast();
 
         console.log("Pool V4:              ", address(pool));
         console.log("Pool V4 verifier:     ", address(adapter));
+        console.log("Pool V4 unshield:     ", address(unshieldAdapter));
         console.log("Pool V4 root manager: ", address(manager));
     }
 
