@@ -9,7 +9,7 @@ import { chain, ensureChain, errorMessage, publicClient, v3Vault } from "./curta
 import { downloadFile } from "./curtain/domain";
 import { useCurtain, type TokenData } from "./curtain/useCurtain";
 import type { SavedTicket } from "./curtain/integration";
-import { poolV4Swap } from "./curtain/poolV4";
+import { poolV4Swap, PoolV4FallbackError } from "./curtain/poolV4";
 import "@rainbow-me/rainbowkit/styles.css";
 import "./swap.css";
 
@@ -168,16 +168,21 @@ function SwapExperience() {
         throw new Error("Your wallet balance is too low for this swap.");
       if (poolV4Enabled) {
         if (!walletClient) throw new Error("Connect your wallet before using Curtain V4.");
-        const v4 = await poolV4Swap({
-          publicClient, walletClient, tokenIn: input.address, tokenOut: output.address, amountIn: raw,
-          minOut: orderType === "limit" ? rawAmount(limitOut, output.decimals) : 0n,
-          recipient: recipientAddress as Address, onStatus: setBusy,
-        });
-        setV4Success({ swapTx: v4.swapTx, unshieldTx: v4.unshieldTx });
-        setAmount("");
-        setQuote(undefined);
-        void app.refresh();
-        return;
+        try {
+          const v4 = await poolV4Swap({
+            publicClient, walletClient, tokenIn: input.address, tokenOut: output.address, amountIn: raw,
+            minOut: orderType === "limit" ? rawAmount(limitOut, output.decimals) : 0n,
+            recipient: recipientAddress as Address, onStatus: setBusy,
+          });
+          setV4Success({ swapTx: v4.swapTx, unshieldTx: v4.unshieldTx });
+          setAmount("");
+          setQuote(undefined);
+          void app.refresh();
+          return;
+        } catch (e) {
+          if (!(e instanceof PoolV4FallbackError)) throw e;
+          setBusy(routeMode === "v3" ? "Trying Curtain V3" : "Trying Curtain V2");
+        }
       }
       const result = await app.sdk.quote(input.address, output.address, raw, 100);
       if (!result.available) throw new Error("No quote is available for this pair right now.");
@@ -311,7 +316,7 @@ function SwapExperience() {
               <span className="swap-help-tooltip-wrap">
                 <HelpCircle size={14} aria-label="What is dynamic privacy?" />
                 <span className="swap-help-tooltip" role="tooltip">
-                  Curtain automatically chooses the best privacy route for your amount. Approved fixed amounts use V3; other amounts use V2.
+                  Curtain tries the shielded V4 route first. If it cannot complete safely, approved fixed amounts use V3; other amounts use the compatible V2 route.
                 </span>
               </span>
             </p>

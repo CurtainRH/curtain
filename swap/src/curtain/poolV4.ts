@@ -3,6 +3,8 @@ import * as snarkjs from "snarkjs";
 import { decodeEventLog, encodeAbiParameters, erc20Abi, getAddress, parseAbi, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 
 export const POOL_V4 = "0xf8f47571A55dB8745b7642515aF051D7B1e09dd3" as Address;
+/** Safe to fall back before a V4 swap transaction has completed. */
+export class PoolV4FallbackError extends Error {}
 const POOL_ABI = parseAbi([
   "function swapAndShield(address target,address tokenIn,uint256 amountIn,address tokenOut,uint256 minOut,bytes swapData,bytes32 commitment) returns (uint256 amountOut)",
   "function unshield(bytes proof,bytes32 root,bytes32 nullifier,address token,uint256 amount,address recipient)",
@@ -42,9 +44,14 @@ export async function poolV4Swap({
   const secret = randomField();
   const nonce = randomField();
   const params = new URLSearchParams({ tokenIn, tokenOut, amountIn: amountIn.toString(), slippageBps: "100" });
-  const quote = await (await fetch(`/api/curtain/pool-v4/quote?${params}`)).json() as { available?: boolean; router?: Address; data?: Hex; minOut?: string; error?: string };
-  if (!quote.available || !quote.router || !quote.data || !quote.minOut) throw new Error(quote.error ?? "V4 route is unavailable for this pair.");
-  if (BigInt(quote.minOut) < minOut) throw new Error("The V4 quote is below your minimum received amount.");
+  let quote: { available?: boolean; router?: Address; data?: Hex; minOut?: string; error?: string };
+  try {
+    quote = await (await fetch(`/api/curtain/pool-v4/quote?${params}`)).json() as typeof quote;
+  } catch {
+    throw new PoolV4FallbackError("V4 quoting is unavailable right now.");
+  }
+  if (!quote.available || !quote.router || !quote.data || !quote.minOut) throw new PoolV4FallbackError(quote.error ?? "V4 route is unavailable for this pair.");
+  if (BigInt(quote.minOut) < minOut) throw new PoolV4FallbackError("V4 cannot meet the requested minimum received amount.");
   const quotedOutput = BigInt(quote.minOut);
   const noteCommitment = await commitment(secret, tokenOut, quotedOutput);
   onStatus?.("Approve the pool");
@@ -59,6 +66,7 @@ export async function poolV4Swap({
     args: [quote.router, tokenIn, amountIn, tokenOut, BigInt(quote.minOut), quote.data, noteCommitment],
   });
   const receipt = await publicClient.waitForTransactionReceipt({ hash: swapTx });
+  if (receipt.status !== "success") throw new PoolV4FallbackError("The V4 transaction reverted before funds moved.");
   const note = receipt.logs.map((log) => {
     try { return decodeEventLog({ abi: POOL_ABI, data: log.data, topics: log.topics }) as any; } catch { return undefined; }
   }).find((event) => event?.eventName === "NoteShielded" && event.args.commitment?.toLowerCase() === noteCommitment.toLowerCase());
