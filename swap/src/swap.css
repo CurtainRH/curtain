@@ -57,6 +57,12 @@
 .swap-help-tooltip { position: absolute; z-index: 5; left: 50%; bottom: calc(100% + 9px); width: 245px; padding: 9px 11px; transform: translateX(-50%); visibility: hidden; opacity: 0; pointer-events: none; color: #eef0f3; background: #14263d; border: 1px solid #40536b; text-align: left; font-size: .7rem; line-height: 1.45; transition: opacity .15s ease, visibility .15s ease; }
 .swap-help-tooltip::after { content: ""; position: absolute; left: 50%; top: 100%; width: 8px; height: 8px; transform: translate(-50%, -4px) rotate(45deg); background: #14263d; border-right: 1px solid #40536b; border-bottom: 1px solid #40536b; }
 .swap-help-tooltip-wrap:hover .swap-help-tooltip, .swap-help-tooltip-wrap:focus-within .swap-help-tooltip { visibility: visible; opacity: 1; }
+.swap-route-note { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 13px; color: #9daabc; font-size: .68rem; line-height: 1.5; }
+.swap-route-note > div { border: 1px solid #d2ae6f22; background: #0a1727; padding: 11px 12px; }
+.swap-route-note strong, .swap-route-note span { display: block; }
+.swap-route-note strong { color: #eef0f3; font-size: .72rem; margin: 3px 0; }
+.swap-route-label { color: #c5a059; font-size: .61rem; letter-spacing: .08em; text-transform: uppercase; }
+.swap-route-next { opacity: .72; }
 .swap-primary, .swap-secondary { min-height: 50px; padding: 13px 18px; cursor: pointer; font: inherit; font-size: .78rem; display: inline-flex; justify-content: center; align-items: center; gap: 9px; }
 .swap-primary { color: #07111e; background: #c5a059; border: 1px solid #c5a059; }
 .swap-primary:hover { background: #e0c180; }
@@ -85,4 +91,4 @@
 .swap-loading { min-height: 100vh; background: #07111e; }
 .swap-spin { animation: swap-spin 1s linear infinite; }
 @keyframes swap-spin { to { transform: rotate(360deg); } }
-@media (max-width: 520px) { .swap-page { padding-inline: 14px; } .swap-header { margin-bottom: 38px; } .swap-private-panel { align-items: flex-start; flex-direction: column; } .swap-private-select { width: 100%; } .swap-actions { grid-template-columns: 1fr; } }
+@media (max-width: 520px) { .swap-page { padding-inline: 14px; } .swap-header { margin-bottom: 38px; } .swap-private-panel { align-items: flex-start; flex-direction: column; } .swap-private-select { width: 100%; } .swap-actions, .swap-route-note { grid-template-columns: 1fr; } }
