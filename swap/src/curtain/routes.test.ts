@@ -18,9 +18,9 @@ describe("Swap privacy routes", () => {
     expect(routeDescription("v4")).toBe("Shielded pool route");
   });
 
-  test("never enables an executable V4 swap through the old vault client", () => {
+  test("allows the deployed Pool V2 contract through the V4 product route", () => {
     expect(canExecuteRoute("v2")).toBe(true);
     expect(canExecuteRoute("v3")).toBe(true);
-    expect(canExecuteRoute("v4")).toBe(false);
+    expect(canExecuteRoute("v4")).toBe(true);
   });
 });

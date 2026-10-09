@@ -1,5 +1,3 @@
-import { buildPoseidon } from "circomlibjs";
-import * as snarkjs from "snarkjs";
 import {
   decodeEventLog,
   encodeAbiParameters,
@@ -12,7 +10,7 @@ import {
   type WalletClient,
 } from "viem";
 
-export const POOL_V4 = "0x38147c547cDE831812CD075166E279B77FF164Cc" as Address;
+export const POOL_V4 = "0xA6fcb7A43aE6F26c86EA637D8BA9aaA1fd506971" as Address;
 const PENDING_NOTE_PREFIX = "curtain:v4:pending:";
 /** Safe to fall back before a V4 swap transaction has completed. */
 export class PoolV4FallbackError extends Error {}
@@ -98,6 +96,7 @@ export async function recoverPoolV4Note({
   note: PendingPoolV4Note;
   onStatus?: (status: string) => void;
 }): Promise<Hex> {
+  const snarkjs = await import("snarkjs");
   const witness = await pendingWitness(note.commitment);
   onStatus?.("Generating your private proof");
   const { proof, publicSignals } = await snarkjs.groth16.fullProve(
@@ -143,6 +142,7 @@ function randomField(): bigint {
 }
 
 async function commitment(secret: bigint, token: Address, amount: bigint): Promise<Hex> {
+  const { buildPoseidon } = await import("circomlibjs");
   const poseidon = await buildPoseidon();
   const value = poseidon.F.toObject(poseidon([secret, BigInt(token), amount]));
   return `0x${value.toString(16).padStart(64, "0")}` as Hex;
@@ -319,6 +319,7 @@ export async function poolV4Swap({
     pathBits: witness.pathBits.map(Number),
     recipient: BigInt(recipient).toString(),
   };
+  const snarkjs = await import("snarkjs");
   const { proof, publicSignals } = await snarkjs.groth16.fullProve(input, wasm, zkey);
   onStatus?.("Confirm the private delivery");
   const unshieldTx = await walletClient.writeContract({
