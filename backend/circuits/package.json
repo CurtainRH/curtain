@@ -4,10 +4,12 @@
   "type": "module",
   "scripts": {
     "compile:pool": "circom2 src/pool_note.circom --r1cs --wasm --sym -l node_modules",
-    "compile:spend": "circom2 src/pool_spend.circom --r1cs --wasm --sym -l node_modules"
+    "compile:spend": "circom2 src/pool_spend.circom --r1cs --wasm --sym -l node_modules",
+    "test": "node --test src/*.test.mjs"
   },
   "dependencies": {
-    "circomlib": "2.0.5"
+    "circomlib": "2.0.5",
+    "circomlibjs": "0.1.7"
   },
   "devDependencies": {
     "circom2": "0.2.23"
