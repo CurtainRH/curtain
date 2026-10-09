@@ -37,6 +37,41 @@ export interface HostPerformanceEvidence {
   succeeded: boolean;
 }
 
+export interface HostCanaryChallenge {
+  id: string;
+  hostId: string;
+  gpuClass: string;
+  task: string;
+  nonce: `0x${string}`;
+  issuedAt: string;
+  expiresAt: string;
+  status: "issued" | "passed" | "failed" | "indeterminate";
+}
+
+export interface HostCanaryResult {
+  challengeId: string;
+  hostId: string;
+  gpuClass: string;
+  measuredImage: `0x${string}`;
+  outputHash: `0x${string}`;
+  elapsedMs: number;
+}
+
+export interface HostCanaryVerification {
+  /** False means do not attribute the result to the host (e.g. timeout or invalid signature). */
+  authenticated: boolean;
+  passed: boolean;
+}
+
+export interface HostCanaryExecutor {
+  /** Integrator adapter runs a synthetic challenge and returns the host's signed response. */
+  execute(input: {
+    host: HostRecord;
+    challenge: HostCanaryChallenge;
+    signal: AbortSignal;
+  }): Promise<{ result: HostCanaryResult; proof: unknown }>;
+}
+
 export interface HostIdentityProof {
   signature: `0x${string}`;
 }
@@ -61,6 +96,8 @@ export interface HostProofVerifier {
   verifyClaim(claim: HostClaim, signature: `0x${string}`): Promise<boolean>;
   verifyAttestation(input: { hostId: string; signer: string; evidence: unknown }): Promise<HostAttestationResult>;
   verifyPerformance(host: HostRecord, evidence: HostPerformanceEvidence, proof: unknown): Promise<boolean>;
+  /** Authenticate the response and validate its synthetic workload result against challenge policy. */
+  verifyCanary(host: HostRecord, challenge: HostCanaryChallenge, result: HostCanaryResult, proof: unknown): Promise<HostCanaryVerification>;
 }
 
 /** Persistent storage is supplied by the integrating application. */
@@ -70,6 +107,8 @@ export interface HostNetworkStore {
   get(hostId: string): Promise<HostRecord | undefined>;
   list(): Promise<HostRecord[]>;
   appendPerformance(hostId: string, evidence: HostPerformanceEvidence): Promise<void>;
+  putCanaryChallenge(challenge: HostCanaryChallenge): Promise<void>;
+  completeCanaryChallenge(challenge: HostCanaryChallenge): Promise<void>;
 }
 
 export interface HostNetworkOptions {
@@ -78,6 +117,9 @@ export interface HostNetworkOptions {
   now?: () => number;
   /** Require enough remaining certificate lifetime at registration; default 1 hour. */
   minAttestationValiditySeconds?: number;
+  canaryExecutor: HostCanaryExecutor;
+  canaryChallengeTtlSeconds?: number;
+  canaryTimeoutMs?: number;
   /** Required to change a host's status; authorization policy remains integrator-owned. */
   authorizeStatusChange?: (input: { hostId: string; status: HostStatus; actorId: string; proof: unknown }) => Promise<boolean>;
 }
@@ -99,6 +141,11 @@ export function createHostNetwork(options: HostNetworkOptions) {
   const now = options.now ?? (() => Date.now());
   const minValidity = options.minAttestationValiditySeconds ?? 3600;
   if (!Number.isSafeInteger(minValidity) || minValidity < 0) throw new HostNetworkError("Minimum attestation validity is invalid", "INVALID_CLAIM");
+  const canaryChallengeTtlSeconds = options.canaryChallengeTtlSeconds ?? 120;
+  const canaryTimeoutMs = options.canaryTimeoutMs ?? 30_000;
+  if (!Number.isSafeInteger(canaryChallengeTtlSeconds) || canaryChallengeTtlSeconds < 1 ||
+      !Number.isSafeInteger(canaryTimeoutMs) || canaryTimeoutMs < 100 || canaryTimeoutMs > canaryChallengeTtlSeconds * 1000)
+    throw new HostNetworkError("Canary timeout/expiry configuration is invalid", "INVALID_CLAIM");
 
   async function register(input: {
     claim: HostClaim;
@@ -176,7 +223,72 @@ export function createHostNetwork(options: HostNetworkOptions) {
     return structuredClone(updated);
   }
 
-  return { register, getActive, listActive, recordPerformance, setStatus };
+  async function runCanary(input: { hostId: string; gpuClass: string; task: string }): Promise<HostCanaryChallenge> {
+    const host = await getActive(input.hostId);
+    if (!host.capabilities.devices.some((device) => device.toLowerCase() === input.gpuClass.toLowerCase()) ||
+        (!host.capabilities.tasks.includes("*") && !host.capabilities.tasks.includes(input.task)))
+      throw new HostNetworkError("Canary GPU class or task is not advertised by this host", "CAPABILITY_MISMATCH");
+    const issued = now();
+    const challenge: HostCanaryChallenge = {
+      id: crypto.randomUUID(), hostId: host.hostId, gpuClass: input.gpuClass, task: input.task,
+      nonce: randomNonce(), issuedAt: new Date(issued).toISOString(),
+      expiresAt: new Date(issued + canaryChallengeTtlSeconds * 1000).toISOString(), status: "issued",
+    };
+    await options.store.putCanaryChallenge(challenge);
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let response: Awaited<ReturnType<HostCanaryExecutor["execute"]>>;
+    try {
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort(new Error("Canary execution timed out"));
+          reject(new Error("Canary execution timed out"));
+        }, canaryTimeoutMs);
+      });
+      response = await Promise.race([
+        options.canaryExecutor.execute({ host, challenge, signal: controller.signal }), timeout,
+      ]);
+    } catch {
+      // Transport failures and timeouts are inconclusive, never evidence that warrants slashing.
+      controller.abort();
+      challenge.status = "indeterminate";
+      await options.store.completeCanaryChallenge(challenge);
+      return structuredClone(challenge);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (!response.result || typeof response.result.challengeId !== "string" ||
+        typeof response.result.hostId !== "string" || typeof response.result.gpuClass !== "string" ||
+        typeof response.result.measuredImage !== "string" || typeof response.result.outputHash !== "string" ||
+        response.result.challengeId !== challenge.id ||
+        response.result.hostId !== host.hostId ||
+        response.result.gpuClass.toLowerCase() !== challenge.gpuClass.toLowerCase() ||
+        response.result.measuredImage.toLowerCase() !== host.measuredImage.toLowerCase() ||
+        !/^0x[\da-f]{64}$/i.test(response.result.outputHash) ||
+        !Number.isSafeInteger(response.result.elapsedMs) || response.result.elapsedMs < 0 ||
+        response.result.elapsedMs > 86_400_000 || now() > Date.parse(challenge.expiresAt)) {
+      challenge.status = "indeterminate";
+      await options.store.completeCanaryChallenge(challenge);
+      return structuredClone(challenge);
+    }
+    let verification: HostCanaryVerification;
+    try {
+      verification = await options.verifier.verifyCanary(host, challenge, response.result, response.proof);
+    } catch {
+      verification = { authenticated: false, passed: false };
+    }
+    challenge.status = verification.authenticated ? (verification.passed ? "passed" : "failed") : "indeterminate";
+    await options.store.completeCanaryChallenge(challenge);
+    if (verification.authenticated) {
+      await options.store.appendPerformance(host.hostId, {
+        source: "canary", reference: challenge.id, task: challenge.task, gpuClass: challenge.gpuClass,
+        observedAt: new Date(now()).toISOString(), elapsedMs: response.result.elapsedMs, succeeded: verification.passed,
+      });
+    }
+    return structuredClone(challenge);
+  }
+
+  return { register, getActive, listActive, recordPerformance, setStatus, runCanary };
 }
 
 function validateClaim(claim: HostClaim, currentTime: number): void {
@@ -219,6 +331,11 @@ function validatePerformance(evidence: HostPerformanceEvidence, host: HostRecord
 }
 
 function normalize(value: string): string { return value.toLowerCase(); }
+
+function randomNonce(): `0x${string}` {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return `0x${Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("")}`;
+}
 
 function multiset(values: string[]): Map<string, number> {
   const result = new Map<string, number>();
