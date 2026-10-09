@@ -98,13 +98,11 @@ In Render Dashboard: **New → Background Worker → Existing Image**
   - `VAULT_ADDR`: `vault` address from `deployments/4663.json`
   - `KEEPER_TICK_MS`: `5000`
 
-The product V4 route is currently kept disabled in both frontends. Do not set the
-frontend feature flag until the operator has deployed this code, applied the per-pool
-database migration, and the route is deliberately enabled:
-
-```text
-VITE_ENABLE_POOL_V2=true
-```
+The product V4 route is currently kept disabled in both frontends. There is no
+Vercel `VITE_*` flag for it; the current client gates are source-controlled. Once
+the operator is configured and the frontend is deliberately wired back in, deploy
+the frontend code normally. Do not invent or set `VITE_ENABLE_POOL_V2`—the client
+does not read that variable.
 
 ### Step 4: GitHub Actions Auto-Deploy Hooks (Optional)
 In your GitHub Repository **Settings → Secrets and variables → Actions**, add:
