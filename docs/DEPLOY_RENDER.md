@@ -78,7 +78,6 @@ In Render Dashboard: **New → Web Service → Existing Image**
   - `POOL_V4_ADDR`: `0xf8f47571A55dB8745b7642515aF051D7B1e09dd3` (product V4 / internal `CurtainPoolV2`)
   - `POOL_V4_ROOT_MANAGER_ADDR`: `0xccB2e48e229435d64b42fe664dA880992C481365`
   - `POOL_V4_START_BLOCK`: `84108016`
-  - `POOL_V2_SWAP_TARGETS`: `0xcaf681a66d020601342297493863e78c959e5cb2,0x2b50d96a0073baCe9e126fb012d46912298486F0` (used when deploying the final V4 pool)
   - `MIN_OPERATOR_BALANCE_WEI`: `2000000000000000`
 
 ### Step 3: Create Keeper (Background Worker)
