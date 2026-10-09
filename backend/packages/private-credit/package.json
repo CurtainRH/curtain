@@ -1,0 +1,12 @@
+{
+  "name": "@curtain/private-credit",
+  "version": "0.1.0-experimental",
+  "private": true,
+  "description": "Cloneable private-credit and outside-position policy toolkit",
+  "type": "module",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "bun test" },
+  "devDependencies": { "@types/bun": "latest", "typescript": "^5.6.3" }
+}
