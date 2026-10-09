@@ -36,6 +36,12 @@ jobs:
       - name: forge test
         working-directory: backend/contracts
         run: forge test
+      - name: PoolV2 stateful accounting invariants (100k handler calls)
+        working-directory: backend/contracts
+        env:
+          FOUNDRY_INVARIANT_RUNS: "1024"
+          FOUNDRY_INVARIANT_DEPTH: "100"
+        run: forge test --match-path test/invariants/PoolV2Invariants.t.sol
       - name: Run Slither Static Analysis
         working-directory: backend/contracts
         run: slither . --compile-force-framework foundry || true

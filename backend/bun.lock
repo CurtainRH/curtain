@@ -10,6 +10,22 @@
         "viem": "2.57.0",
       },
     },
+    "packages/ai-rig-shelf": {
+      "name": "@curtain/ai-rig-shelf",
+      "version": "0.1.0-experimental",
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.6.3",
+      },
+    },
+    "packages/backstage-trading": {
+      "name": "@curtain/backstage-trading",
+      "version": "0.1.0-experimental",
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.6.3",
+      },
+    },
     "packages/booths": {
       "name": "@curtain/booths",
       "version": "0.1.0-experimental",
@@ -27,6 +43,14 @@
       "devDependencies": {
         "@electric-sql/pglite": "^0.3.0",
         "@types/pg": "^8.15.5",
+        "typescript": "^5.6.3",
+      },
+    },
+    "packages/honest-launch": {
+      "name": "@curtain/honest-launch",
+      "version": "0.1.0-experimental",
+      "devDependencies": {
+        "@types/bun": "latest",
         "typescript": "^5.6.3",
       },
     },
@@ -52,6 +76,22 @@
         "typescript": "^5.6.3",
       },
     },
+    "packages/passes": {
+      "name": "@curtain/passes",
+      "version": "0.1.0-experimental",
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.6.3",
+      },
+    },
+    "packages/private-credit": {
+      "name": "@curtain/private-credit",
+      "version": "0.1.0-experimental",
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.6.3",
+      },
+    },
     "packages/rig-rate": {
       "name": "@curtain/rig-rate",
       "version": "0.1.0-experimental",
@@ -71,6 +111,14 @@
         "@curtain/db": "workspace:*",
         "@curtain/operator": "workspace:*",
         "@electric-sql/pglite": "^0.3.0",
+        "typescript": "^5.6.3",
+      },
+    },
+    "packages/understudies": {
+      "name": "@curtain/understudies",
+      "version": "0.1.0-experimental",
+      "devDependencies": {
+        "@types/bun": "latest",
         "typescript": "^5.6.3",
       },
     },
@@ -114,9 +162,15 @@
   "packages": {
     "@adraffy/ens-normalize": ["@adraffy/ens-normalize@1.11.1", "", {}, "sha512-nhCBV3quEgesuf7c7KYfperqSS14T8bYuvJ8PcLJp6znkZpFc0AuW4qBtr8eKVyPPe/8RSr7sglCWPU5eaxwKQ=="],
 
+    "@curtain/ai-rig-shelf": ["@curtain/ai-rig-shelf@workspace:packages/ai-rig-shelf"],
+
+    "@curtain/backstage-trading": ["@curtain/backstage-trading@workspace:packages/backstage-trading"],
+
     "@curtain/booths": ["@curtain/booths@workspace:packages/booths"],
 
     "@curtain/db": ["@curtain/db@workspace:packages/db"],
+
+    "@curtain/honest-launch": ["@curtain/honest-launch@workspace:packages/honest-launch"],
 
     "@curtain/host-network": ["@curtain/host-network@workspace:packages/host-network"],
 
@@ -128,9 +182,15 @@
 
     "@curtain/operator": ["@curtain/operator@workspace:services/operator"],
 
+    "@curtain/passes": ["@curtain/passes@workspace:packages/passes"],
+
+    "@curtain/private-credit": ["@curtain/private-credit@workspace:packages/private-credit"],
+
     "@curtain/rig-rate": ["@curtain/rig-rate@workspace:packages/rig-rate"],
 
     "@curtain/sdk": ["@curtain/sdk@workspace:packages/sdk"],
+
+    "@curtain/understudies": ["@curtain/understudies@workspace:packages/understudies"],
 
     "@electric-sql/pglite": ["@electric-sql/pglite@0.3.16", "", {}, "sha512-mZkZfOd9OqTMHsK+1cje8OSzfAQcpD7JmILXTl5ahdempjUDdmg4euf1biDex5/LfQIDJ3gvCu6qDgdnDxfJmA=="],
 

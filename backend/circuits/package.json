@@ -23,5 +23,8 @@
   },
   "devDependencies": {
     "circom2": "0.2.23"
+  },
+  "overrides": {
+    "ws": "^8.21.0"
   }
 }

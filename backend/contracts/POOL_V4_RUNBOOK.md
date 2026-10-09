@@ -28,6 +28,20 @@ This is the operational record for the new shielded-pool route on Robinhood Chai
 
 The canonical deployment record is [`deployments/4663.json`](deployments/4663.json).
 
+### Read-only deployment verification
+
+Run the manifest-driven check after a deployment (it sends no transactions):
+
+```sh
+forge script script/PostDeployCheck.s.sol:PostDeployCheckScript \
+  --rpc-url "$RPC_HTTP"
+```
+
+The check verifies the legacy vault/staking/stealth configuration and the current
+Pool V2 bytecode, verifier adapters, root-manager linkage, published root, USDG/NVDA
+allowlist, and exact-output swap-adapter allowlist. It reads addresses from
+`deployments/4663.json`; update that manifest as part of any deployment change.
+
 The current swap-ready pool was created in block `84297845`. Start its event
 scan at that block (or earlier). The legacy pool began at block `84199146` and
 must remain indexed for recovery of any notes created there. The two pools have
