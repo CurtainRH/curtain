@@ -169,8 +169,17 @@ const api = createApi({
   minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
   ...(poolV4Publisher && poolV4 && poolV4RootManager ? { poolV4: { publisher: poolV4Publisher, pool: poolV4, rootManager: poolV4RootManager } } : {}),
   contexts: v3Operator && v3Db && v3Vault ? {
-    v2: { db, operator, vault, tokens, keeperFeeBps, minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")) },
-    v3: { db: v3Db, operator: v3Operator, vault: v3Vault, tokens, keeperFeeBps, v3Mode: true, fixedAmounts: await makeFixedAmounts(), minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")) },
+    v2: {
+      db, operator, vault, tokens, keeperFeeBps,
+      minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
+      ...(poolV4Publisher && poolV4 && poolV4RootManager ? { poolV4: { publisher: poolV4Publisher, pool: poolV4, rootManager: poolV4RootManager } } : {}),
+    },
+    v3: {
+      db: v3Db, operator: v3Operator, vault: v3Vault, tokens, keeperFeeBps, v3Mode: true,
+      fixedAmounts: await makeFixedAmounts(),
+      minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
+      ...(poolV4Publisher && poolV4 && poolV4RootManager ? { poolV4: { publisher: poolV4Publisher, pool: poolV4, rootManager: poolV4RootManager } } : {}),
+    },
   } : undefined,
 });
 const mcp = createMcpApi(api);
