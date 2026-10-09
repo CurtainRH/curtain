@@ -172,7 +172,9 @@
             <code>slippageBps</code> defaults to 100 (1%) and accepts integers from 0 to 5000. V3
             quotes are valid only for approved token denominations. Dynamic quotes use V3 when the
             input amount is approved and V2 otherwise; the response includes the resolved
-            <code>privacyRoute</code>.
+            <code>privacyRoute</code>, the original <code>requestedPrivacyRoute</code>, and a
+            <code>routeReason</code> such as <code>approved_fixed_denomination</code> or
+            <code>amount_not_in_v3_denomination_set</code>.
           </p>
           <div class="code">
             <div class="code-title">
@@ -337,6 +339,7 @@ async function prepareSwap({ depositor, recipient, requestId }) {
           </p>
           <p>
             The response contains <code>id</code>, the selected <code>privacyRoute</code>,
+            the original <code>requestedPrivacyRoute</code>, and <code>routeReason</code>,
             <code>chainId</code>, the selected <code>vault</code>, <code>escapeTicket</code>, and
             <code>transactions.approval</code> / <code>transactions.deposit</code>. V3 tickets
             include a <code>tag</code> and must use the V3 refund function. Each transaction

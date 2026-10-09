@@ -33,6 +33,11 @@ The existing operator serves `/developer/*` for wallet-signature key management 
 `006_developer_v3_intents.sql` are applied by the operator's existing startup migration.
 API keys use the main database; V2 and V3 intent ownership maps live with their respective
 operator databases.
+
+Developer API responses expose both the requested and resolved route. Dynamic requests return
+`routeReason: "approved_fixed_denomination"` when they select V3, or
+`"amount_not_in_v3_denomination_set"` when they fall back to V2. `/v1/config` also returns the
+`privacyPolicy` object describing the V3-first, V2-fallback rule.
 `007_integrator_fees.sql` adds the optional Developer API integrator-fee fields to intents.
 `008_limit_orders.sql` adds explicit limit-order intent metadata; limit orders reuse the existing
 on-chain `minOut` settlement guard and accept `orderType: "limit"` plus `expiresInSeconds`.

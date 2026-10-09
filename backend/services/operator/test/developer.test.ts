@@ -152,10 +152,18 @@ describe("developer access and V2/V3 API", () => {
       "v3",
       "dynamic",
     ]);
+    expect((await request("/v1/config", undefined, created.apiKey)).body.privacyPolicy.dynamic).toEqual({
+      priority: ["v3", "v2"],
+      fallback: "v2",
+      rule: "Use V3 for approved fixed denominations; otherwise use V2.",
+    });
     expect(
       (await request(`/v1/quote?${query}&privacyRoute=v3`, undefined, created.apiKey)).body
         .minOutSuggested,
     ).toBe("88");
+    expect(
+      (await request(`/v1/quote?${query}&privacyRoute=v3`, undefined, created.apiKey)).body,
+    ).toMatchObject({ requestedPrivacyRoute: "v3", privacyRoute: "v3", routeReason: "explicit_v3" });
     expect(
       (await request(`/v1/quote?${query}&privacyRoute=v2`, undefined, created.apiKey)).body
         .minOutSuggested,
@@ -165,6 +173,10 @@ describe("developer access and V2/V3 API", () => {
         .privacyRoute,
     ).toBe("v3");
     expect(
+      (await request(`/v1/quote?${query}&privacyRoute=dynamic`, undefined, created.apiKey)).body
+        .routeReason,
+    ).toBe("approved_fixed_denomination");
+    expect(
       (
         await request(
           `/v1/quote?${query.replace("10000000", "20000000")}&privacyRoute=dynamic`,
@@ -173,6 +185,15 @@ describe("developer access and V2/V3 API", () => {
         )
       ).body.privacyRoute,
     ).toBe("v2");
+    expect(
+      (
+        await request(
+          `/v1/quote?${query.replace("10000000", "20000000")}&privacyRoute=dynamic`,
+          undefined,
+          created.apiKey,
+        )
+      ).body.routeReason,
+    ).toBe("amount_not_in_v3_denomination_set");
     expect(
       (
         await request(
@@ -313,6 +334,8 @@ describe("developer access and V2/V3 API", () => {
     );
     expect(dynamic.status).toBe(201);
     expect(dynamic.body.privacyRoute).toBe("v3");
+    expect(dynamic.body.requestedPrivacyRoute).toBe("dynamic");
+    expect(dynamic.body.routeReason).toBe("approved_fixed_denomination");
     expect(dynamic.body.vault).toBe(V3_VAULT);
     expect((await request(`/intents/${first.body.id}`)).status).toBe(404);
   });

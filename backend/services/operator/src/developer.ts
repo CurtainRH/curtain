@@ -90,17 +90,18 @@ export function createDeveloperApi(root: ApiConfig) {
     context: ApiConfig;
     table: "developer_intents" | "developer_v3_intents";
     mode: "v2" | "v3";
+    reason: "explicit_v2" | "explicit_v3" | "approved_fixed_denomination" | "amount_not_in_v3_denomination_set";
   };
   const contextFor = (route: unknown, tokenIn?: Address, amount?: string): Route => {
-    if (route === "v2") return { context: cfg, table: "developer_intents", mode: "v2" as const };
+    if (route === "v2") return { context: cfg, table: "developer_intents", mode: "v2" as const, reason: "explicit_v2" };
     if (route === "v3" && v3?.v3Mode)
-      return { context: v3, table: "developer_v3_intents", mode: "v3" as const };
+      return { context: v3, table: "developer_v3_intents", mode: "v3" as const, reason: "explicit_v3" };
     if (route === "dynamic") {
       if (!tokenIn || !amount)
         throw new ApiError(400, "Dynamic privacy requires tokenIn and amountIn");
       if (v3?.v3Mode && v3.fixedAmounts?.has(`${tokenIn}:${amount}`))
-        return { context: v3, table: "developer_v3_intents", mode: "v3" };
-      return { context: cfg, table: "developer_intents", mode: "v2" };
+        return { context: v3, table: "developer_v3_intents", mode: "v3", reason: "approved_fixed_denomination" };
+      return { context: cfg, table: "developer_intents", mode: "v2", reason: "amount_not_in_v3_denomination_set" };
     }
     throw new ApiError(400, 'privacyRoute must be "v2", "v3", or "dynamic"');
   };
@@ -278,6 +279,8 @@ export function createDeveloperApi(root: ApiConfig) {
     params: { tokenIn: Address; amountIn: string; depositor: Address },
     context: ApiConfig,
     mode: "v2" | "v3",
+    requestedPrivacyRoute: "v2" | "v3" | "dynamic",
+    routeReason: Route["reason"],
   ) {
     const tx = (to: Address, data: Hex) => ({
       chainId,
@@ -288,7 +291,9 @@ export function createDeveloperApi(root: ApiConfig) {
     });
     return {
       id: intent.id,
+      requestedPrivacyRoute,
       privacyRoute: mode,
+      routeReason,
       chainId,
       vault: context.vault,
       escapeTicket: {
@@ -335,7 +340,8 @@ export function createDeveloperApi(root: ApiConfig) {
       orderType: body.orderType === "limit" ? ("limit" as const) : ("market" as const),
       ...(body.expiresInSeconds !== undefined ? { expiresInSeconds: Number(body.expiresInSeconds) } : {}),
     };
-    const route = contextFor(body.privacyRoute, params.tokenIn, params.amountIn);
+    const requestedPrivacyRoute = body.privacyRoute;
+    const route = contextFor(requestedPrivacyRoute, params.tokenIn, params.amountIn);
     const fee = integratorFee(body.integratorFee, route.context.vault);
     if (
       typeof params.delaySeconds !== "number" ||
@@ -387,6 +393,8 @@ export function createDeveloperApi(root: ApiConfig) {
             params,
             route.context,
             route.mode,
+            requestedPrivacyRoute as "v2" | "v3" | "dynamic",
+            route.reason,
           ),
         );
       }
@@ -403,7 +411,17 @@ export function createDeveloperApi(root: ApiConfig) {
         `INSERT INTO ${route.table}(key_id,request_id,request_hash,intent_id) VALUES ($1,$2,$3,$4)`,
         [keyId, requestId, requestHash, intent.id],
       );
-      return reply(prepare(intent, params, route.context, route.mode), 201);
+      return reply(
+        prepare(
+          intent,
+          params,
+          route.context,
+          route.mode,
+          requestedPrivacyRoute as "v2" | "v3" | "dynamic",
+          route.reason,
+        ),
+        201,
+      );
     });
   }
   return async (req: Request): Promise<Response | null> => {
@@ -440,12 +458,20 @@ export function createDeveloperApi(root: ApiConfig) {
           maxDelaySeconds: MAX_DELAY_SECONDS,
           rateLimitPerMinute: 60,
           ...(v3?.v3Mode ? { v3FixedAmounts: fixedDenominations() } : {}),
+          privacyPolicy: {
+            dynamic: {
+              priority: ["v3", "v2"],
+              fallback: "v2",
+              rule: "Use V3 for approved fixed denominations; otherwise use V2.",
+            },
+          },
         });
       if (path === "/v1/quote" && req.method === "GET") {
         const tokenIn = tokenAddress(url.searchParams.get("tokenIn"), "tokenIn");
         const tokenOut = tokenAddress(url.searchParams.get("tokenOut"), "tokenOut");
         const amount = units(url.searchParams.get("amountIn"), "amountIn");
-        const route = contextFor(url.searchParams.get("privacyRoute"), tokenIn, amount);
+        const requestedPrivacyRoute = url.searchParams.get("privacyRoute");
+        const route = contextFor(requestedPrivacyRoute, tokenIn, amount);
         const routeAllowed = new Set(
           Object.values(route.context.tokens).map((token) => getAddress(token)),
         );
@@ -463,7 +489,9 @@ export function createDeveloperApi(root: ApiConfig) {
           : undefined;
         return reply({
           ...(await route.context.operator.quoteForUser(tokenIn, tokenOut, BigInt(amount), slippage, undefined, undefined, fee)),
+          requestedPrivacyRoute,
           privacyRoute: route.mode,
+          routeReason: route.reason,
         });
       }
       if (path === "/v1/intents" && req.method === "POST") return await newIntent(req, keyId);

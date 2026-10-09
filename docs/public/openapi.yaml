@@ -62,6 +62,15 @@ paths:
                     { type: object, additionalProperties: { $ref: "#/components/schemas/Address" } }
                   maxDelaySeconds: { type: integer, example: 15552000 }
                   rateLimitPerMinute: { type: integer, example: 60 }
+                  privacyPolicy:
+                    type: object
+                    properties:
+                      dynamic:
+                        type: object
+                        properties:
+                          priority: { type: array, items: { type: string, enum: [v3, v2] } }
+                          fallback: { type: string, enum: [v2] }
+                          rule: { type: string }
         default: { $ref: "#/components/responses/Error" }
   /quote:
     get:
@@ -131,6 +140,11 @@ paths:
                       bps: { type: integer, minimum: 0, maximum: 100 }
                       amount: { type: string }
                   venue: { type: string }
+                  requestedPrivacyRoute: { type: string, enum: [v2, v3, dynamic] }
+                  privacyRoute: { type: string, enum: [v2, v3] }
+                  routeReason:
+                    type: string
+                    enum: [explicit_v2, explicit_v3, approved_fixed_denomination, amount_not_in_v3_denomination_set]
         default: { $ref: "#/components/responses/Error" }
   /intents:
     post:
@@ -271,7 +285,11 @@ components:
       required: [id, privacyRoute, chainId, vault, escapeTicket, transactions]
       properties:
         id: { type: string }
+        requestedPrivacyRoute: { type: string, enum: [v2, v3, dynamic] }
         privacyRoute: { type: string, enum: [v2, v3] }
+        routeReason:
+          type: string
+          enum: [explicit_v2, explicit_v3, approved_fixed_denomination, amount_not_in_v3_denomination_set]
         chainId: { type: integer }
         vault: { $ref: "#/components/schemas/Address" }
         escapeTicket:
