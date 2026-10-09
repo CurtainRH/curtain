@@ -233,7 +233,7 @@ function SwapExperience() {
         try {
           const target = quote ? rawAmount(quote, output.decimals) : 0n;
           if (target <= 0n) throw new PoolV4FallbackError("The pool quote expired. Refreshing your route.");
-          await poolV4Swap({
+          const poolResult = await poolV4Swap({
             publicClient,
             walletClient,
             tokenIn: input.address,
@@ -243,7 +243,9 @@ function SwapExperience() {
             recipient: recipientAddress as Address,
             onStatus: setBusy,
           });
-          setToast({ kind: "success", message: "Private swap complete. Your output was delivered to the recipient." });
+          setToast(poolResult.deliveryConfirmed
+            ? { kind: "success", message: "Private swap complete. Your output was delivered to the recipient." }
+            : { kind: "info", message: `Delivery transaction ${poolResult.unshieldTx.slice(0, 10)}… was submitted, but confirmation is delayed. Don’t submit again; your recovery note is saved.` });
           setAmount("");
           setQuote(undefined);
           void app.refresh();

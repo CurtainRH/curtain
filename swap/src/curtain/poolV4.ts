@@ -29,6 +29,7 @@ export interface PendingPoolV4Note {
   amount: string;
   recipient: Address;
   createdAt: string;
+  unshieldTx?: Hex;
 }
 
 export function pendingPoolV4Notes(): PendingPoolV4Note[] {
@@ -59,6 +60,7 @@ export function pendingPoolV4Notes(): PendingPoolV4Note[] {
           amount: value.amount,
           recipient: getAddress(value.recipient),
           createdAt: value.createdAt,
+          ...(typeof value.unshieldTx === "string" ? { unshieldTx: value.unshieldTx as Hex } : {}),
         });
       }
     } catch {
@@ -83,6 +85,35 @@ async function pendingWitness(commitment: Hex) {
   throw new Error(
     "Curtain is still indexing this private note. Try the rewind button again shortly.",
   );
+}
+
+/** Poll receipts through the same-origin RPC relay, but never leave the swap UI
+ * spinning indefinitely if the RPC's block watcher misses a mined transaction. */
+async function pollReceipt(hash: Hex, attempts = 12): Promise<"success" | "reverted" | "unknown"> {
+  for (let i = 0; i < attempts; i++) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 2500);
+    try {
+      const response = await fetch("/api/rpc", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: i + 1, method: "eth_getTransactionReceipt", params: [hash] }),
+        signal: controller.signal,
+      });
+      if (response.ok) {
+        const payload = await response.json() as { result?: { status?: string } | null };
+        if (payload.result?.status === "0x1") return "success";
+        if (payload.result?.status === "0x0") return "reverted";
+      }
+    } catch {
+      // Keep checking briefly; the transaction may already be mined while the
+      // RPC relay is temporarily unavailable.
+    } finally {
+      window.clearTimeout(timeout);
+    }
+    if (i + 1 < attempts) await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  return "unknown";
 }
 
 export async function recoverPoolV4Note({
@@ -219,7 +250,7 @@ export async function poolV4Swap({
   minOut: bigint;
   recipient: Address;
   onStatus?: (status: string) => void;
-}): Promise<{ swapTx: Hex; unshieldTx: Hex; amountOut: bigint; commitment: Hex; pool: Address }> {
+}): Promise<{ swapTx: Hex; unshieldTx: Hex; amountOut: bigint; commitment: Hex; pool: Address; deliveryConfirmed: boolean }> {
   const account = walletClient.account!.address;
   const secret = randomField();
   const quote = await poolV4Quote({ tokenIn, tokenOut, amountIn });
@@ -337,11 +368,21 @@ export async function poolV4Swap({
       recipient,
     ],
   });
-  const unshieldReceipt = await publicClient.waitForTransactionReceipt({ hash: unshieldTx });
-  if (unshieldReceipt.status !== "success")
+  const savedNoteKey = `${PENDING_NOTE_PREFIX}${noteCommitment.toLowerCase()}`;
+  const savedNote = localStorage.getItem(savedNoteKey);
+  if (savedNote) {
+    try {
+      localStorage.setItem(savedNoteKey, JSON.stringify({ ...JSON.parse(savedNote), unshieldTx }));
+    } catch {
+      // The original recovery secret remains stored even if receipt metadata cannot be added.
+    }
+  }
+  onStatus?.("Delivery submitted · checking confirmation");
+  const receiptStatus = await pollReceipt(unshieldTx);
+  if (receiptStatus === "reverted")
     throw new Error(
       "The private swap was shielded, but delivery failed. Your recovery note remains saved.",
     );
-  localStorage.removeItem(`${PENDING_NOTE_PREFIX}${noteCommitment.toLowerCase()}`);
-  return { swapTx, unshieldTx, amountOut, commitment: noteCommitment, pool };
+  if (receiptStatus === "success") localStorage.removeItem(savedNoteKey);
+  return { swapTx, unshieldTx, amountOut, commitment: noteCommitment, pool, deliveryConfirmed: receiptStatus === "success" };
 }
