@@ -1,5 +1,3 @@
-import { buildPoseidon } from "circomlibjs";
-import * as snarkjs from "snarkjs";
 import {
   decodeEventLog,
   encodeAbiParameters,
@@ -98,6 +96,10 @@ export async function recoverPoolV4Note({
   note: PendingPoolV4Note;
   onStatus?: (status: string) => void;
 }): Promise<Hex> {
+  // Keep the prover out of the landing-page's initial bundle. These packages
+  // include Node-oriented modules and are only needed when a user explicitly
+  // starts pool-note recovery.
+  const snarkjs = await import("snarkjs");
   const witness = await pendingWitness(note.commitment);
   onStatus?.("Generating your private proof");
   const { proof, publicSignals } = await snarkjs.groth16.fullProve(
@@ -143,6 +145,7 @@ function randomField(): bigint {
 }
 
 async function commitment(secret: bigint, token: Address, amount: bigint): Promise<Hex> {
+  const { buildPoseidon } = await import("circomlibjs");
   const poseidon = await buildPoseidon();
   const value = poseidon.F.toObject(poseidon([secret, BigInt(token), amount]));
   return `0x${value.toString(16).padStart(64, "0")}` as Hex;
@@ -319,6 +322,7 @@ export async function poolV4Swap({
     pathBits: witness.pathBits.map(Number),
     recipient: BigInt(recipient).toString(),
   };
+  const snarkjs = await import("snarkjs");
   const { proof, publicSignals } = await snarkjs.groth16.fullProve(input, wasm, zkey);
   onStatus?.("Confirm the private delivery");
   const unshieldTx = await walletClient.writeContract({
