@@ -42,7 +42,12 @@ export class PoolV4RootPublisher {
 
   async sync(): Promise<{ added: number; root?: Hex; txHash?: Hex }> {
     const cursor = await this.cfg.db.query<{ block: string }>("SELECT block FROM pool_v4_cursor WHERE id = 1");
-    const next = cursor[0] ? BigInt(cursor[0].block) + 1n : this.cfg.startBlock;
+    // If an earlier worker advanced the cursor without decoding any notes, replay from
+    // the configured start block so a later fixed decoder can recover that history.
+    const indexed = await this.cfg.db.query<{ count: string }>("SELECT count(*)::text AS count FROM pool_v4_notes");
+    const next = indexed[0]?.count === "0"
+      ? this.cfg.startBlock
+      : cursor[0] ? BigInt(cursor[0].block) + 1n : this.cfg.startBlock;
     const head = await this.cfg.publicClient.getBlockNumber();
     const from = next - this.rescan > this.cfg.startBlock ? next - this.rescan : this.cfg.startBlock;
     if (from > head) return { added: 0 };
