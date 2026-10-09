@@ -16,8 +16,12 @@ export const POOL_V4_ADDRESSES: PoolV4Addresses = {
   unshieldVerifierAdapter: "0x64260f018073e5E9710A150C2a0938A4Cb57100B",
 };
 
-/** V4 is enabled only when the matching operator config is also live. */
-export const POOL_V2_CLIENT_ENABLED = import.meta.env["VITE_ENABLE_POOL_V2"] === "true";
+/**
+ * Product V4 (internally Pool V2) is paused pending a corrected pool flow.
+ * This is deliberately source-controlled so a stale hosted environment value
+ * cannot re-enable it.
+ */
+export const POOL_V2_CLIENT_ENABLED = false;
 
 export function routeName(route: SwapRoute): string {
   if (route === "v2") return "Curtain V2";

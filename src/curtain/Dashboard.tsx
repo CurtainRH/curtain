@@ -1408,15 +1408,6 @@ export default function Dashboard({ path }: { path: string }) {
                 >
                   V3
                 </button>
-                <button
-                  type="button"
-                  className={mode === "v4" ? "active" : ""}
-                  aria-pressed={mode === "v4"}
-                  onClick={() => switchCurtain("v4")}
-                  title="Use Curtain IV shielded pool"
-                >
-                  V4
-                </button>
               </div>
               <button className="wallet-button" onClick={connect}>
                 <Wallet size={16} />

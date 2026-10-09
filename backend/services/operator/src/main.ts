@@ -38,6 +38,11 @@ import { Operator, type StealthConfig } from "./operator";
 import { mockQuoter, mockRoute, uniswapQuoter, uniswapRoute } from "./routes";
 import { PoolV2RootPublisher } from "./poolV2";
 
+// Product V4 (internally Pool V2) is intentionally paused. Keep deployment
+// configuration compatible, but do not index, publish roots, or advertise its
+// API while the replacement pool flow is being prepared.
+const POOL_V2_PRODUCT_ROUTE_ENABLED = false;
+
 const env = (k: string, d?: string) => {
   const v = process.env[k] ?? d;
   if (v === undefined) throw new Error(`${k} is not set`);
@@ -99,13 +104,14 @@ const poolV2RootManager = process.env["POOL_V2_ROOT_MANAGER_ADDR"] ?? process.en
 const poolV2StartBlock = process.env["POOL_V2_START_BLOCK"] ?? process.env["POOL_V4_START_BLOCK"];
 const poolV2Address = poolV2 ? getAddress(poolV2 as Address) : undefined;
 const poolV2ManagerAddress = poolV2RootManager ? getAddress(poolV2RootManager as Address) : undefined;
-const poolV2Publisher = poolV2Address && poolV2ManagerAddress
+const poolV2Publisher = POOL_V2_PRODUCT_ROUTE_ENABLED && poolV2Address && poolV2ManagerAddress
   ? new PoolV2RootPublisher({
       db, publicClient, walletClient, pool: poolV2Address, rootManager: poolV2ManagerAddress,
       startBlock: poolV2StartBlock ? BigInt(poolV2StartBlock) : await publicClient.getBlockNumber(),
     })
   : undefined;
 if (poolV2Publisher) console.log(`Pool V2 root publisher ON for product V4: ${poolV2Address}`);
+else if (poolV2Address || poolV2ManagerAddress) console.log("Product V4 route is paused; Pool V2 publisher is disabled.");
 
 /** Stealth payouts are off unless the flag is exactly "true"; when on, misconfiguration stops startup. */
 async function stealthConfig(): Promise<StealthConfig | undefined> {

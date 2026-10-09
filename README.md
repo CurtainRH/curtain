@@ -18,10 +18,9 @@ Private swaps and stake-to-earn on Robinhood Chain. Swap USDG and tokenized Stoc
 
 - V2 flexible vault: `0xF9381841e982648c178E762116A437Ecbcf12Bbd`
 - V3 fixed-denomination vault: `0xBF643c56D6f1775f9ABe97b7B7e89b0265D6c67a`
-- V4 shielded-pool route: `0x38147c547cDE831812CD075166E279B77FF164Cc` (internal Pool V2)
-- V4 root manager: `0x51E2aCaC1Fe6b1915D7Eafd24b96B7781cd9AFEf`
+- Shielded-pool route (internally Pool V2): paused while a revised deployment is prepared
 
-V2 is for flexible amounts. V3 is for fixed denominations—1, 10, and 100 whole units for supported assets, with USDG supporting 10, 100, 1,000, and 10,000 units. V4 is Curtain’s next-generation shielded-pool route for stronger privacy primitives and private internal transfers. The dashboard and Swap app will let users choose the route that fits their needs.
+V2 is for flexible amounts. V3 is for fixed denominations—1, 10, and 100 whole units for supported assets, with USDG supporting 10, 100, 1,000, and 10,000 units. The shielded-pool route is not currently available in the dashboard, Swap app, or operator API.
 
 ## Features
 

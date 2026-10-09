@@ -331,7 +331,7 @@ export default function App() {
     if (!location.pathname.startsWith("/app")) return null;
     try {
       const mode = localStorage.getItem("curtain-version-welcome");
-      if (mode === "v2" || mode === "v3" || mode === "v4") {
+      if (mode === "v2" || mode === "v3") {
         localStorage.removeItem("curtain-version-welcome");
         return { kind: "version", mode };
       }
@@ -665,10 +665,6 @@ export default function App() {
               <button className="curtain-choice-option" onClick={() => { localStorage.setItem("curtain-mode", "v2"); setCurtainChoice(false); }}>
                 <span className="eyebrow">CURTAIN II</span><strong>Flexible swaps</strong>
                 <span>Use arbitrary amounts with the existing V2 vault and its broadest compatibility.</span>
-              </button>
-              <button className="curtain-choice-option" onClick={() => { localStorage.setItem("curtain-mode", "v4"); setCurtainChoice(false); }}>
-                <span className="eyebrow">CURTAIN IV</span><strong>Shielded pool</strong>
-                <span>Use a fresh private note and a zero-knowledge proof for the strongest available route.</span>
               </button>
             </div>
             <p className="curtain-choice-footnote">Both modes are private by design. Public chain data can still expose timing and amount relationships.</p>

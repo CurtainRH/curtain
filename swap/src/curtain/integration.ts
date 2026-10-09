@@ -31,7 +31,7 @@ export type CurtainMode = "v2" | "v3" | "v4";
 export function curtainMode(): CurtainMode {
   if (typeof window === "undefined") return "v2";
   const saved = window.localStorage.getItem("curtain-mode");
-  return saved === "v3" || saved === "v4" ? saved : "v2";
+  return saved === "v3" ? "v3" : "v2";
 }
 export function apiUrlForMode(mode: CurtainMode = curtainMode()) {
   return mode === "v3" ? "/api/curtain-v3" : apiUrl;
