@@ -16,6 +16,7 @@
     "@curtain/db": "workspace:*",
     "@curtain/sdk": "workspace:*",
     "@modelcontextprotocol/server": "^2.3.1",
+    "circomlibjs": "0.1.7",
     "viem": "2.57.0",
     "zod": "^4.6.5"
   },

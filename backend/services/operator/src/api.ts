@@ -24,6 +24,7 @@ import type { Db } from "@curtain/db";
 import { createIntent, IntentError, MAX_DELAY_SECONDS, MAX_SPLITS, minSplitShareBps } from "./intents";
 import type { Operator } from "./operator";
 import { createDeveloperApi } from "./developer";
+import type { PoolV4RootPublisher } from "./poolV4";
 
 export interface ApiConfig {
   chainId?: number;
@@ -37,6 +38,7 @@ export interface ApiConfig {
   now?: () => number; // unix seconds
   v3Mode?: boolean;
   fixedAmounts?: Set<string>;
+  poolV4?: { publisher: PoolV4RootPublisher; pool: Address; rootManager: Address };
   contexts?: { v2: Omit<ApiConfig, "contexts">; v3?: Omit<ApiConfig, "contexts"> };
 }
 
@@ -102,7 +104,16 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
           ...(stealth ? { stealth } : {}), ...(split ? { split } : {}),
           ...(active.operator.anonymitySetEnabled ? { pool: { enabled: true } } : {}),
           ...(cfg.operator.ticketSyncEnabled ? { sync: { enabled: true } } : {}),
+          ...(active.poolV4 ? { poolV4: { enabled: true, pool: active.poolV4.pool, rootManager: active.poolV4.rootManager } } : {}),
         });
+      }
+
+      if (req.method === "GET" && pathname.startsWith("/pool-v4/witness/")) {
+        if (!active.poolV4) return json({ error: "V4 pool is not enabled" }, 404);
+        const commitment = pathname.slice("/pool-v4/witness/".length);
+        if (!/^0x[\da-f]{64}$/i.test(commitment)) return json({ error: "commitment must be a bytes32 hex value" }, 400);
+        const witness = await active.poolV4.publisher.witness(commitment as `0x${string}`);
+        return witness ? json(witness) : json({ error: "note not found" }, 404);
       }
 
       if (req.method === "GET" && pathname === "/quote") {

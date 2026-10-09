@@ -75,6 +75,9 @@ In Render Dashboard: **New → Web Service → Existing Image**
   - `KEEPER_FEE_BPS`: `5`
   - `TICK_MS`: `5000`
   - `START_BLOCK`: Deployment block of the vault
+  - `POOL_V4_ADDR`: `0x80334FD4160245c2856C20526349c43E8597125E` (product V4 / internal `CurtainPoolV2`)
+  - `POOL_V4_ROOT_MANAGER_ADDR`: `0x0C6153A8F30fF138A4B477C5a8A702D23fBa865D`
+  - `POOL_V4_START_BLOCK`: `84091216`
   - `MIN_OPERATOR_BALANCE_WEI`: `2000000000000000`
 
 ### Step 3: Create Keeper (Background Worker)

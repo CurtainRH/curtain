@@ -25,6 +25,10 @@ This is the operational record for the new shielded-pool route on Robinhood Chai
 
 The canonical deployment record is [`deployments/4663.json`](deployments/4663.json).
 
+The replacement pool was created in block `84091216`. The operator must start its
+event scan at that block (or an earlier block) so the first shielded notes are
+included in the published tree.
+
 ## Roles and root policy
 
 - `CurtainPoolV2.rootManager()` points to `PoolV2RootManager`.
@@ -67,6 +71,23 @@ The product rollout is intentionally staged:
 
 1. **Curtain Swap (`swap.curtainrh.com`)** — add the V4 route choice, point the client at the deployed V4 addresses, and validate shield/proof/unshield flows while leaving existing V2 and V3 vault flows unchanged.
 2. **Main dashboard** — add V4 to the existing version/privacy choice and dynamic-privacy routing after the standalone Swap flow is validated.
-3. **Operator/API/keeper** — expose V4 configuration, proof preparation, root publication, and settlement only after the client flow passes end-to-end checks.
+3. **Operator/API/keeper** — the first operator layer is now available: it indexes
+   `NoteShielded` events, persists note metadata, publishes the append-only Poseidon
+   root through `PoolV2RootManager`, and serves witnesses at
+   `GET /pool-v4/witness/:commitment`. V4 settlement and client proof submission
+   remain gated until the shield/unshield flow is validated end to end.
+
+Operator configuration:
+
+```text
+POOL_V4_ADDR=0x80334FD4160245c2856C20526349c43E8597125E
+POOL_V4_ROOT_MANAGER_ADDR=0x0C6153A8F30fF138A4B477C5a8A702D23fBa865D
+POOL_V4_START_BLOCK=84091216
+```
+
+The operator's existing `OPERATOR_PRIVATE_KEY` must be the manager publisher
+account for root publication. Do not enable these variables until the address
+values have been checked against the deployment record and the operator wallet
+has enough native gas.
 
 Do not rename the Solidity contracts or deployment keys to `PoolV4`; reserve V4 for the product/API boundary.
