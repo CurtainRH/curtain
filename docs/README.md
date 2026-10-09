@@ -42,6 +42,14 @@ and does not implement persistent listings, signatures, payments, or escrow. See
 [`LAMPS_EXPERIMENTAL.md`](LAMPS_EXPERIMENTAL.md) and the package
 [`README.md`](../backend/packages/lamps/README.md).
 
+## Rig Rate reference calculator (experimental)
+
+Rig Rate is a cloneable, in-process calculator for hourly GPU reference rates. It normalizes
+observations from Booths, Lamps, and public boards, exposes price history, and marks thin,
+single-source, stale, and lower-quality data. It is not a hosted price oracle or a verified
+market feed; source authentication and settlement verification remain the integrator's
+responsibility. See the package [`README.md`](../backend/packages/rig-rate/README.md).
+
 ## Developer API deployment
 
 The existing operator serves `/developer/*` for wallet-signature key management and
