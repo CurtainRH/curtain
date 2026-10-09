@@ -79,6 +79,18 @@
 .swap-footnote img { width: 18px; height: 18px; object-fit: contain; }
 .swap-modal-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px; background: #020812bf; backdrop-filter: blur(8px); }
 .swap-token-modal { width: min(100%, 480px); max-height: min(680px, 90vh); overflow: hidden; background: #0b192b; border: 1px solid #d2ae6f45; box-shadow: 0 25px 100px #000b; padding: 25px; }
+.swap-recovery-modal { overflow-y: auto; }
+.swap-recovery-list { display: grid; gap: 9px; margin-top: 18px; }
+.swap-recovery-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; background: #071321; border: 1px solid #d2ae6f30; }
+.swap-recovery-item > div { min-width: 0; display: grid; gap: 5px; }
+.swap-recovery-item strong { color: #eef0f3; font-size: .78rem; overflow-wrap: anywhere; }
+.swap-recovery-item small, .swap-recovery-status { color: #8291a5; font-size: .65rem; }
+.swap-recovery-item .swap-secondary { min-height: 38px; padding: 8px 12px; flex: 0 0 auto; }
+.swap-toast { position: fixed; z-index: 200; top: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 16px; width: max-content; max-width: min(92vw, 560px); padding: 13px 15px; box-shadow: 0 12px 40px #0008; font-size: .78rem; line-height: 1.5; }
+.swap-toast-success { color: #c7f1dc; background: #18352d; border: 1px solid #65b895; }
+.swap-toast-error { color: #f4c4be; background: #3c1f2a; border: 1px solid #a85c5c; }
+.swap-toast-info { color: #d8b879; background: #14263d; border: 1px solid #c5a05970; }
+.swap-toast button { display: grid; place-items: center; padding: 2px; border: 0; background: transparent; color: inherit; cursor: pointer; }
 .swap-token-modal-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .swap-token-modal-heading h2 { margin: 8px 0 20px; font: 400 1.8rem "Playfair Display", serif; }
 .swap-modal-close { display: grid; place-items: center; color: #c5a059; background: transparent; border: 1px solid #d2ae6f38; padding: 8px; cursor: pointer; }

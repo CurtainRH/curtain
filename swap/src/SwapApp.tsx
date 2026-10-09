@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { RainbowKitProvider, darkTheme, useConnectModal } from "@rainbow-me/rainbowkit";
 import { WagmiProvider, useAccount } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { formatUnits, isAddress, parseAbi, parseUnits, type Address } from "viem";
-import { ArrowDownUp, ArrowRight, Check, ChevronDown, Clock, HelpCircle, Home, LoaderCircle, Search, X } from "lucide-react";
+import { createWalletClient, custom, formatUnits, isAddress, parseAbi, parseUnits, type Address } from "viem";
+import { ArrowDownUp, ArrowRight, Check, ChevronDown, Clock, HelpCircle, Home, LoaderCircle, Rewind, Search, X } from "lucide-react";
 import { wagmiConfig } from "./wagmi";
-import { chain, ensureChain, errorMessage, publicClient, v3Vault } from "./curtain/integration";
+import { chain, client, ensureChain, errorMessage, provider, publicClient, v3Vault } from "./curtain/integration";
 import { downloadFile } from "./curtain/domain";
 import { useCurtain, type TokenData } from "./curtain/useCurtain";
 import type { SavedTicket } from "./curtain/integration";
+import { POOL_V2_CLIENT_ENABLED } from "./curtain/routes";
+import { pendingPoolV4Notes, poolV4Quote, poolV4Swap, PoolV4FallbackError, recoverPoolV4Note, type PendingPoolV4Note } from "./curtain/poolV4";
 import "@rainbow-me/rainbowkit/styles.css";
 import "./swap.css";
 
@@ -18,7 +20,7 @@ function SwapExperience() {
   const { address: account } = useAccount();
   const { openConnectModal } = useConnectModal();
   const wallet = account ?? "";
-  const [routeMode, setRouteMode] = useState<"v2" | "v3">("v2");
+  const [routeMode, setRouteMode] = useState<"v2" | "v3" | "v4">("v2");
   const [modeChecking, setModeChecking] = useState(false);
   const app = useCurtain(wallet, routeMode);
   const [from, setFrom] = useState("USDG");
@@ -33,9 +35,47 @@ function SwapExperience() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteRefresh, setQuoteRefresh] = useState(0);
   const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState<SavedTicket>();
+  const [toast, setToast] = useState<{ kind: "success" | "error" | "info"; message: string }>();
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [pendingNotes, setPendingNotes] = useState<PendingPoolV4Note[]>([]);
   const [picker, setPicker] = useState<"from" | "to" | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(undefined), 6000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  function openRecovery() {
+    setPendingNotes(pendingPoolV4Notes());
+    setRecoveryOpen(true);
+  }
+
+  async function recoverNotes(notes = pendingNotes) {
+    if (!wallet) {
+      setToast({ kind: "error", message: "Connect a wallet with gas to submit the recovery transaction." });
+      return;
+    }
+    const injected = provider();
+    if (!injected) {
+      setToast({ kind: "error", message: "Reconnect your wallet before recovering this note." });
+      return;
+    }
+    try {
+      await ensureChain();
+      const walletClient = createWalletClient({ chain, transport: custom(injected), account: wallet as Address });
+      for (const note of notes) {
+        await recoverPoolV4Note({ publicClient, walletClient, note, onStatus: setBusy });
+      }
+      setPendingNotes(pendingPoolV4Notes());
+      setToast({ kind: "success", message: "Private note recovered and delivered." });
+    } catch (cause) {
+      setPendingNotes(pendingPoolV4Notes());
+      setToast({ kind: "error", message: errorMessage(cause) });
+    } finally {
+      setBusy("");
+    }
+  }
 
   const input = app.tokens.find((token) => token.symbol === from);
   const output = app.tokens.find((token) => token.symbol === to);
@@ -59,7 +99,6 @@ function SwapExperience() {
 
   useEffect(() => {
     setQuote(undefined);
-    setError("");
   }, [from, to, amount]);
 
   useEffect(() => {
@@ -70,20 +109,26 @@ function SwapExperience() {
     let active = true;
     const checkRoute = async () => {
       setModeChecking(true);
-      if (!amount) {
+      if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(amount) || Number(amount) <= 0 || !input || !output) {
         if (active) {
           setRouteMode("v2");
           setModeChecking(false);
         }
         return;
       }
-      if (!input) {
-        if (active) setModeChecking(false);
+      let raw: bigint;
+      try {
+        raw = rawAmount(amount, input.decimals);
+      } catch {
+        if (active) {
+          setRouteMode("v2");
+          setModeChecking(false);
+        }
         return;
       }
+      let approved = false;
       try {
-        const raw = rawAmount(amount, input.decimals);
-        const approved = v3Vault
+        approved = v3Vault
           ? await publicClient.readContract({
               address: v3Vault,
               abi: parseAbi(["function allowedAmount(address,uint256) view returns (bool)"]),
@@ -91,18 +136,32 @@ function SwapExperience() {
               args: [input.address, raw],
             })
           : false;
-        if (active) setRouteMode(approved ? "v3" : "v2");
       } catch {
-        if (active) setRouteMode("v2");
-      } finally {
-        if (active) setModeChecking(false);
+        approved = false;
+      }
+      const poolEligible = POOL_V2_CLIENT_ENABLED && orderType === "market" && Number(delay) === 0;
+      if (poolEligible) {
+        try {
+          const poolQuote = await poolV4Quote({ tokenIn: input.address, tokenOut: output.address, amountIn: raw });
+          if (active && poolQuote.available) {
+            setRouteMode("v4");
+            setModeChecking(false);
+            return;
+          }
+        } catch {
+          // If Pool V2 can't quote this pair, continue through the vault routes.
+        }
+      }
+      if (active) {
+        setRouteMode(approved ? "v3" : "v2");
+        setModeChecking(false);
       }
     };
     void checkRoute();
     return () => {
       active = false;
     };
-  }, [amount, input]);
+  }, [amount, delay, input, orderType, output]);
 
   function rawAmount(value: string, decimals: number) {
     if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) throw new Error("Enter a valid amount.");
@@ -127,15 +186,15 @@ function SwapExperience() {
     const timer = window.setTimeout(async () => {
       try {
         const raw = rawAmount(amount, input.decimals);
-        const result = await app.sdk.quote(input.address, output.address, raw, 100);
-        if (!result.available) throw new Error("No quote is available for this pair right now.");
-        const minOut = result.minOutSuggested;
+        const minOut = routeMode === "v4"
+          ? (await poolV4Quote({ tokenIn: input.address, tokenOut: output.address, amountIn: raw })).minOut
+          : (await app.sdk.quote(input.address, output.address, raw, 100)).minOutSuggested;
         if (!minOut) throw new Error("No quote is available for this pair right now.");
         if (active) setQuote(formatUnits(BigInt(minOut), output.decimals));
       } catch (e) {
         if (active) {
           setQuote(undefined);
-          setError(errorMessage(e));
+          setToast({ kind: "error", message: errorMessage(e) });
         }
       } finally {
         if (active) setQuoteLoading(false);
@@ -148,7 +207,6 @@ function SwapExperience() {
   }, [amount, app.sdk, input, modeChecking, output, quoteRefresh, routeMode]);
 
   function getQuote() {
-    setError("");
     setQuoteRefresh((value) => value + 1);
   }
 
@@ -156,21 +214,90 @@ function SwapExperience() {
     if (!input || !output || !canSwap || modeChecking) return;
     try {
       setBusy("Preparing your swap");
-      setError("");
-      setSuccess(undefined);
       await ensureChain();
       if (!isAddress(recipientAddress)) throw new Error("Enter a valid recipient address.");
       const raw = rawAmount(amount, input.decimals);
       if (input.balance !== undefined && raw > input.balance)
         throw new Error("Your wallet balance is too low for this swap.");
-      const result = await app.sdk.quote(input.address, output.address, raw, 100);
+      if (routeMode === "v4" && orderType === "market" && Number(delay) === 0) {
+        const injected = provider();
+        if (!injected) throw new Error("Reconnect your wallet before swapping.");
+        const walletClient = createWalletClient({ chain, transport: custom(injected), account: wallet as Address });
+        try {
+          const target = quote ? rawAmount(quote, output.decimals) : 0n;
+          if (target <= 0n) throw new PoolV4FallbackError("The pool quote expired. Refreshing your route.");
+          await poolV4Swap({
+            publicClient,
+            walletClient,
+            tokenIn: input.address,
+            tokenOut: output.address,
+            amountIn: raw,
+            minOut: target,
+            recipient: recipientAddress as Address,
+            onStatus: setBusy,
+          });
+          setToast({ kind: "success", message: "Private swap complete. Your output was delivered to the recipient." });
+          setAmount("");
+          setQuote(undefined);
+          void app.refresh();
+          return;
+        } catch (error) {
+          if (!(error instanceof PoolV4FallbackError)) throw error;
+          // Only this error type is emitted before funds enter the pool, so it is
+          // safe to continue through the existing V3/V2 vault flow.
+          let fallbackMode: "v2" | "v3" = "v2";
+          if (v3Vault) {
+            try {
+              const approved = await publicClient.readContract({
+                address: v3Vault,
+                abi: parseAbi(["function allowedAmount(address,uint256) view returns (bool)"]),
+                functionName: "allowedAmount",
+                args: [input.address, raw],
+              });
+              if (approved) fallbackMode = "v3";
+            } catch {
+              // Keep the broadly compatible V2 fallback.
+            }
+          }
+          setRouteMode(fallbackMode);
+          setBusy(`Using the ${fallbackMode.toUpperCase()} privacy route`);
+          const fallbackSdk = client(wallet, fallbackMode);
+          const result = await fallbackSdk.quote(input.address, output.address, raw, 100);
+          if (!result.available) throw new Error("No quote is available for this pair right now.");
+          const target = BigInt(result.minOutSuggested);
+          const saved = await fallbackSdk.swap({
+            tokenIn: input.address,
+            amountIn: raw,
+            tokenOut: output.address,
+            recipient: recipientAddress as Address,
+            minOut: target,
+            delaySeconds: 0,
+            orderType: "market",
+          });
+          const ticket: SavedTicket = {
+            createdAt: new Date().toISOString(), tokenIn: from,
+            amountIn: formatUnits(raw, input.decimals), tokenOut: to,
+            recipient: recipientAddress, delaySeconds: 0, chainId: chain.id,
+            intentId: saved.intentId, ticket: saved.ticket, depositTx: saved.depositTx,
+          };
+          app.addTicket(ticket);
+          downloadFile(`curtain-escape-ticket-${saved.ticket.depositId}.json`, ticket);
+          setToast({ kind: "success", message: "Swap submitted. Your escape ticket was downloaded; keep it safe until delivery." });
+          setAmount("");
+          setQuote(undefined);
+          void app.refresh();
+          return;
+        }
+      }
+      const swapSdk = routeMode === "v4" ? client(wallet, "v2") : app.sdk;
+      const result = await swapSdk.quote(input.address, output.address, raw, 100);
       if (!result.available) throw new Error("No quote is available for this pair right now.");
       const target = orderType === "limit"
         ? rawAmount(limitOut, output.decimals)
         : BigInt(result.minOutSuggested);
       if (target <= 0n) throw new Error("Enter a minimum received amount for the limit order.");
       setBusy("Confirm in your wallet");
-      const saved = await app.sdk.swap({
+      const saved = await swapSdk.swap({
         tokenIn: input.address,
         amountIn: raw,
         tokenOut: output.address,
@@ -194,12 +321,12 @@ function SwapExperience() {
       };
       app.addTicket(ticket);
       downloadFile(`curtain-escape-ticket-${saved.ticket.depositId}.json`, ticket);
-      setSuccess(ticket);
+      setToast({ kind: "success", message: "Swap submitted. Your escape ticket was downloaded; keep it safe until delivery." });
       setAmount("");
       setQuote(undefined);
       void app.refresh();
     } catch (e) {
-      setError(errorMessage(e));
+      setToast({ kind: "error", message: errorMessage(e) });
     } finally {
       setBusy("");
     }
@@ -216,6 +343,9 @@ function SwapExperience() {
       </header>
       <section className="swap-card" aria-labelledby="swap-title">
         <div className="swap-intro">
+          <button type="button" className="swap-recovery-button" onClick={openRecovery} aria-label="Recover a private note" title="Recover a private note">
+            <Rewind size={19} />
+          </button>
           <h1 id="swap-title">Swap simply.</h1>
           <p>Choose what you send, what you receive, and where it should arrive...privately</p>
         </div>
@@ -279,21 +409,16 @@ function SwapExperience() {
             <input id="simple-recipient" className="swap-input" placeholder={`${wallet.slice(0, 6)}…${wallet.slice(-4)} (your wallet)`} value={recipient} onChange={(e) => setRecipient(e.target.value)} />
             <p className="swap-help">Leave this blank to send the result to your connected wallet.</p>
             {quote && <p className="swap-quote">{orderType === "limit" ? "Current estimate" : "Minimum received"}: <strong>{orderType === "limit" && limitOut ? limitOut : quote} {to}</strong></p>}
-            {error && <div className="swap-error" role="alert">{error}</div>}
-            {success ? (
-              <div className="swap-success" role="status"><Check size={19} /><div><strong>Swap submitted.</strong><span>Your escape ticket was downloaded. Keep it safe until delivery.</span></div></div>
-            ) : (
-              <div className="swap-actions">
-                <button className="swap-secondary" disabled={!canSwap || !!busy} onClick={() => void getQuote()}>Preview</button>
-                <button className="swap-primary" disabled={!canSwap || !!busy} onClick={() => void swap()}>{busy ? <><LoaderCircle className="swap-spin" size={17} /> {busy}</> : <>Swap now <ArrowRight size={17} /></>}</button>
-              </div>
-            )}
+            <div className="swap-actions">
+              <button className="swap-secondary" disabled={!canSwap || !!busy} onClick={() => void getQuote()}>Preview</button>
+              <button className="swap-primary" disabled={!canSwap || !!busy} onClick={() => void swap()}>{busy ? <><LoaderCircle className="swap-spin" size={17} /> {busy}</> : <>Swap now <ArrowRight size={17} /></>}</button>
+            </div>
             <p className="swap-dynamic-note">
               Dynamic privacy is enabled.
               <span className="swap-help-tooltip-wrap">
                 <HelpCircle size={14} aria-label="What is dynamic privacy?" />
                 <span className="swap-help-tooltip" role="tooltip">
-                  Curtain uses fixed denominations for approved round amounts and the flexible route for everything else.
+                  For instant swaps, Curtain tries its shielded-pool route first. If unavailable—or for limit or delayed swaps—it falls back to fixed denominations or flexible amounts.
                 </span>
               </span>
             </p>
@@ -314,6 +439,32 @@ function SwapExperience() {
           }}
         />
       )}
+      {recoveryOpen && (
+        <div className="swap-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setRecoveryOpen(false)}>
+          <section className="swap-token-modal swap-recovery-modal" role="dialog" aria-modal="true" aria-labelledby="recovery-title">
+            <div className="swap-token-modal-heading">
+              <div><span className="swap-card-label">ON THIS BROWSER</span><h2 id="recovery-title">Recover a private note</h2></div>
+              <button type="button" className="swap-modal-close" onClick={() => setRecoveryOpen(false)} aria-label="Close recovery"><X size={19} /></button>
+            </div>
+            <p className="swap-help">Recovery secrets are saved in this browser’s local storage. Connect a wallet with gas to submit recovery; the note’s recipient stays unchanged. Clearing this site’s data removes saved recovery notes.</p>
+            {pendingNotes.length ? (
+              <div className="swap-recovery-list">
+                {pendingNotes.map((note) => {
+                  const token = app.tokens.find((item) => item.address.toLowerCase() === note.tokenOut.toLowerCase());
+                  return (
+                    <article className="swap-recovery-item" key={note.commitment}>
+                      <div><strong>{formatUnits(BigInt(note.amount), token?.decimals ?? 18)} {token?.symbol ?? "token"}</strong><small>{note.commitment.slice(0, 10)}…{note.commitment.slice(-8)}</small></div>
+                      <button type="button" className="swap-secondary" disabled={!!busy} onClick={() => void recoverNotes([note])}>{busy || "Recover"}</button>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : <p className="swap-empty">No pending private notes are saved in this browser.</p>}
+            {busy && <p className="swap-recovery-status" role="status">{busy}</p>}
+          </section>
+        </div>
+      )}
+      {toast && <div className={`swap-toast swap-toast-${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"}>{toast.message}<button type="button" aria-label="Dismiss notification" onClick={() => setToast(undefined)}><X size={15} /></button></div>}
     </main>
   );
 }
