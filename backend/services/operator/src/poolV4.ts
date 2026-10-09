@@ -98,17 +98,7 @@ export class PoolV4RootPublisher {
 
   async root(): Promise<Hex> {
     const rows = await this.cfg.db.query<{ commitment: string }>("SELECT commitment FROM pool_v4_notes ORDER BY block, log_index");
-    const poseidon = await this.poseidonPromise;
-    const leaves = rows.map((row) => BigInt(row.commitment));
-    if (leaves.length > 2 ** DEPTH) throw new Error("Pool V4 Merkle tree is full");
-    while (leaves.length < 2 ** DEPTH) leaves.push(0n);
-    let level = leaves;
-    for (let depth = 0; depth < DEPTH; depth++) {
-      const next: bigint[] = [];
-      for (let i = 0; i < level.length; i += 2) next.push(poseidon.F.toObject(poseidon([level[i]!, level[i + 1]!] )));
-      level = next;
-    }
-    return (`0x${level[0]!.toString(16).padStart(64, "0")}`) as Hex;
+    return this.formatRoot((await this.buildTree(rows.map((row) => BigInt(row.commitment)))).root);
   }
 
   async witness(commitment: Hex): Promise<PoolV4Witness | undefined> {
@@ -117,21 +107,39 @@ export class PoolV4RootPublisher {
     );
     const index = rows.findIndex((row) => row.commitment.toLowerCase() === commitment.toLowerCase());
     if (index < 0) return undefined;
-    const poseidon = await this.poseidonPromise;
-    const leaves = rows.map((row) => BigInt(row.commitment));
-    while (leaves.length < 2 ** DEPTH) leaves.push(0n);
+    const tree = await this.buildTree(rows.map((row) => BigInt(row.commitment)));
     let current = index;
-    let level = leaves;
     const siblings: Hex[] = [];
     const pathBits: number[] = [];
     for (let depth = 0; depth < DEPTH; depth++) {
       pathBits.push(current % 2);
-      siblings.push((`0x${level[current ^ 1]!.toString(16).padStart(64, "0")}`) as Hex);
-      const next: bigint[] = [];
-      for (let i = 0; i < level.length; i += 2) next.push(poseidon.F.toObject(poseidon([level[i]!, level[i + 1]!] )));
-      level = next;
+      siblings.push(this.formatRoot(tree.levels[depth]!.get(current ^ 1) ?? tree.zeroHashes[depth]!));
       current = Math.floor(current / 2);
     }
-    return { commitment, token: getAddress(rows[index]!.token), amount: rows[index]!.amount, root: (`0x${level[0]!.toString(16).padStart(64, "0")}`) as Hex, siblings, pathBits };
+    return { commitment, token: getAddress(rows[index]!.token), amount: rows[index]!.amount, root: this.formatRoot(tree.root), siblings, pathBits };
+  }
+
+  private formatRoot(value: bigint): Hex {
+    return (`0x${value.toString(16).padStart(64, "0")}`) as Hex;
+  }
+
+  /** Build only occupied branches; empty subtrees use precomputed zero hashes. */
+  private async buildTree(leaves: bigint[]): Promise<{ root: bigint; levels: Map<number, bigint>[]; zeroHashes: bigint[] }> {
+    if (leaves.length > 2 ** DEPTH) throw new Error("Pool V4 Merkle tree is full");
+    const poseidon = await this.poseidonPromise;
+    const hashPair = (left: bigint, right: bigint) => poseidon.F.toObject(poseidon([left, right]));
+    const zeroHashes = [0n];
+    for (let depth = 0; depth < DEPTH; depth++) zeroHashes.push(hashPair(zeroHashes[depth]!, zeroHashes[depth]!));
+    const levels: Map<number, bigint>[] = [new Map(leaves.map((value, index) => [index, value]))];
+    for (let depth = 0; depth < DEPTH; depth++) {
+      const current = levels[depth]!;
+      const parents = new Set([...current.keys()].map((index) => Math.floor(index / 2)));
+      const next = new Map<number, bigint>();
+      for (const parent of parents) {
+        next.set(parent, hashPair(current.get(parent * 2) ?? zeroHashes[depth]!, current.get(parent * 2 + 1) ?? zeroHashes[depth]!));
+      }
+      levels.push(next);
+    }
+    return { root: levels[DEPTH]!.get(0) ?? zeroHashes[DEPTH]!, levels, zeroHashes };
   }
 }
