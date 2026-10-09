@@ -9,7 +9,6 @@ import { chain, ensureChain, errorMessage, publicClient, v3Vault } from "./curta
 import { downloadFile } from "./curtain/domain";
 import { useCurtain, type TokenData } from "./curtain/useCurtain";
 import type { SavedTicket } from "./curtain/integration";
-import { routeDescription, routeName } from "./curtain/routes";
 import { poolV4Swap } from "./curtain/poolV4";
 import "@rainbow-me/rainbowkit/styles.css";
 import "./swap.css";
@@ -316,18 +315,6 @@ function SwapExperience() {
                 </span>
               </span>
             </p>
-            <div className="swap-route-note" role="note">
-              <div>
-                <span className="swap-route-label">Current route</span>
-                <strong>{poolV4Enabled ? "Curtain V4" : "Dynamic V2 / V3"}</strong>
-                <span>{poolV4Enabled ? "Shielded pool routing is enabled." : "Flexible amounts use V2; approved denominations use V3."}</span>
-              </div>
-              <div className="swap-route-next">
-                <span className="swap-route-label">Next route</span>
-                <strong>{routeName("v4")}</strong>
-                <span>{poolV4Enabled ? "Shield, swap, and unshield with a private proof." : `${routeDescription("v4")} · coming soon`}</span>
-              </div>
-            </div>
           </>
         )}
         <p className="swap-footnote"><img src="/robinhood-logo.png" alt="" /> Robinhood Chain</p>
