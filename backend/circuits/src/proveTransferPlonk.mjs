@@ -25,7 +25,20 @@ const input = await buildPoolTransferWitness({
 
 execFileSync("npx", ["snarkjs", "zkey", "export", "verificationkey", zkey, vkeyPath], { stdio: "ignore" });
 const verificationKey = JSON.parse(readFileSync(vkeyPath, "utf8"));
-const { proof, publicSignals } = await snarkjs.plonk.fullProve(input, wasm, zkey);
+// The witness calculator accepts only circuit inputs. The witness builder also
+// returns the derived public outputs for callers that need to bind them on-chain,
+// so keep those derived values out of the input object passed to snarkjs.
+const circuitInput = {
+  secret: input.secret,
+  tokenId: input.tokenId,
+  amount: input.amount,
+  nullifierNonce: input.nullifierNonce,
+  siblings: input.siblings,
+  pathBits: input.pathBits,
+  outputSecret: input.outputSecret,
+  outputAmount: input.outputAmount,
+};
+const { proof, publicSignals } = await snarkjs.plonk.fullProve(circuitInput, wasm, zkey);
 const verified = await snarkjs.plonk.verify(verificationKey, publicSignals, proof);
 if (!verified) throw new Error("local Plonk transfer proof did not verify");
 console.log(JSON.stringify({ verified, publicSignals }));
