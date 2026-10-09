@@ -1,0 +1,55 @@
+name: pool-v2-production-verifier
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  groth16-production-artifact:
+    if: github.repository == 'CurtainRH/curtain'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: backend/circuits
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 1
+      - uses: oven-sh/setup-bun@4bc047ad259df6fc24a6c9b0f9a0cb08cf17fbe5 # v2.0.1
+        with:
+          bun-version: "1.4.2"
+      - name: Install circuit dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Compile transfer circuit
+        run: npm run compile:transfer
+      - name: Download and verify public Powers of Tau
+        run: |
+          curl --fail --location --retry 3 --output pool_production.ptau \
+            https://circom.info/powersOfTau28_hez_final_14.ptau
+          echo "eeefbcf7c3803b523c94112023c7ff89558f9b8e0cf5d6cdcba3ade60f168af4a181c9c21774b94fbae6c90411995f7d854d02ebd93fb66043dbb06f17a831c1  pool_production.ptau" | sha256sum --check
+          npx snarkjs powersoftau verify pool_production.ptau
+      - name: Generate circuit-specific Groth16 key
+        run: npx snarkjs groth16 setup pool_transfer.r1cs pool_production.ptau pool_transfer_production_0000.zkey
+      - name: Add circuit-specific ceremony contribution
+        run: |
+          entropy="$(openssl rand -hex 32)"
+          npx snarkjs zkey contribute pool_transfer_production_0000.zkey pool_transfer_production.zkey \
+            --name="Curtain Pool V2 production contribution" -e="$entropy" -v
+      - name: Verify production proving key
+        run: |
+          npx snarkjs zkey verify pool_transfer.r1cs pool_production.ptau pool_transfer_production.zkey
+          npx snarkjs zkey export verificationkey pool_transfer_production.zkey pool_transfer_production.vkey.json
+      - name: Export production Solidity verifier
+        run: npx snarkjs zkey export solidityverifier pool_transfer_production.zkey PoolTransferGroth16Verifier.sol
+      - name: Upload production review artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pool-v2-groth16-production-review-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            backend/circuits/pool_transfer_production.zkey
+            backend/circuits/pool_transfer_production.vkey.json
+            backend/circuits/PoolTransferGroth16Verifier.sol
+            backend/circuits/pool_transfer.r1cs
