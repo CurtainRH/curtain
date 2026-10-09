@@ -99,6 +99,32 @@ export function createMcpApi(api: ApiHandler) {
       );
 
       server.registerTool(
+        "curtain_batch_get_quotes",
+        {
+          title: "Get multiple private swap quotes",
+          description: "Quote up to eight V2, V3, or dynamically routed swaps concurrently in one MCP call. Useful when an agent is comparing routes or assets.",
+          inputSchema: z.object({
+            quotes: z.array(z.object({
+              privacyRoute: z.enum(["v2", "v3", "dynamic"]).default("dynamic"),
+              tokenIn: z.string(),
+              tokenOut: z.string(),
+              amountIn: z.string(),
+              slippageBps: z.number().int().min(0).max(5000).default(100),
+              integratorFee: z.object({ recipient: z.string(), bps: z.number().int().min(0).max(100) }).optional(),
+            })).min(1).max(8),
+          }),
+        },
+        async ({ quotes }) => text(await Promise.all(quotes.map(async ({ privacyRoute, tokenIn, tokenOut, amountIn, slippageBps, integratorFee }) => {
+          const query = new URLSearchParams({ privacyRoute, tokenIn, tokenOut, amountIn, slippageBps: String(slippageBps) });
+          if (integratorFee) {
+            query.set("integratorFeeRecipient", integratorFee.recipient);
+            query.set("integratorFeeBps", String(integratorFee.bps));
+          }
+          return { request: { privacyRoute, tokenIn, tokenOut, amountIn }, quote: await callApi(`/v1/quote?${query}`) };
+        }))),
+      );
+
+      server.registerTool(
         "curtain_quote_and_prepare_swap",
         {
           title: "Quote and prepare a private swap",
@@ -171,7 +197,7 @@ export function createMcpApi(api: ApiHandler) {
           contents: [{
             uri: uri.href,
             mimeType: "text/markdown",
-            text: "Curtain lets agents request V2, V3, or Dynamic Privacy quotes, prepare unsigned wallet transactions, and combine quote plus preparation in one call. API keys authorize requests but never sign or broadcast user funds. Read https://docs.curtainrh.com for the complete API reference.",
+            text: "Curtain lets agents request V2, V3, or Dynamic Privacy quotes, batch quote up to eight swaps concurrently, prepare unsigned wallet transactions, and combine quote plus preparation in one call. API keys authorize requests but never sign or broadcast user funds. Read https://docs.curtainrh.com for the complete API reference.",
           }],
         }),
       );
