@@ -44,6 +44,12 @@ Third-party backends call `https://operator.curtainrh.com/v1` with a Bearer API 
 Stealth/split parameters and smart-contract wallet authentication are not supported by this
 first developer release. Key-specific limits persist in PostgreSQL across restarts.
 
+The public app endpoints also accept `privacyRoute=v2|v3|dynamic` on `/quote` and in `/intents`.
+Dynamic Privacy selects V3 only when the amount is an operator-approved fixed denomination;
+otherwise it selects V2. `/config` advertises the available routes, vaults, and V3 denominations.
+Intent status can be read with the matching `privacyRoute` query parameter or with the
+`X-Curtain-Version` header.
+
 ## MCP for agents
 
 The operator also serves a Streamable HTTP MCP endpoint at `https://operator.curtainrh.com/mcp`.
