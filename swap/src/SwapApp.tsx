@@ -22,7 +22,14 @@ function SwapExperience() {
   const wallet = account ?? "";
   const [routeMode, setRouteMode] = useState<"v2" | "v3" | "v4">("v2");
   const [modeChecking, setModeChecking] = useState(false);
-  const app = useCurtain(wallet, routeMode);
+  // Keep the shared token/balance data on V2. Route selection is only for
+  // quotes and swap submission; changing it must not clear the token list and
+  // restart the route detector (which can otherwise oscillate V2 <-> V3/V4).
+  const app = useCurtain(wallet, "v2");
+  const routeSdk = useMemo(
+    () => client(wallet, routeMode === "v3" ? "v3" : "v2"),
+    [wallet, routeMode],
+  );
   const [from, setFrom] = useState("USDG");
   const [to, setTo] = useState("NVDA");
   const [amount, setAmount] = useState("");
@@ -188,7 +195,7 @@ function SwapExperience() {
         const raw = rawAmount(amount, input.decimals);
         const minOut = routeMode === "v4"
           ? (await poolV4Quote({ tokenIn: input.address, tokenOut: output.address, amountIn: raw })).minOut
-          : (await app.sdk.quote(input.address, output.address, raw, 100)).minOutSuggested;
+          : (await routeSdk.quote(input.address, output.address, raw, 100)).minOutSuggested;
         if (!minOut) throw new Error("No quote is available for this pair right now.");
         if (active) setQuote(formatUnits(BigInt(minOut), output.decimals));
       } catch (e) {
@@ -204,7 +211,7 @@ function SwapExperience() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [amount, app.sdk, input, modeChecking, output, quoteRefresh, routeMode]);
+  }, [amount, input, modeChecking, output, quoteRefresh, routeMode, routeSdk]);
 
   function getQuote() {
     setQuoteRefresh((value) => value + 1);
@@ -289,7 +296,7 @@ function SwapExperience() {
           return;
         }
       }
-      const swapSdk = routeMode === "v4" ? client(wallet, "v2") : app.sdk;
+      const swapSdk = routeSdk;
       const result = await swapSdk.quote(input.address, output.address, raw, 100);
       if (!result.available) throw new Error("No quote is available for this pair right now.");
       const target = orderType === "limit"
