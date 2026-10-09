@@ -1,14 +1,14 @@
 // circomlibjs does not publish TypeScript declarations; its runtime shape is typed below where used.
 // @ts-expect-error -- validated runtime dependency with no bundled declarations
 import { buildPoseidon } from "circomlibjs";
-import { decodeEventLog, getAddress, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
+import { decodeEventLog, getAddress, parseAbi, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 import type { Db } from "@curtain/db";
 
-export const POOL_V4_ABI = [
+export const POOL_V4_ABI = parseAbi([
   "event NoteShielded(address indexed token,uint256 amount,bytes32 indexed commitment)",
   "function publishRoot(bytes32 root)",
-] as const;
-const ROOT_MANAGER_ABI = ["function publishRoot(bytes32 root)"] as const;
+]);
+const ROOT_MANAGER_ABI = parseAbi(["function publishRoot(bytes32 root)"]);
 const DEPTH = 16;
 const LOG_CHUNK_SIZE = 2_000n;
 
