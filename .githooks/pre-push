@@ -2,6 +2,7 @@
 # Scan the outgoing history except commits the public repo already has.
 set -euo pipefail
 guard="$(cd "$(dirname "$0")" && pwd)/publish-guard.sh"
+remote_name=${1:-}
 public_url="https://github.com/CurtainRH/curtain.git"
 published=()
 if public_sha=$(git ls-remote "$public_url" refs/heads/main 2>/dev/null | cut -f1) \
@@ -10,6 +11,16 @@ if public_sha=$(git ls-remote "$public_url" refs/heads/main 2>/dev/null | cut -f
 fi
 while read -r local_ref local_sha remote_ref remote_sha; do
   [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue
+  # Public sync rewrites commit identities, so its hashes cannot be ranged against
+  # the original public branch. Validate the source commits not yet on private main.
+  if [ "$remote_name" = "origin-public" ] && [ "$local_ref" = "refs/heads/public-main" ] && [ "$remote_ref" = "refs/heads/main" ]; then
+    if git show-ref --verify --quiet refs/remotes/origin/main; then
+      "$guard" range origin/main..main
+    else
+      "$guard" range main
+    fi
+    continue
+  fi
   if [ -n "$remote_sha" ] && [ "$remote_sha" != "0000000000000000000000000000000000000000" ]; then
     "$guard" range "$remote_sha..$local_sha"
   else
