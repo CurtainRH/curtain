@@ -5,12 +5,11 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IPoolV2Verifier } from "./IPoolV2Verifier.sol";
 
-/// @notice Experimental Pool v2 accounting boundary for Curtain V4.
+/// @notice Pool V2 accounting and proof boundary for Curtain's product V4 route.
 ///
-/// This is deliberately a foundation contract, not a deployable privacy system yet. It fixes
-/// the immutable token/verifier boundary and the one-way commitment/nullifier accounting that
-/// the reviewed circuits must satisfy. Shielding and spending are disabled until a production
-/// verifier is wired in; no deployment script should point at this contract before that gate.
+/// Transfer and unshield proofs are verified by separate production adapters. Root publication
+/// remains controlled by the configured root manager, while note secrets and Merkle witnesses
+/// remain client-side responsibilities.
 contract CurtainPoolV2 {
     using SafeERC20 for IERC20;
 
@@ -61,7 +60,7 @@ contract CurtainPoolV2 {
     }
 
     /// @notice Adds a Merkle root to the append-only history accepted by proofs.
-    /// @dev The production deployment must make rootManager a constrained tree publisher.
+    /// @dev The root manager is the only on-chain root publication boundary.
     function appendRoot(bytes32 root) external {
         if (msg.sender != rootManager) revert UnauthorizedRootManager();
         if (root == bytes32(0)) revert ZeroRoot();
@@ -72,7 +71,7 @@ contract CurtainPoolV2 {
     }
 
     /// @notice Places a token amount behind a fresh note commitment.
-    /// @dev The commitment is opaque; the circuit must bind it to token, amount and note secret.
+    /// @dev The commitment is opaque; the unshield circuit binds it to token, amount and note secret.
     function shield(address token, uint256 amount, bytes32 commitment) external {
         if (!immutableToken[token]) revert UnsupportedToken(token);
         if (amount == 0) revert ZeroAmount();
