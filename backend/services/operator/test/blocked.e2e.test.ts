@@ -105,10 +105,11 @@ describe("restricted recipients (e2e)", () => {
     expect((await status(bisected)).blocked_reason).toContain("settlement reverts");
 
     await op.submitSettlements(await d.now());
-    for (let i = 0; i < 20; i++) {
+    // Settlement receipts can take several seconds to be indexed on a busy CI runner.
+    for (let i = 0; i < 120; i++) {
       await op.syncChain();
       if ((await status(good)).status === "paid") break;
-      await Bun.sleep(100);
+      await Bun.sleep(250);
     }
     expect((await status(good)).status).toBe("paid");
     expect(await d.publicClient.readContract({ address: rst, abi: ERC20_ABI, functionName: "balanceOf", args: [okRecipient] })).toBeGreaterThan(0n);
