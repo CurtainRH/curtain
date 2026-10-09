@@ -48,7 +48,7 @@ first developer release. Key-specific limits persist in PostgreSQL across restar
 
 The operator also serves a Streamable HTTP MCP endpoint at `https://operator.curtainrh.com/mcp`.
 Connect an MCP-compatible agent with a Curtain Developer API key as its Bearer credential. The
-server exposes configuration, quotes, Dynamic Privacy route selection, unsigned swap preparation,
+server exposes configuration, quotes, Dynamic Privacy route selection, combined quote-plus-prepare flows, unsigned swap preparation,
 intent status, and public keeper discovery. User deposits are never signed or broadcast by MCP;
 the returned approval and deposit transactions must be reviewed and signed by the user's wallet.
 Developer API integrators may include an `integratorFee` with a recipient and basis-point rate up

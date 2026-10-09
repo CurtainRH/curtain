@@ -99,6 +99,50 @@ export function createMcpApi(api: ApiHandler) {
       );
 
       server.registerTool(
+        "curtain_quote_and_prepare_swap",
+        {
+          title: "Quote and prepare a private swap",
+          description: "Get a fresh quote and prepare unsigned approval and deposit transactions in one call. The user's wallet must review and sign them; this tool never broadcasts funds.",
+          inputSchema: z.object({
+            privacyRoute: z.enum(["v2", "v3", "dynamic"]).default("dynamic"),
+            tokenIn: z.string(),
+            tokenOut: z.string(),
+            amountIn: z.string(),
+            minOut: z.string().optional().describe("Optional explicit minimum output in raw token units; defaults to the fresh quote's minOutSuggested"),
+            depositor: z.string().describe("Wallet that will sign and fund the deposit"),
+            recipient: z.string().describe("Wallet receiving the output"),
+            integratorFee: z.object({ recipient: z.string(), bps: z.number().int().min(0).max(100) }).optional(),
+            delaySeconds: z.number().int().min(0).max(15_552_000).default(0),
+            orderType: z.enum(["market", "limit"]).default("market"),
+            expiresInSeconds: z.number().int().min(60).max(15_552_000).optional(),
+            slippageBps: z.number().int().min(0).max(5000).default(100),
+            idempotencyKey: z.string().min(1).max(128).regex(/^[A-Za-z0-9_.:-]+$/),
+          }),
+        },
+        async ({ privacyRoute, tokenIn, tokenOut, amountIn, minOut, depositor, recipient, integratorFee, delaySeconds, orderType, expiresInSeconds, slippageBps, idempotencyKey }) => {
+          const query = new URLSearchParams({ privacyRoute, tokenIn, tokenOut, amountIn, slippageBps: String(slippageBps) });
+          if (integratorFee) {
+            query.set("integratorFeeRecipient", integratorFee.recipient);
+            query.set("integratorFeeBps", String(integratorFee.bps));
+          }
+          const quote = await callApi(`/v1/quote?${query}`);
+          const quoteBody = quote as { available?: boolean; minOutSuggested?: string };
+          if (!quoteBody.available) throw new Error("No quote is available for this pair right now");
+          const prepared = await callApi("/v1/intents", {
+            method: "POST",
+            headers: { "content-type": "application/json", "idempotency-key": idempotencyKey },
+            body: JSON.stringify({
+              privacyRoute, tokenIn, tokenOut, amountIn,
+              minOut: minOut ?? quoteBody.minOutSuggested,
+              depositor, recipient, integratorFee, delaySeconds, orderType,
+              ...(expiresInSeconds !== undefined ? { expiresInSeconds } : {}),
+            }),
+          });
+          return text({ quote, prepared });
+        },
+      );
+
+      server.registerTool(
         "curtain_get_intent_status",
         {
           title: "Track a Curtain swap",
@@ -127,7 +171,7 @@ export function createMcpApi(api: ApiHandler) {
           contents: [{
             uri: uri.href,
             mimeType: "text/markdown",
-            text: "Curtain lets agents request V2, V3, or Dynamic Privacy quotes and prepare unsigned wallet transactions. API keys authorize requests but never sign or broadcast user funds. Read https://docs.curtainrh.com for the complete API reference.",
+            text: "Curtain lets agents request V2, V3, or Dynamic Privacy quotes, prepare unsigned wallet transactions, and combine quote plus preparation in one call. API keys authorize requests but never sign or broadcast user funds. Read https://docs.curtainrh.com for the complete API reference.",
           }],
         }),
       );
