@@ -6,6 +6,14 @@ import { CurtainPoolV2 } from "../../src/pool/CurtainPoolV2.sol";
 import { IPoolV2Verifier } from "../../src/pool/IPoolV2Verifier.sol";
 import { MockERC20 } from "../mocks/MockERC20.sol";
 
+contract PoolSwapTarget {
+    function swapExactIn(address tokenIn, address tokenOut, uint256 amountIn, uint256, address recipient) external returns (uint256) {
+        MockERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn);
+        MockERC20(tokenOut).mint(recipient, amountIn * 2);
+        return amountIn * 2;
+    }
+}
+
 contract PoolV2VerifierStub is IPoolV2Verifier {
     bool public result;
 
@@ -20,22 +28,57 @@ contract PoolV2VerifierStub is IPoolV2Verifier {
 
 contract CurtainPoolV2Test is Test {
     MockERC20 token;
+    MockERC20 output;
     PoolV2VerifierStub verifier;
+    PoolSwapTarget swapTarget;
     CurtainPoolV2 pool;
     address alice = address(0xA11CE);
 
     function setUp() public {
         token = new MockERC20("USDG", "USDG");
+        output = new MockERC20("NVDA", "NVDA");
         verifier = new PoolV2VerifierStub();
-    pool = new CurtainPoolV2(address(verifier), address(verifier), _tokens(address(token)), address(this));
+        swapTarget = new PoolSwapTarget();
+        pool = new CurtainPoolV2(address(verifier), address(verifier), _tokens(address(token), address(output)), address(this), _targets(address(swapTarget)));
         token.mint(alice, 100 ether);
         vm.prank(alice);
         token.approve(address(pool), type(uint256).max);
     }
 
-    function _tokens(address token_) internal pure returns (address[] memory tokens) {
-        tokens = new address[](1);
+    function _tokens(address token_, address output_) internal pure returns (address[] memory tokens) {
+        tokens = new address[](2);
         tokens[0] = token_;
+        tokens[1] = output_;
+    }
+
+    function _targets(address target_) internal pure returns (address[] memory targets) {
+        targets = new address[](1);
+        targets[0] = target_;
+    }
+
+    function testSwapAndShieldRoutesInputIntoOutputNote() public {
+        bytes32 commitment = bytes32(uint256(99));
+        bytes memory data = abi.encodeCall(PoolSwapTarget.swapExactIn, (address(token), address(output), 5 ether, 10 ether, address(pool)));
+        vm.prank(alice);
+        uint256 amountOut = pool.swapAndShield(address(swapTarget), address(token), 5 ether, address(output), 10 ether, data, commitment);
+        assertEq(amountOut, 10 ether);
+        assertTrue(pool.commitments(commitment));
+        assertEq(pool.shieldedBalance(address(output)), 10 ether);
+        assertEq(output.balanceOf(address(pool)), 10 ether);
+    }
+
+    function testSwapAndShieldRejectsChangedExactOutput() public {
+        bytes memory data = abi.encodeCall(PoolSwapTarget.swapExactIn, (address(token), address(output), 5 ether, 9 ether, address(pool)));
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(CurtainPoolV2.ExactSwapOutputChanged.selector, 10 ether, 9 ether));
+        pool.swapAndShield(address(swapTarget), address(token), 5 ether, address(output), 9 ether, data, bytes32(uint256(101)));
+    }
+
+    function testSwapAndShieldRejectsUnallowlistedTarget() public {
+        bytes memory data = abi.encodeCall(PoolSwapTarget.swapExactIn, (address(token), address(output), 1 ether, 1 ether, address(pool)));
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(CurtainPoolV2.UnsupportedSwapTarget.selector, address(this)));
+        pool.swapAndShield(address(this), address(token), 1 ether, address(output), 1 ether, data, bytes32(uint256(100)));
     }
 
     function testShieldRecordsOpaqueCommitmentAndBalance() public {

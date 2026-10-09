@@ -116,6 +116,19 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         return witness ? json(witness) : json({ error: "note not found" }, 404);
       }
 
+      if (req.method === "GET" && pathname === "/pool-v4/quote") {
+        if (!active.poolV4) return json({ error: "V4 pool is not enabled" }, 404);
+        const tokenIn = url.searchParams.get("tokenIn") ?? "";
+        const tokenOut = url.searchParams.get("tokenOut") ?? "";
+        const amountIn = url.searchParams.get("amountIn") ?? "";
+        if (!isAddress(tokenIn) || !isAddress(tokenOut) || !/^[1-9]\d*$/.test(amountIn))
+          return json({ error: "tokenIn, tokenOut (addresses) and amountIn (raw units, > 0) are required" }, 400);
+        if (!allowed.has(getAddress(tokenIn)) || !allowed.has(getAddress(tokenOut))) return json({ error: "token not supported" }, 400);
+        const slippage = Number(url.searchParams.get("slippageBps") ?? 100);
+        if (!Number.isInteger(slippage) || slippage < 0 || slippage > 5000) return json({ error: "slippageBps must be 0..5000" }, 400);
+        return json(await active.operator.quoteForPool(active.poolV4.pool, getAddress(tokenIn), getAddress(tokenOut), BigInt(amountIn), slippage));
+      }
+
       if (req.method === "GET" && pathname === "/quote") {
         if (!checkRate(`quote:${clientIp}`, 120)) {
           return json({ error: "Too many quote requests. Please wait a moment." }, 429);

@@ -652,6 +652,27 @@ export class Operator {
     };
   }
 
+  /** Builds a direct pool swap quote and calldata. The pool is the swap recipient so the
+   * resulting output can be committed as a shielded note in the same transaction. */
+  async quoteForPool(pool: Address, tokenIn: Address, tokenOut: Address, amountIn: bigint, userSlippageBps = 100) {
+    const picked = getAddress(tokenIn) === getAddress(tokenOut)
+      ? { amountOut: amountIn } as Quote
+      : await this.cfg.quote(getAddress(tokenIn), getAddress(tokenOut), amountIn);
+    if (picked.amountOut <= 0n) return { available: false as const };
+    const minOut = (picked.amountOut * (BPS - BigInt(userSlippageBps))) / BPS;
+    return {
+      available: true as const,
+      marketOut: picked.amountOut.toString(),
+      minOut: minOut.toString(),
+      router: picked.router ?? this.cfg.router,
+      data: this.cfg.route({
+        vault: pool, tokenIn: getAddress(tokenIn), tokenOut: getAddress(tokenOut), amountIn, minOut,
+        fee: picked.fee, v4: picked.v4,
+      }),
+      venue: picked.v4 ? "uniswap-v4" : picked.fee !== undefined ? "uniswap-v3" : "router",
+    };
+  }
+
   get ticketSyncEnabled(): boolean {
     return !!this.cfg.ticketSync;
   }

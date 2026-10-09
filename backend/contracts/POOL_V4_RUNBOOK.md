@@ -16,16 +16,16 @@ This is the operational record for the new shielded-pool route on Robinhood Chai
 
 | Component | Address |
 |---|---|
-| `CurtainPoolV2` (product route V4) | `0x80334FD4160245c2856C20526349c43E8597125E` |
-| `PoolV2RootManager` | `0x0C6153A8F30fF138A4B477C5a8A702D23fBa865D` |
-| `PoolV2TransferVerifierAdapter` | `0xC5DFb62f936402005Db9ca3dC9B1177679a8a0eF` |
-| `PoolV2UnshieldVerifierAdapter` | `0x84934df3E763244bA7b4989b63110B2Dae5bf682` |
+| `CurtainPoolV2` (product route V4) | `0xf8f47571A55dB8745b7642515aF051D7B1e09dd3` |
+| `PoolV2RootManager` | `0xccB2e48e229435d64b42fe664dA880992C481365` |
+| `PoolV2TransferVerifierAdapter` | `0x97e1a6401418d6F2B72839065C48A17c9e8Aa731` |
+| `PoolV2UnshieldVerifierAdapter` | `0xB7e12f83B8404019Acd7c3677B1B5026a642b8A0` |
 | Generated transfer Groth16 verifier | `0x0DF4b72342e67455eAB6680Fdb4ddD93A5eb8f9A` |
 | Generated unshield Groth16 verifier | `0xD24eA37425CF5D3476FB366caBb80339Ad11862b` |
 
 The canonical deployment record is [`deployments/4663.json`](deployments/4663.json).
 
-The replacement pool was created in block `84091216`. The operator must start its
+The final swap-enabled pool was created in block `84108016`. The operator must start its
 event scan at that block (or an earlier block) so the first shielded notes are
 included in the published tree.
 
@@ -80,14 +80,19 @@ The product rollout is intentionally staged:
 Operator configuration:
 
 ```text
-POOL_V4_ADDR=0x80334FD4160245c2856C20526349c43E8597125E
-POOL_V4_ROOT_MANAGER_ADDR=0x0C6153A8F30fF138A4B477C5a8A702D23fBa865D
-POOL_V4_START_BLOCK=84091216
+POOL_V4_ADDR=0xf8f47571A55dB8745b7642515aF051D7B1e09dd3
+POOL_V4_ROOT_MANAGER_ADDR=0xccB2e48e229435d64b42fe664dA880992C481365
+POOL_V4_START_BLOCK=84108016
+POOL_V2_SWAP_TARGETS=0x...
 ```
 
 The operator's existing `OPERATOR_PRIVATE_KEY` must be the manager publisher
 account for root publication. Do not enable these variables until the address
 values have been checked against the deployment record and the operator wallet
 has enough native gas.
+
+The final pool deployment also allowlists the existing Uniswap V3 router and
+Uniswap V4 adapter as `POOL_V2_SWAP_TARGETS`. The browser receives quote calldata
+from `/pool-v4/quote`; it never invents router calldata locally.
 
 Do not rename the Solidity contracts or deployment keys to `PoolV4`; reserve V4 for the product/API boundary.

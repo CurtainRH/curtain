@@ -21,6 +21,7 @@ contract CurtainPoolV2 {
     mapping(bytes32 => bool) public nullifierSpent;
     mapping(bytes32 => bool) public knownRoot;
     mapping(address => uint256) public shieldedBalance;
+    mapping(address => bool) public swapTarget;
     bytes32 public currentRoot;
 
     error ZeroAddress();
@@ -37,13 +38,18 @@ contract CurtainPoolV2 {
     error ZeroRoot();
     error DuplicateRoot(bytes32 root);
     error UnknownRoot(bytes32 root);
+    error UnsupportedSwapTarget(address target);
+    error SwapFailed();
+    error InsufficientSwapOutput(uint256 amountOut, uint256 minOut);
+    error ExactSwapOutputChanged(uint256 amountOut, uint256 expectedOut);
+    error SameTokenSwap();
 
     event RootAdded(bytes32 indexed root);
     event NoteShielded(address indexed token, uint256 amount, bytes32 indexed commitment);
     event NoteMoved(bytes32 indexed root, bytes32[] nullifiers, bytes32[] commitments);
     event NoteUnshielded(address indexed token, uint256 amount, address indexed recipient, bytes32 indexed nullifier);
 
-    constructor(address verifier_, address unshieldVerifier_, address[] memory tokens, address rootManager_) {
+    constructor(address verifier_, address unshieldVerifier_, address[] memory tokens, address rootManager_, address[] memory swapTargets_) {
         if (verifier_ == address(0)) revert ZeroAddress();
         if (unshieldVerifier_ == address(0)) revert ZeroAddress();
         if (rootManager_ == address(0)) revert ZeroAddress();
@@ -56,6 +62,10 @@ contract CurtainPoolV2 {
             if (token == address(0)) revert ZeroAddress();
             if (immutableToken[token]) revert UnsupportedToken(token);
             immutableToken[token] = true;
+        }
+        for (uint256 i; i < swapTargets_.length; ++i) {
+            if (swapTargets_[i] == address(0)) revert ZeroAddress();
+            swapTarget[swapTargets_[i]] = true;
         }
     }
 
@@ -82,6 +92,44 @@ contract CurtainPoolV2 {
         shieldedBalance[token] += amount;
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         emit NoteShielded(token, amount, commitment);
+    }
+
+    /// @notice Swaps a user's input directly into a fresh shielded output note.
+    /// @dev The target must be an allowlisted adapter/router. The target receives only the input
+    /// allowance, and output is measured at this pool before the commitment is recorded.
+    function swapAndShield(
+        address target,
+        address tokenIn,
+        uint256 amountIn,
+        address tokenOut,
+        uint256 minOut,
+        bytes calldata swapData,
+        bytes32 commitment
+    ) external returns (uint256 amountOut) {
+        if (!swapTarget[target]) revert UnsupportedSwapTarget(target);
+        if (!immutableToken[tokenIn]) revert UnsupportedToken(tokenIn);
+        if (!immutableToken[tokenOut]) revert UnsupportedToken(tokenOut);
+        if (tokenIn == tokenOut) revert SameTokenSwap();
+        if (amountIn == 0) revert ZeroAmount();
+        if (commitment == bytes32(0)) revert ZeroCommitment();
+        if (commitments[commitment]) revert DuplicateCommitment(commitment);
+
+        IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
+        uint256 beforeOut = IERC20(tokenOut).balanceOf(address(this));
+        IERC20(tokenIn).forceApprove(target, amountIn);
+        (bool ok,) = target.call(swapData);
+        IERC20(tokenIn).forceApprove(target, 0);
+        if (!ok) revert SwapFailed();
+        uint256 afterOut = IERC20(tokenOut).balanceOf(address(this));
+        amountOut = afterOut - beforeOut;
+        if (amountOut < minOut) revert InsufficientSwapOutput(amountOut, minOut);
+        // The commitment binds the exact note amount. Until the pool has a public-output
+        // commitment witness, accepting surplus would make the client commitment ambiguous.
+        if (amountOut != minOut) revert ExactSwapOutputChanged(amountOut, minOut);
+
+        commitments[commitment] = true;
+        shieldedBalance[tokenOut] += amountOut;
+        emit NoteShielded(tokenOut, amountOut, commitment);
     }
 
     /// @notice Records a shielded note transfer without moving an ERC-20 balance.

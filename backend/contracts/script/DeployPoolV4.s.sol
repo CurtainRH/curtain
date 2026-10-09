@@ -16,6 +16,7 @@ import {PoolV2UnshieldVerifierAdapter} from "../src/pool/PoolV2UnshieldVerifierA
 ///   POOL_V2_ROOT_MANAGER_OWNER          final owner/admin of the root manager (optional: deployer)
 ///   POOL_V2_ROOT_PUBLISHER              root publishing service (optional: deployer)
 ///   POOL_V2_TOKEN_ADDRS                  comma-separated ERC-20 addresses
+///   POOL_V2_SWAP_TARGETS                 comma-separated allowlisted swap adapters/routers
 ///
 /// This script deliberately does not deploy a generated verifier. The verifier must be built,
 /// reviewed, and deployed separately from the production ceremony artifact.
@@ -31,11 +32,13 @@ contract DeployPoolV4Script is Script {
         address generatedVerifier = vm.envAddress("POOL_V2_GENERATED_VERIFIER_ADDR");
         address generatedUnshieldVerifier = vm.envAddress("POOL_V2_GENERATED_UNSHIELD_VERIFIER_ADDR");
         string memory rawTokens = vm.envString("POOL_V2_TOKEN_ADDRS");
+        string memory rawSwapTargets = vm.envOr("POOL_V2_SWAP_TARGETS", string(""));
         uint256 key = vm.envUint("PRIVATE_KEY");
 
         if (generatedVerifier == address(0) || generatedVerifier.code.length == 0) revert MissingVerifier();
         if (generatedUnshieldVerifier == address(0) || generatedUnshieldVerifier.code.length == 0) revert MissingVerifier();
         address[] memory tokens = _parseAddresses(rawTokens);
+        address[] memory swapTargets = _parseOptionalAddresses(rawSwapTargets);
         if (tokens.length == 0) revert MissingTokens();
 
         address deployer = vm.addr(key);
@@ -55,7 +58,7 @@ contract DeployPoolV4Script is Script {
         unshieldAdapter = new PoolV2UnshieldVerifierAdapter(generatedUnshieldVerifier);
         // The deployer is the temporary root-manager owner so it can initialize the pool.
         manager = new PoolV2RootManager(deployer, rootPublisher);
-        pool = new CurtainPoolV2(address(adapter), address(unshieldAdapter), tokens, address(manager));
+        pool = new CurtainPoolV2(address(adapter), address(unshieldAdapter), tokens, address(manager), swapTargets);
         manager.setPool(address(pool));
         if (rootOwner != deployer) manager.transferOwnership(rootOwner);
         vm.stopBroadcast();
@@ -81,6 +84,11 @@ contract DeployPoolV4Script is Script {
             result[index++] = token;
             start = i + 1;
         }
+    }
+
+    function _parseOptionalAddresses(string memory raw) internal pure returns (address[] memory) {
+        if (bytes(raw).length == 0) return new address[](0);
+        return _parseAddresses(raw);
     }
 
     function _slice(bytes memory data, uint256 start, uint256 end) private pure returns (string memory) {

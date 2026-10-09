@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { RainbowKitProvider, darkTheme, useConnectModal } from "@rainbow-me/rainbowkit";
-import { WagmiProvider, useAccount } from "wagmi";
+import { WagmiProvider, useAccount, useWalletClient } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { formatUnits, isAddress, parseAbi, parseUnits, type Address } from "viem";
+import { formatUnits, isAddress, parseAbi, parseUnits, type Address, type Hex } from "viem";
 import { ArrowDownUp, ArrowRight, Check, ChevronDown, Clock, HelpCircle, Home, LoaderCircle, Search, X } from "lucide-react";
 import { wagmiConfig } from "./wagmi";
 import { chain, ensureChain, errorMessage, publicClient, v3Vault } from "./curtain/integration";
@@ -10,6 +10,7 @@ import { downloadFile } from "./curtain/domain";
 import { useCurtain, type TokenData } from "./curtain/useCurtain";
 import type { SavedTicket } from "./curtain/integration";
 import { routeDescription, routeName } from "./curtain/routes";
+import { poolV4Swap } from "./curtain/poolV4";
 import "@rainbow-me/rainbowkit/styles.css";
 import "./swap.css";
 
@@ -17,6 +18,7 @@ const queryClient = new QueryClient();
 
 function SwapExperience() {
   const { address: account } = useAccount();
+  const { data: walletClient } = useWalletClient();
   const { openConnectModal } = useConnectModal();
   const wallet = account ?? "";
   const [routeMode, setRouteMode] = useState<"v2" | "v3">("v2");
@@ -36,12 +38,14 @@ function SwapExperience() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<SavedTicket>();
+  const [v4Success, setV4Success] = useState<{ swapTx: Hex; unshieldTx: Hex }>();
   const [picker, setPicker] = useState<"from" | "to" | null>(null);
 
   const input = app.tokens.find((token) => token.symbol === from);
   const output = app.tokens.find((token) => token.symbol === to);
   const recipientAddress = recipient.trim() || wallet;
   const canSwap = !!wallet && !!input && !!output && !!amount && !!recipientAddress && !modeChecking;
+  const poolV4Enabled = import.meta.env["VITE_ENABLE_POOL_V4"] === "true";
 
   const tokenOptions = useMemo(
     () => app.tokens.filter((token) => token.symbol !== to),
@@ -157,11 +161,25 @@ function SwapExperience() {
       setBusy("Preparing your swap");
       setError("");
       setSuccess(undefined);
+      setV4Success(undefined);
       await ensureChain();
       if (!isAddress(recipientAddress)) throw new Error("Enter a valid recipient address.");
       const raw = rawAmount(amount, input.decimals);
       if (input.balance !== undefined && raw > input.balance)
         throw new Error("Your wallet balance is too low for this swap.");
+      if (poolV4Enabled) {
+        if (!walletClient) throw new Error("Connect your wallet before using Curtain V4.");
+        const v4 = await poolV4Swap({
+          publicClient, walletClient, tokenIn: input.address, tokenOut: output.address, amountIn: raw,
+          minOut: orderType === "limit" ? rawAmount(limitOut, output.decimals) : 0n,
+          recipient: recipientAddress as Address, onStatus: setBusy,
+        });
+        setV4Success({ swapTx: v4.swapTx, unshieldTx: v4.unshieldTx });
+        setAmount("");
+        setQuote(undefined);
+        void app.refresh();
+        return;
+      }
       const result = await app.sdk.quote(input.address, output.address, raw, 100);
       if (!result.available) throw new Error("No quote is available for this pair right now.");
       const target = orderType === "limit"
@@ -281,6 +299,8 @@ function SwapExperience() {
             {error && <div className="swap-error" role="alert">{error}</div>}
             {success ? (
               <div className="swap-success" role="status"><Check size={19} /><div><strong>Swap submitted.</strong><span>Your escape ticket was downloaded. Keep it safe until delivery.</span></div></div>
+            ) : v4Success ? (
+              <div className="swap-success" role="status"><Check size={19} /><div><strong>Private V4 swap complete.</strong><span>Your output was shielded and delivered to the selected recipient.</span></div></div>
             ) : (
               <div className="swap-actions">
                 <button className="swap-secondary" disabled={!canSwap || !!busy} onClick={() => void getQuote()}>Preview</button>
@@ -299,13 +319,13 @@ function SwapExperience() {
             <div className="swap-route-note" role="note">
               <div>
                 <span className="swap-route-label">Current route</span>
-                <strong>Dynamic V2 / V3</strong>
-                <span>Flexible amounts use V2; approved denominations use V3.</span>
+                <strong>{poolV4Enabled ? "Curtain V4" : "Dynamic V2 / V3"}</strong>
+                <span>{poolV4Enabled ? "Shielded pool routing is enabled." : "Flexible amounts use V2; approved denominations use V3."}</span>
               </div>
               <div className="swap-route-next">
                 <span className="swap-route-label">Next route</span>
                 <strong>{routeName("v4")}</strong>
-                <span>{routeDescription("v4")} · coming soon</span>
+                <span>{poolV4Enabled ? "Shield, swap, and unshield with a private proof." : `${routeDescription("v4")} · coming soon`}</span>
               </div>
             </div>
           </>

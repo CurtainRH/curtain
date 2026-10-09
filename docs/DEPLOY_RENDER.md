@@ -75,9 +75,10 @@ In Render Dashboard: **New → Web Service → Existing Image**
   - `KEEPER_FEE_BPS`: `5`
   - `TICK_MS`: `5000`
   - `START_BLOCK`: Deployment block of the vault
-  - `POOL_V4_ADDR`: `0x80334FD4160245c2856C20526349c43E8597125E` (product V4 / internal `CurtainPoolV2`)
-  - `POOL_V4_ROOT_MANAGER_ADDR`: `0x0C6153A8F30fF138A4B477C5a8A702D23fBa865D`
-  - `POOL_V4_START_BLOCK`: `84091216`
+  - `POOL_V4_ADDR`: `0xf8f47571A55dB8745b7642515aF051D7B1e09dd3` (product V4 / internal `CurtainPoolV2`)
+  - `POOL_V4_ROOT_MANAGER_ADDR`: `0xccB2e48e229435d64b42fe664dA880992C481365`
+  - `POOL_V4_START_BLOCK`: `84108016`
+  - `POOL_V2_SWAP_TARGETS`: `0xcaf681a66d020601342297493863e78c959e5cb2,0x2b50d96a0073baCe9e126fb012d46912298486F0` (used when deploying the final V4 pool)
   - `MIN_OPERATOR_BALANCE_WEI`: `2000000000000000`
 
 ### Step 3: Create Keeper (Background Worker)
@@ -92,6 +93,13 @@ In Render Dashboard: **New → Background Worker → Existing Image**
   - `KEEPER_PRIVATE_KEY`: The keeper wallet private key
   - `VAULT_ADDR`: `vault` address from `deployments/4663.json`
   - `KEEPER_TICK_MS`: `5000`
+
+For the standalone Swap V4 client, set this Vercel variable only after the operator
+has the matching final pool variables above:
+
+```text
+VITE_ENABLE_POOL_V4=true
+```
 
 ### Step 4: GitHub Actions Auto-Deploy Hooks (Optional)
 In your GitHub Repository **Settings → Secrets and variables → Actions**, add:
