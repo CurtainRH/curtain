@@ -28,7 +28,7 @@ jobs:
         run: |
           curl --fail --location --retry 3 --output pool_production.ptau \
             https://circom.info/powersOfTau28_hez_final_14.ptau
-          echo "eeefbcf7c3803b523c94112023c7ff89558f9b8e0cf5d6cdcba3ade60f168af4a181c9c21774b94fbae6c90411995f7d854d02ebd93fb66043dbb06f17a831c1  pool_production.ptau" | sha256sum --check
+          echo "eeefbcf7c3803b523c94112023c7ff89558f9b8e0cf5d6cdcba3ade60f168af4a181c9c21774b94fbae6c90411995f7d854d02ebd93fb66043dbb06f17a831c1  pool_production.ptau" | b2sum --check
           npx snarkjs powersoftau verify pool_production.ptau
       - name: Generate circuit-specific Groth16 key
         run: npx snarkjs groth16 setup pool_transfer.r1cs pool_production.ptau pool_transfer_production_0000.zkey

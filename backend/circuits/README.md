@@ -55,7 +55,7 @@ proof generation; it does not replace the one-time proving-key setup or ceremony
 ## Production verifier artifact
 
 The manual `pool-v2-production-verifier` workflow uses the published BN254 Hermez Powers of Tau
-artifact for `2^14` constraints, verifies its pinned SHA-256 and transcript, adds a circuit-specific
+artifact for `2^14` constraints, verifies its pinned Blake2b digest and transcript, adds a circuit-specific
 Groth16 contribution, verifies the resulting zkey, and exports the Solidity verifier. The uploaded
 files are review artifacts only; deployment remains a separate gated step.
 
