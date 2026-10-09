@@ -30,6 +30,7 @@ contract PoolV2Invariants is Test {
         pool = new CurtainPoolV2(address(verifier), address(verifier), tokens, address(this), new address[](0));
         pool.appendRoot(bytes32(uint256(1)));
         handler = new PoolV2Handler(pool, tokenA, tokenB);
+        targetContract(address(handler));
         bytes4[] memory selectors = new bytes4[](2);
         selectors[0] = PoolV2Handler.shield.selector;
         selectors[1] = PoolV2Handler.unshield.selector;
