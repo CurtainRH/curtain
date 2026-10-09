@@ -1,0 +1,57 @@
+name: pool-v2-native-benchmark
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  groth16-rapidsnark:
+    if: github.repository == 'CurtainRH/curtain'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: backend/circuits
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 1
+      - uses: oven-sh/setup-bun@4bc047ad259df6fc24a6c9b0f9a0cb08cf17fbe5 # v2.0.1
+        with:
+          bun-version: "1.4.2"
+      - name: Install circuit dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Compile transfer circuit
+        run: npm run compile:transfer
+      - name: Create disposable Powers of Tau
+        run: |
+          start=$(date +%s)
+          npx snarkjs powersoftau new bn128 14 pool_native_0000.ptau -v
+          entropy="$(openssl rand -hex 32)"
+          npx snarkjs powersoftau contribute pool_native_0000.ptau pool_native_0001.ptau \
+            --name="Curtain native benchmark contribution" -e="$entropy" -v
+          npx snarkjs powersoftau prepare phase2 pool_native_0001.ptau pool_native_final.ptau -v
+          echo "powers_of_tau_seconds=$(( $(date +%s) - start ))" >> "$GITHUB_STEP_SUMMARY"
+      - name: Generate Groth16 proving key
+        run: |
+          start=$(date +%s)
+          npx snarkjs groth16 setup pool_transfer.r1cs pool_native_final.ptau pool_transfer_groth16_dev.zkey
+          echo "groth16_setup_seconds=$(( $(date +%s) - start ))" >> "$GITHUB_STEP_SUMMARY"
+      - name: Build Rapidsnark
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake libgmp-dev libsodium-dev nasm m4
+          git clone --depth 1 https://github.com/iden3/rapidsnark.git rapidsnark
+          cd rapidsnark
+          git submodule update --init --recursive
+          ./build_gmp.sh host
+          make host
+      - name: Prove and verify with Rapidsnark
+        env:
+          RAPIDSNARK_BIN: ${{ github.workspace }}/rapidsnark/package/bin/prover
+        run: |
+          start=$(date +%s)
+          npm run prove:transfer:rapidsnark
+          echo "rapidsnark_proof_seconds=$(( $(date +%s) - start ))" >> "$GITHUB_STEP_SUMMARY"
