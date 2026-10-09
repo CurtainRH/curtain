@@ -14,20 +14,13 @@ Private swaps and stake-to-earn on Robinhood Chain. Swap USDG and tokenized Stoc
 
 **Contract address:** `0x66a844fcbf4705dbde3c97394d5a4c9822e8f35b`
 
-**Curtain vaults on Robinhood Chain:**
+**Curtain privacy routes on Robinhood Chain:**
 
 - V2 flexible vault: `0xF9381841e982648c178E762116A437Ecbcf12Bbd`
 - V3 fixed-denomination vault: `0xBF643c56D6f1775f9ABe97b7B7e89b0265D6c67a`
+- V4 shielded-pool route: `0xC9d52aD8eABc8Cb8DF87d56a0EfC52034FDa59d9`
 
-V3 supports fixed whole-token denominations: 1, 10, and 100 units for supported assets; USDG supports 10, 100, 1,000, and 10,000 units. V2 remains available for flexible amounts. The dashboard asks which vault to use before entering the app.
-
-**Pool route (product V4, internal Pool V2):**
-
-- `CurtainPoolV2`: `0xC9d52aD8eABc8Cb8DF87d56a0EfC52034FDa59d9`
-- `PoolV2RootManager`: `0xDE119b0F14208A3b775664E7975d5564EF48f219`
-- Groth16 verifier adapter: `0xa2D3c03A7768a30D4cCf60587c6E6dE81faCA9D8`
-
-V4 is the product/API name for this new shielded-pool route. It is not a separate `PoolV4.sol` contract: the deployed Solidity pool is internally named `CurtainPoolV2`. The V4 app and API integration is being rolled out separately from the existing V2 and V3 vault flows.
+V2 is for flexible amounts. V3 is for fixed denominations—1, 10, and 100 whole units for supported assets, with USDG supporting 10, 100, 1,000, and 10,000 units. V4 is Curtain’s next-generation shielded-pool route for stronger privacy primitives and private internal transfers. The dashboard and Swap app will let users choose the route that fits their needs.
 
 ## Features
 
