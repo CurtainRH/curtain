@@ -3,6 +3,7 @@ import * as snarkjs from "snarkjs";
 import { decodeEventLog, encodeAbiParameters, erc20Abi, getAddress, parseAbi, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 
 export const POOL_V4 = "0xf8f47571A55dB8745b7642515aF051D7B1e09dd3" as Address;
+const PENDING_NOTE_PREFIX = "curtain:v4:pending:";
 /** Safe to fall back before a V4 swap transaction has completed. */
 export class PoolV4FallbackError extends Error {}
 const POOL_ABI = parseAbi([
@@ -54,6 +55,12 @@ export async function poolV4Swap({
   if (BigInt(quote.minOut) < minOut) throw new PoolV4FallbackError("V4 cannot meet the requested minimum received amount.");
   const quotedOutput = BigInt(quote.minOut);
   const noteCommitment = await commitment(secret, tokenOut, quotedOutput);
+  // Persist the recovery material before any approval or shield transaction is signed.
+  // It stays in this browser origin and is never sent to the operator.
+  localStorage.setItem(`${PENDING_NOTE_PREFIX}${noteCommitment.toLowerCase()}`, JSON.stringify({
+    secret: secret.toString(), nonce: nonce.toString(), tokenOut, amount: quotedOutput.toString(), recipient,
+    createdAt: new Date().toISOString(),
+  }));
   onStatus?.("Approve the pool");
   const allowance = await publicClient.readContract({ address: tokenIn, abi: erc20Abi, functionName: "allowance", args: [account, POOL_V4] });
   if (allowance < amountIn) {
@@ -91,5 +98,6 @@ export async function poolV4Swap({
     args: [proofBytes(proof, publicSignals), witness.root, (`0x${BigInt(publicSignals[1]!).toString(16).padStart(64, "0")}`) as Hex, getAddress(tokenOut), amountOut, recipient],
   });
   await publicClient.waitForTransactionReceipt({ hash: unshieldTx });
+  localStorage.removeItem(`${PENDING_NOTE_PREFIX}${noteCommitment.toLowerCase()}`);
   return { swapTx, unshieldTx, amountOut, commitment: noteCommitment };
 }
