@@ -9,8 +9,10 @@ Current primitive:
 - `pool_note.circom`: Poseidon commitment binding note secret, token identifier, and amount.
 - `pool_spend.circom`: fixed-depth Merkle membership and nullifier derivation primitive.
 - `pool_screening.circom`: fixed-depth approved-screening membership and scoped nullifier primitive.
+- `pool_transfer.circom`: one-input/two-output private move with exact amount conservation.
 - `poolSpendWitness.mjs`: deterministic Poseidon root/nullifier and witness-input builder.
 - `poolScreeningWitness.mjs`: deterministic screening-root/nullifier and witness-input builder.
+- `poolTransferWitness.mjs`: deterministic transfer-root/nullifier/commitment and witness-input builder.
 
 Required before deployment:
 
