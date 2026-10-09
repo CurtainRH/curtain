@@ -110,6 +110,9 @@ contract CurtainPoolV2Test is Test {
         assertTrue(pool.commitments(output0));
         assertTrue(pool.commitments(output1));
 
+        vm.expectRevert(abi.encodeWithSelector(CurtainPoolV2.DuplicateCommitment.selector, bytes32(uint256(44))));
+        pool.moveOneToTwo(hex"", root, bytes32(uint256(44)), bytes32(uint256(44)), bytes32(uint256(44)), address(token));
+
         vm.expectRevert(abi.encodeWithSelector(CurtainPoolV2.NullifierAlreadySpent.selector, nullifier));
         pool.moveOneToTwo(hex"", root, nullifier, bytes32(uint256(44)), bytes32(uint256(55)), address(token));
     }

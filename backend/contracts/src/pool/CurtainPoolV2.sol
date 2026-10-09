@@ -141,6 +141,7 @@ contract CurtainPoolV2 {
         if (outputCommitment1 == bytes32(0) || commitments[outputCommitment1]) {
             revert DuplicateCommitment(outputCommitment1);
         }
+        if (outputCommitment0 == outputCommitment1) revert DuplicateCommitment(outputCommitment1);
 
         bytes32[] memory publicInputs = new bytes32[](5);
         publicInputs[0] = root;
