@@ -4,10 +4,8 @@
  *   GET  /health                  liveness (always 200 while the process serves)
  *   GET  /status                  200 when healthy, 503 + problems when it needs attention
  *   GET  /config                  vault, tokens, fees, limits
- *   GET  /quote?tokenIn&tokenOut&amountIn[&privacyRoute=v2|v3|dynamic][&slippageBps][&stealth=1]
- *                                 expected output after fees, suggested minOut
+ *   GET  /quote?tokenIn&tokenOut&amountIn[&slippageBps][&stealth=1]   expected output after fees, suggested minOut
  *   POST /intents                 { tokenIn, amountIn, tokenOut, recipient, depositor, minOut, delaySeconds,
- *                                   privacyRoute?: v2|v3|dynamic,
  *                                   stealth?: { ephemeralPublicKey, viewTag },      (FEATURE_STEALTH_PAYOUTS)
  *                                   splits?: [{ recipient, stealth? }], splitMode? } (FEATURE_SPLIT_PAYOUTS)
  *   GET  /quote ... [&splits=2..5&splitMode=random|equal]
@@ -73,33 +71,16 @@ function checkRate(key: string, limit: number, windowMs = 60_000): boolean {
 export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
   const now = cfg.now ?? (() => Math.floor(Date.now() / 1000));
   const developerApi = createDeveloperApi(cfg);
-  type PublicPrivacyRoute = "v2" | "v3" | "dynamic";
 
   return async (req) => {
     const developerResponse = await developerApi(req);
     if (developerResponse) return developerResponse;
-    const version: "v2" | "v3" = req.headers.get("x-curtain-version")?.trim().toLowerCase() === "v3" ? "v3" : "v2";
+    const version = req.headers.get("x-curtain-version")?.trim().toLowerCase() === "v3" ? "v3" : "v2";
     const active = cfg.contexts?.[version] ?? cfg;
+    const allowed = new Set(Object.values(active.tokens).map((t) => getAddress(t))); // config casing must not matter
     const url = new URL(req.url);
     const pathname = url.pathname.replace(/\/+/g, "/");
     const clientIp = req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "ip:default";
-
-    const selectPublicContext = (requested: unknown, tokenIn?: string, amountIn?: string) => {
-      const route = requested === undefined || requested === null || requested === "" ? version : String(requested).toLowerCase();
-      if (route !== "v2" && route !== "v3" && route !== "dynamic") {
-        return { error: 'privacyRoute must be "v2", "v3", or "dynamic"' } as const;
-      }
-      if (route === "v2") return { route: "v2" as const, context: cfg.contexts?.v2 ?? cfg };
-      if (route === "v3") {
-        if (!cfg.contexts?.v3?.v3Mode) return { error: "V3 privacy route is not configured" } as const;
-        return { route: "v3" as const, context: cfg.contexts.v3 };
-      }
-      const v3 = cfg.contexts?.v3;
-      const fixed = tokenIn && amountIn && v3?.fixedAmounts?.has(`${tokenIn}:${amountIn}`);
-      return fixed && v3?.v3Mode
-        ? { route: "v3" as const, context: v3 }
-        : { route: "v2" as const, context: cfg.contexts?.v2 ?? cfg };
-    };
 
     try {
       if (req.method === "OPTIONS") {
@@ -116,15 +97,8 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
       if (req.method === "GET" && pathname === "/config") {
         const stealth = active.operator.stealthInfo;
         const split = active.operator.splitInfo;
-        const v3 = cfg.contexts?.v3;
         return json({
           vault: active.vault, tokens: active.tokens, keeperFeeBps: active.keeperFeeBps, maxDelaySeconds: MAX_DELAY_SECONDS,
-          privacyRoutes: ["v2", ...(v3?.v3Mode ? ["v3", "dynamic"] : [])],
-          vaults: { v2: (cfg.contexts?.v2 ?? cfg).vault, ...(v3?.v3Mode ? { v3: v3.vault } : {}) },
-          ...(v3?.v3Mode && v3.fixedAmounts ? { v3FixedAmounts: [...v3.fixedAmounts].map((entry) => {
-            const [token, amount] = entry.split(":");
-            return { token, amount };
-          }) } : {}),
           ...(stealth ? { stealth } : {}), ...(split ? { split } : {}),
           ...(active.operator.anonymitySetEnabled ? { pool: { enabled: true } } : {}),
           ...(cfg.operator.ticketSyncEnabled ? { sync: { enabled: true } } : {}),
@@ -141,37 +115,27 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         if (!isAddress(tokenIn) || !isAddress(tokenOut) || !/^[1-9]\d*$/.test(amountIn)) {
           return json({ error: "tokenIn, tokenOut (addresses) and amountIn (raw units, > 0) are required" }, 400);
         }
-        const selected = selectPublicContext(url.searchParams.get("privacyRoute"), getAddress(tokenIn), amountIn);
-        if (selected.error) return json({ error: selected.error }, selected.error.includes("not configured") ? 503 : 400);
-        const routeActive = selected.context;
-        const routeAllowed = new Set(Object.values(routeActive.tokens).map((t) => getAddress(t)));
-        if (!routeAllowed.has(getAddress(tokenIn)) || !routeAllowed.has(getAddress(tokenOut))) return json({ error: "token not supported" }, 400);
-        if (selected.route === "v3" && !routeActive.fixedAmounts?.has(`${getAddress(tokenIn)}:${amountIn}`)) {
-          return json({ error: "V3 only accepts an approved fixed denomination for this asset" }, 400);
-        }
+        if (!allowed.has(getAddress(tokenIn)) || !allowed.has(getAddress(tokenOut))) return json({ error: "token not supported" }, 400);
         const slippage = Number(url.searchParams.get("slippageBps") ?? 100);
         if (!(slippage >= 0 && slippage <= 5000)) return json({ error: "slippageBps must be 0..5000" }, 400);
         let stealthFee: bigint | undefined;
         if (url.searchParams.get("stealth") === "1") {
-          if (!routeActive.operator.stealthEnabled) return json({ error: "stealth payouts are not enabled" }, 400);
-          const fee = await routeActive.operator.stealthFee(getAddress(tokenOut));
+          if (!active.operator.stealthEnabled) return json({ error: "stealth payouts are not enabled" }, 400);
+          const fee = await active.operator.stealthFee(getAddress(tokenOut));
           if (fee === null) return json({ error: "private address delivery isn't available for this token yet" }, 400);
           stealthFee = fee;
         }
         let split: { parts: number; minShareBps: number } | undefined;
         const splitsParam = url.searchParams.get("splits");
         if (splitsParam !== null) {
-          if (!routeActive.operator.splitEnabled) return json({ error: "split payouts are not enabled" }, 400);
+          if (!active.operator.splitEnabled) return json({ error: "split payouts are not enabled" }, 400);
           const parts = Number(splitsParam);
           const mode = url.searchParams.get("splitMode") ?? "random";
           if (!Number.isInteger(parts) || parts < 2 || parts > MAX_SPLITS) return json({ error: `a split needs 2 to ${MAX_SPLITS} recipients` }, 400);
           if (mode !== "random" && mode !== "equal") return json({ error: "splitMode must be random or equal" }, 400);
           split = { parts, minShareBps: minSplitShareBps(parts, mode) };
         }
-        return json({
-          ...(await routeActive.operator.quoteForUser(getAddress(tokenIn), getAddress(tokenOut), BigInt(amountIn), slippage, stealthFee, split)),
-          privacyRoute: selected.route,
-        });
+        return json(await active.operator.quoteForUser(getAddress(tokenIn), getAddress(tokenOut), BigInt(amountIn), slippage, stealthFee, split));
       }
 
       if (req.method === "POST" && pathname === "/intents") {
@@ -183,14 +147,6 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
           return json({ error: "Payload too large (max 32KB)" }, 413);
         }
         const body = (await req.json()) as Record<string, unknown>;
-        const selected = selectPublicContext(
-          body["privacyRoute"],
-          isAddress(String(body["tokenIn"] ?? "")) ? getAddress(String(body["tokenIn"])) : undefined,
-          body["amountIn"] === undefined ? undefined : String(body["amountIn"]),
-        );
-        if (selected.error) return json({ error: selected.error }, selected.error.includes("not configured") ? 503 : 400);
-        const routeActive = selected.context;
-        const routeAllowed = new Set(Object.values(routeActive.tokens).map((t) => getAddress(t)));
         if (body["orderType"] !== undefined && body["orderType"] !== "market" && body["orderType"] !== "limit")
           return json({ error: "orderType must be market or limit" }, 400);
         const asStealth = (v: unknown) => {
@@ -200,7 +156,7 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         let stealth: { ephemeralPublicKey: string; viewTag: string } | undefined;
         let splits: { recipient: string; stealth?: { ephemeralPublicKey: string; viewTag: string } }[] | undefined;
         if (body["splits"] !== undefined && body["splits"] !== null) {
-          if (!routeActive.operator.splitEnabled) return json({ error: "split payouts are not enabled" }, 400);
+          if (!active.operator.splitEnabled) return json({ error: "split payouts are not enabled" }, 400);
           if (!Array.isArray(body["splits"])) return json({ error: "splits must be a list" }, 400);
           splits = (body["splits"] as unknown[]).map((raw) => {
             const sp = (raw ?? {}) as Record<string, unknown>;
@@ -210,13 +166,13 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         if (body["stealth"] !== undefined && body["stealth"] !== null) stealth = asStealth(body["stealth"]);
         let stealthFee: bigint | undefined;
         if (stealth || splits?.some((sp) => sp.stealth)) {
-          if (!routeActive.operator.stealthEnabled) return json({ error: "stealth payouts are not enabled" }, 400);
+          if (!active.operator.stealthEnabled) return json({ error: "stealth payouts are not enabled" }, 400);
           const tokenOut = String(body["tokenOut"]);
-          const fee = isAddress(tokenOut) ? await routeActive.operator.stealthFee(getAddress(tokenOut)) : null;
+          const fee = isAddress(tokenOut) ? await active.operator.stealthFee(getAddress(tokenOut)) : null;
           if (fee === null) return json({ error: "private address delivery isn't available for this token yet" }, 400);
           stealthFee = fee;
         }
-        const intent = await createIntent(routeActive.db, {
+        const intent = await createIntent(active.db, {
           tokenIn: String(body["tokenIn"]),
           amountIn: String(body["amountIn"]),
           tokenOut: String(body["tokenOut"]),
@@ -229,38 +185,24 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
           ...(stealth ? { stealth } : {}),
           ...(stealthFee !== undefined ? { stealthFee } : {}),
           ...(splits ? { splits, splitMode: body["splitMode"] === "equal" ? "equal" : "random" } : {}),
-        }, routeAllowed, routeActive.vault, now(), routeActive.v3Mode === true, routeActive.fixedAmounts);
+        }, allowed, active.vault, now(), active.v3Mode === true, active.fixedAmounts);
         return json({
-          id: intent.id, deadline: intent.deadline, salt: intent.salt, deadlineHash: intent.deadlineHash, vault: routeActive.vault, privacyRoute: selected.route, ...(intent.tag ? { tag: intent.tag } : {}),
+          id: intent.id, deadline: intent.deadline, salt: intent.salt, deadlineHash: intent.deadlineHash, vault: active.vault, ...(intent.tag ? { tag: intent.tag } : {}),
           ...(intent.splits ? { splits: intent.splits } : {}),
         }, 201);
       }
 
       const m = pathname.match(/^\/intents\/([0-9a-f]{32})$/);
       if (req.method === "GET" && m) {
-        const requested = url.searchParams.get("privacyRoute") ?? version;
-        if (requested !== "v2" && requested !== "v3" && requested !== "dynamic") {
-          return json({ error: 'privacyRoute must be "v2", "v3", or "dynamic"' }, 400);
-        }
-        const contexts = requested === "dynamic"
-          ? [
-              ...(cfg.contexts?.v3?.v3Mode ? [{ context: cfg.contexts.v3, route: "v3" as const }] : []),
-              { context: cfg.contexts?.v2 ?? cfg, route: "v2" as const },
-            ]
-          : [{ context: requested === "v3" ? cfg.contexts?.v3 : cfg.contexts?.v2 ?? cfg, route: requested as "v2" | "v3" }];
-        if (contexts.some((entry) => !entry.context)) return json({ error: "V3 privacy route is not configured" }, 503);
-        for (const entry of contexts) {
-          const rows = await entry.context!.db.query<Record<string, unknown>>(
-            `SELECT i.status, i.order_type AS "orderType", i.deadline::text AS deadline, i.deposit_id::text AS "depositId", i.amount_out::text AS "amountOut", s.tx_hash AS "payoutTx",
-                    i.blocked_reason AS "blockedReason"
-             FROM intents i LEFT JOIN settlements s ON s.id = i.settlement_id AND s.status = 'confirmed' WHERE i.id = $1
-             AND NOT EXISTS (SELECT 1 FROM developer_intents d WHERE d.intent_id = i.id)
-             AND NOT EXISTS (SELECT 1 FROM developer_v3_intents d WHERE d.intent_id = i.id)`,
-            [m[1]],
-          );
-          if (rows[0]) return json({ ...rows[0], privacyRoute: entry.route });
-        }
-        return json({ error: "unknown intent" }, 404);
+        const rows = await active.db.query<Record<string, unknown>>(
+          `SELECT i.status, i.order_type AS "orderType", i.deadline::text AS deadline, i.deposit_id::text AS "depositId", i.amount_out::text AS "amountOut", s.tx_hash AS "payoutTx",
+                  i.blocked_reason AS "blockedReason"
+           FROM intents i LEFT JOIN settlements s ON s.id = i.settlement_id AND s.status = 'confirmed' WHERE i.id = $1
+           AND NOT EXISTS (SELECT 1 FROM developer_intents d WHERE d.intent_id = i.id)
+           AND NOT EXISTS (SELECT 1 FROM developer_v3_intents d WHERE d.intent_id = i.id)`,
+          [m[1]],
+        );
+        return rows[0] ? json(rows[0]) : json({ error: "unknown intent" }, 404);
       }
 
       // Encrypted ticket backups. Always the main (V2) database, whatever context was asked for:

@@ -183,34 +183,6 @@ describe("developer access and V2/V3 API", () => {
       ).status,
     ).toBe(400);
   });
-  test("public quote and intent APIs expose explicit and dynamic route selection", async () => {
-    const config = await request("/config");
-    expect(config.status).toBe(200);
-    expect(config.body.privacyRoutes).toEqual(["v2", "v3", "dynamic"]);
-    expect(config.body.vaults).toEqual({ v2: VAULT, v3: V3_VAULT });
-
-    const query = `tokenIn=${USDG}&tokenOut=${NVDA}&amountIn=10000000`;
-    const v3Quote = await request(`/quote?${query}&privacyRoute=v3`);
-    expect(v3Quote.status).toBe(200);
-    expect(v3Quote.body.privacyRoute).toBe("v3");
-    expect(v3Quote.body.minOutSuggested).toBe("88");
-
-    const dynamicV3 = await request(`/quote?${query}&privacyRoute=dynamic`);
-    expect(dynamicV3.body.privacyRoute).toBe("v3");
-    const dynamicV2 = await request(`/quote?${query.replace("10000000", "20000000")}&privacyRoute=dynamic`);
-    expect(dynamicV2.body.privacyRoute).toBe("v2");
-
-    const invalidV3 = await request(`/quote?${query.replace("10000000", "20000000")}&privacyRoute=v3`);
-    expect(invalidV3.status).toBe(400);
-
-    const intent = await request("/intents", {
-      ...params(),
-      privacyRoute: "dynamic",
-    });
-    expect(intent.status).toBe(201);
-    expect(intent.body.privacyRoute).toBe("v3");
-    expect(intent.body.vault).toBe(V3_VAULT);
-  });
   test("exposes the public, versioned keeper feed without API authentication", async () => {
     const v2 = await request("/keeper/v1/settlements/pending?privacyRoute=v2");
     expect(v2.status).toBe(200);
