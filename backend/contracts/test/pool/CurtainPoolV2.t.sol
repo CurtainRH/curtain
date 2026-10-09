@@ -93,4 +93,24 @@ contract CurtainPoolV2Test is Test {
         vm.expectRevert(abi.encodeWithSelector(CurtainPoolV2.DuplicateRoot.selector, root));
         pool.appendRoot(root);
     }
+
+    function testFixedOneToTwoMoveMatchesTransferPublicInputs() public {
+        bytes32 root = bytes32(uint256(7));
+        bytes32 nullifier = bytes32(uint256(11));
+        bytes32 output0 = bytes32(uint256(22));
+        bytes32 output1 = bytes32(uint256(33));
+        pool.appendRoot(root);
+
+        vm.expectRevert(CurtainPoolV2.InvalidProof.selector);
+        pool.moveOneToTwo(hex"", root, nullifier, output0, output1, address(token));
+
+        verifier.setResult(true);
+        pool.moveOneToTwo(hex"", root, nullifier, output0, output1, address(token));
+        assertTrue(pool.nullifierSpent(nullifier));
+        assertTrue(pool.commitments(output0));
+        assertTrue(pool.commitments(output1));
+
+        vm.expectRevert(abi.encodeWithSelector(CurtainPoolV2.NullifierAlreadySpent.selector, nullifier));
+        pool.moveOneToTwo(hex"", root, nullifier, bytes32(uint256(44)), bytes32(uint256(55)), address(token));
+    }
 }

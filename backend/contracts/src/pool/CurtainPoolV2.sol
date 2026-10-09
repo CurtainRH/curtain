@@ -120,6 +120,47 @@ contract CurtainPoolV2 {
         emit NoteMoved(root, inputNullifiers, outputCommitments);
     }
 
+    /// @notice Records the fixed V4 one-input/two-output transfer proof.
+    /// @dev The proof binds the input note, token, nullifier, output commitments, and exact
+    /// amount conservation. This is the verifier-compatible path for the first production proof
+    /// schema; the dynamic move method above remains a compatibility scaffold only.
+    function moveOneToTwo(
+        bytes calldata proof,
+        bytes32 root,
+        bytes32 nullifier,
+        bytes32 outputCommitment0,
+        bytes32 outputCommitment1,
+        address token
+    ) external {
+        if (!immutableToken[token]) revert UnsupportedToken(token);
+        if (!knownRoot[root]) revert UnknownRoot(root);
+        if (nullifier == bytes32(0) || nullifierSpent[nullifier]) revert NullifierAlreadySpent(nullifier);
+        if (outputCommitment0 == bytes32(0) || commitments[outputCommitment0]) {
+            revert DuplicateCommitment(outputCommitment0);
+        }
+        if (outputCommitment1 == bytes32(0) || commitments[outputCommitment1]) {
+            revert DuplicateCommitment(outputCommitment1);
+        }
+
+        bytes32[] memory publicInputs = new bytes32[](5);
+        publicInputs[0] = root;
+        publicInputs[1] = nullifier;
+        publicInputs[2] = bytes32(uint256(uint160(token)));
+        publicInputs[3] = outputCommitment0;
+        publicInputs[4] = outputCommitment1;
+        if (!verifier.verify(proof, publicInputs)) revert InvalidProof();
+
+        nullifierSpent[nullifier] = true;
+        commitments[outputCommitment0] = true;
+        commitments[outputCommitment1] = true;
+        bytes32[] memory inputNullifiers = new bytes32[](1);
+        inputNullifiers[0] = nullifier;
+        bytes32[] memory outputCommitments = new bytes32[](2);
+        outputCommitments[0] = outputCommitment0;
+        outputCommitments[1] = outputCommitment1;
+        emit NoteMoved(root, inputNullifiers, outputCommitments);
+    }
+
     /// @notice Unshields a proven note to a public recipient.
     /// @dev The production verifier must bind the nullifier, root, token, amount and recipient
     /// to an unspent note and prove that the amount is covered by the pool's accounting.
