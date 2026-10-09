@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IPoolV2Verifier} from "./IPoolV2Verifier.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { IPoolV2Verifier } from "./IPoolV2Verifier.sol";
 
 /// @notice Experimental Pool v2 accounting boundary for Curtain V4.
 ///
@@ -15,10 +15,13 @@ contract CurtainPoolV2 {
     using SafeERC20 for IERC20;
 
     IPoolV2Verifier public immutable verifier;
+    address public immutable rootManager;
     mapping(address => bool) public immutableToken;
     mapping(bytes32 => bool) public commitments;
     mapping(bytes32 => bool) public nullifierSpent;
+    mapping(bytes32 => bool) public knownRoot;
     mapping(address => uint256) public shieldedBalance;
+    bytes32 public currentRoot;
 
     error ZeroAddress();
     error EmptyTokenSet();
@@ -30,21 +33,39 @@ contract CurtainPoolV2 {
     error InvalidProof();
     error BadRecipient();
     error LengthMismatch();
+    error UnauthorizedRootManager();
+    error ZeroRoot();
+    error DuplicateRoot(bytes32 root);
+    error UnknownRoot(bytes32 root);
 
+    event RootAdded(bytes32 indexed root);
     event NoteShielded(address indexed token, uint256 amount, bytes32 indexed commitment);
     event NoteMoved(bytes32 indexed root, bytes32[] nullifiers, bytes32[] commitments);
     event NoteUnshielded(address indexed token, uint256 amount, address indexed recipient, bytes32 indexed nullifier);
 
-    constructor(address verifier_, address[] memory tokens) {
+    constructor(address verifier_, address[] memory tokens, address rootManager_) {
         if (verifier_ == address(0)) revert ZeroAddress();
+        if (rootManager_ == address(0)) revert ZeroAddress();
         if (tokens.length == 0) revert EmptyTokenSet();
         verifier = IPoolV2Verifier(verifier_);
+        rootManager = rootManager_;
         for (uint256 i; i < tokens.length; ++i) {
             address token = tokens[i];
             if (token == address(0)) revert ZeroAddress();
             if (immutableToken[token]) revert UnsupportedToken(token);
             immutableToken[token] = true;
         }
+    }
+
+    /// @notice Adds a Merkle root to the append-only history accepted by proofs.
+    /// @dev The production deployment must make rootManager a constrained tree publisher.
+    function appendRoot(bytes32 root) external {
+        if (msg.sender != rootManager) revert UnauthorizedRootManager();
+        if (root == bytes32(0)) revert ZeroRoot();
+        if (knownRoot[root]) revert DuplicateRoot(root);
+        knownRoot[root] = true;
+        currentRoot = root;
+        emit RootAdded(root);
     }
 
     /// @notice Places a token amount behind a fresh note commitment.
@@ -73,12 +94,17 @@ contract CurtainPoolV2 {
     ) external {
         if (!immutableToken[token]) revert UnsupportedToken(token);
         if (inputNullifiers.length == 0 || outputCommitments.length == 0) revert LengthMismatch();
+        if (!knownRoot[root]) revert UnknownRoot(root);
         bytes32[] memory publicInputs = new bytes32[](3 + inputNullifiers.length + outputCommitments.length);
         publicInputs[0] = root;
         publicInputs[1] = bytes32(uint256(uint160(token)));
         publicInputs[2] = bytes32(inputNullifiers.length);
-        for (uint256 i; i < inputNullifiers.length; ++i) publicInputs[3 + i] = inputNullifiers[i];
-        for (uint256 i; i < outputCommitments.length; ++i) publicInputs[3 + inputNullifiers.length + i] = outputCommitments[i];
+        for (uint256 i; i < inputNullifiers.length; ++i) {
+            publicInputs[3 + i] = inputNullifiers[i];
+        }
+        for (uint256 i; i < outputCommitments.length; ++i) {
+            publicInputs[3 + inputNullifiers.length + i] = outputCommitments[i];
+        }
         if (!verifier.verify(proof, publicInputs)) revert InvalidProof();
 
         for (uint256 i; i < inputNullifiers.length; ++i) {
@@ -108,6 +134,7 @@ contract CurtainPoolV2 {
         if (!immutableToken[token]) revert UnsupportedToken(token);
         if (amount == 0) revert ZeroAmount();
         if (recipient == address(0)) revert BadRecipient();
+        if (!knownRoot[root]) revert UnknownRoot(root);
         if (nullifier == bytes32(0) || nullifierSpent[nullifier]) revert NullifierAlreadySpent(nullifier);
         bytes32[] memory publicInputs = new bytes32[](5);
         publicInputs[0] = root;
