@@ -60,7 +60,7 @@ contract CurtainPoolV2Test is Test {
         pool.shield(address(token), 10 ether, bytes32(uint256(44)));
         pool.unshield(hex"", bytes32(uint256(7)), nullifier, address(token), 3 ether, alice);
         assertEq(pool.shieldedBalance(address(token)), 7 ether);
-        vm.expectRevert(CurtainPoolV2.NullifierAlreadySpent.selector);
+        vm.expectRevert(abi.encodeWithSelector(CurtainPoolV2.NullifierAlreadySpent.selector, nullifier));
         pool.unshield(hex"", bytes32(uint256(7)), nullifier, address(token), 1 ether, alice);
     }
 }

@@ -5,3 +5,5 @@ node_modules/
 *.zkey
 *.ptau
 verification_key.json
+.local-*
+pool_spend_dev.*
