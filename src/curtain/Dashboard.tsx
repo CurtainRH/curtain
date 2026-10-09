@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   Menu,
   RefreshCw,
+  Rewind,
   Repeat2,
   Search,
   Wallet,
@@ -81,11 +82,13 @@ import {
   type CurtainMode,
 } from "./integration";
 import { balanceText, useCurtain, type TokenData } from "./useCurtain";
+import { pendingPoolV4Notes, poolV4Quote, poolV4Swap, PoolV4FallbackError, recoverPoolV4Note } from "./poolV4";
 const nav = [
   { id: "overview", path: "/app", name: "Overview", icon: LayoutDashboard },
   { id: "swap", path: "/app/swap", name: "Swap", icon: Repeat2 },
   { id: "stake", path: "/app/stake", name: "Stake", icon: Coins },
   { id: "activity", path: "/app/activity", name: "Activity", icon: Activity },
+  { id: "recovery", path: "/app/recovery", name: "Recovery", icon: Rewind },
   { id: "receive", path: "/app/receive", name: "Receive", icon: Inbox },
   { id: "developer", path: "/app/developer", name: "Developer", icon: Code2 },
 ];
@@ -185,6 +188,31 @@ export default function Dashboard({ path }: { path: string }) {
     localStorage.setItem("curtain-mode", nextMode);
     localStorage.setItem("curtain-version-welcome", nextMode);
     window.location.reload();
+  }
+
+  async function recoverPoolNotes() {
+    if (!wallet || busy) return;
+    const notes = pendingPoolV4Notes();
+    if (!notes.length) {
+      setAlertMessage("There are no pending V4 notes saved in this browser.");
+      return;
+    }
+    const browserProvider = provider();
+    if (!browserProvider) {
+      setAlertMessage("Connect the depositing wallet to recover a private note.");
+      return;
+    }
+    try {
+      await ensureChain();
+      setBusy("Recovering private note");
+      const walletClient = createWalletClient({ chain, transport: custom(browserProvider), account: wallet as Address });
+      for (const note of notes) await recoverPoolV4Note({ publicClient, walletClient, note, onStatus: setBusy });
+      setMessage("Private note recovered and delivered.");
+    } catch (e) {
+      setAlertMessage(errorMessage(e));
+    } finally {
+      setBusy("");
+    }
   }
 
   useWorkspaceTools(current.id, navigate);
@@ -448,16 +476,17 @@ export default function Dashboard({ path }: { path: string }) {
       }
       setQuoting(true);
       try {
-        const q = await app.sdk.quote(
-          input.address,
-          output.address,
-          rawAmount(amount, input.decimals),
-          slippage,
-          {
-            stealth: useStealth,
-            ...(useSplit ? { splits: splitTo.length, splitMode } : {}),
-          },
-        );
+        const raw = rawAmount(amount, input.decimals);
+        const q = mode === "v4"
+          ? await poolV4Quote({ tokenIn: input.address, tokenOut: output.address, amountIn: raw, slippageBps: slippage }).then((pool) => ({
+              amountIn: raw.toString(), marketOut: pool.minOut || "0", expectedOut: pool.minOut || "0",
+              minOutSuggested: pool.minOut || "0", protocolFee: "0", keeperFee: "0", venue: "Curtain IV shielded pool",
+              available: pool.available === true,
+            } satisfies SwapQuote))
+          : await app.sdk.quote(input.address, output.address, raw, slippage, {
+              stealth: useStealth,
+              ...(useSplit ? { splits: splitTo.length, splitMode } : {}),
+            });
         if (alive && number === requestNumber.current) {
           setQuote(q);
           setQuoteError("");
@@ -489,6 +518,7 @@ export default function Dashboard({ path }: { path: string }) {
     useSplit,
     splitTo.length,
     splitMode,
+    mode,
   ]);
   function link(hash: string, label: string) {
     return (
@@ -621,6 +651,31 @@ export default function Dashboard({ path }: { path: string }) {
           : useStealth
             ? "to deliver to a stealth address"
             : "";
+
+      if (mode === "v4" && !usePieces && !useStealth && !useSplit && !delayed && !limitOrder) {
+        const browserProvider = provider();
+        if (!browserProvider) throw new Error("Connect a browser wallet first.");
+        try {
+          const result = await poolV4Swap({
+            publicClient,
+            walletClient: createWalletClient({ chain, transport: custom(browserProvider), account: wallet as Address }),
+            tokenIn: input.address,
+            tokenOut: output.address,
+            amountIn: raw,
+            minOut: 0n,
+            recipient: recipient as Address,
+            onStatus: setBusy,
+          });
+          setAmount("");
+          setQuote(undefined);
+          setMessage(`Curtain IV delivered your ${to} privately. Transaction: ${result.unshieldTx.slice(0, 10)}…`);
+          void app.refresh();
+          return;
+        } catch (error) {
+          if (!(error instanceof PoolV4FallbackError)) throw error;
+          setMessage("Curtain IV is unavailable for this pair, so Curtain is using the compatible vault route.");
+        }
+      }
 
       if (!usePieces) {
         // Refresh immediately before signing so minimum output matches the current form.
@@ -1353,6 +1408,15 @@ export default function Dashboard({ path }: { path: string }) {
                 >
                   V3
                 </button>
+                <button
+                  type="button"
+                  className={mode === "v4" ? "active" : ""}
+                  aria-pressed={mode === "v4"}
+                  onClick={() => switchCurtain("v4")}
+                  title="Use Curtain IV shielded pool"
+                >
+                  V4
+                </button>
               </div>
               <button className="wallet-button" onClick={connect}>
                 <Wallet size={16} />
@@ -1388,6 +1452,26 @@ export default function Dashboard({ path }: { path: string }) {
               </p>
             )}
             {current.id === "developer" && <Developer key={wallet} wallet={wallet} />}
+            {current.id === "recovery" && (
+              <section className="panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">PRIVATE NOTE RECOVERY</p>
+                    <h2>Recover a pending swap</h2>
+                  </div>
+                  <button className="button gold" type="button" onClick={() => void recoverPoolNotes()} disabled={!wallet || !!busy}>
+                    <Rewind size={16} />
+                    Recover notes
+                  </button>
+                </div>
+                <p className="panel-copy">
+                  Curtain keeps the recovery material for shielded-pool swaps in this browser. If a swap was interrupted while its private note was being indexed, connect the same wallet and try again here.
+                </p>
+                <Note>Recovery material stays on this device and is removed only after a successful private delivery.</Note>
+                {!pendingPoolV4Notes().length && <p className="muted">No pending private notes are saved in this browser.</p>}
+                {!!pendingPoolV4Notes().length && <p className="muted">{pendingPoolV4Notes().length} private note{pendingPoolV4Notes().length === 1 ? "" : "s"} ready to recover.</p>}
+              </section>
+            )}
             {current.id === "overview" && (
               <>
                 <div className="overview-grid">

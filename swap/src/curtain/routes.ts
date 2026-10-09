@@ -10,13 +10,13 @@ export interface PoolV4Addresses {
 }
 
 export const POOL_V4_ADDRESSES: PoolV4Addresses = {
-  pool: "0xf8f47571A55dB8745b7642515aF051D7B1e09dd3",
-  rootManager: "0xccB2e48e229435d64b42fe664dA880992C481365",
-  verifierAdapter: "0x97e1a6401418d6F2B72839065C48A17c9e8Aa731",
-  unshieldVerifierAdapter: "0xB7e12f83B8404019Acd7c3677B1B5026a642b8A0",
+  pool: "0x38147c547cDE831812CD075166E279B77FF164Cc",
+  rootManager: "0x51E2aCaC1Fe6b1915D7Eafd24b96B7781cd9AFEf",
+  verifierAdapter: "0x0a997c29065e765DF0C66FB746D2683fDfEc8fd5",
+  unshieldVerifierAdapter: "0x64260f018073e5E9710A150C2a0938A4Cb57100B",
 };
 
-/** V4 remains opt-in until the deployment's Render and Vercel variables are updated together. */
+/** V4 is enabled only when the matching operator config is also live. */
 export const POOL_V4_CLIENT_ENABLED = import.meta.env["VITE_ENABLE_POOL_V4"] === "true";
 
 export function routeName(route: SwapRoute): string {

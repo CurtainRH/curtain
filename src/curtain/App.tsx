@@ -40,7 +40,7 @@ import { TheatreEntrance, SceneStory, ActProgramme, Soundscape } from "./StageEx
 type ModalState =
   | { kind: "coming"; name: string }
   | { kind: "film"; film: "overture" | "technology" }
-  | { kind: "version"; mode: "v2" | "v3" }
+  | { kind: "version"; mode: "v2" | "v3" | "v4" }
   | { kind: "wallet" }
   | null;
 type NavContextType = {
@@ -248,10 +248,12 @@ function Modal({
       ) : modal.kind === "version" ? (
         <>
           <Logo compact />
-          <p className="eyebrow">CURTAIN {modal.mode === "v3" ? "III" : "II"}</p>
-          <h2>{modal.mode === "v3" ? "Fixed denominations." : "Flexible swaps."}</h2>
+          <p className="eyebrow">CURTAIN {modal.mode === "v4" ? "IV" : modal.mode === "v3" ? "III" : "II"}</p>
+          <h2>{modal.mode === "v4" ? "The shielded pool." : modal.mode === "v3" ? "Fixed denominations." : "Flexible swaps."}</h2>
           <p>
-            {modal.mode === "v3"
+            {modal.mode === "v4"
+              ? "Curtain IV uses a shielded pool and a private proof to separate your swap from the public delivery address. Each swap creates a fresh private note."
+              : modal.mode === "v3"
               ? "Curtain III uses approved fixed amounts that blend into a shared set. It offers stronger amount privacy, with fewer amount choices."
               : "Curtain II accepts arbitrary amounts and offers the broadest compatibility. It is the flexible rail for swaps that do not fit a fixed denomination."}
           </p>
@@ -260,7 +262,7 @@ function Modal({
             details.
           </p>
           <button className="button gold" onClick={close}>
-            Enter Curtain {modal.mode === "v3" ? "III" : "II"} <ArrowRight size={16} />
+            Enter Curtain {modal.mode === "v4" ? "IV" : modal.mode === "v3" ? "III" : "II"} <ArrowRight size={16} />
           </button>
         </>
       ) : (
@@ -329,7 +331,7 @@ export default function App() {
     if (!location.pathname.startsWith("/app")) return null;
     try {
       const mode = localStorage.getItem("curtain-version-welcome");
-      if (mode === "v2" || mode === "v3") {
+      if (mode === "v2" || mode === "v3" || mode === "v4") {
         localStorage.removeItem("curtain-version-welcome");
         return { kind: "version", mode };
       }
@@ -663,6 +665,10 @@ export default function App() {
               <button className="curtain-choice-option" onClick={() => { localStorage.setItem("curtain-mode", "v2"); setCurtainChoice(false); }}>
                 <span className="eyebrow">CURTAIN II</span><strong>Flexible swaps</strong>
                 <span>Use arbitrary amounts with the existing V2 vault and its broadest compatibility.</span>
+              </button>
+              <button className="curtain-choice-option" onClick={() => { localStorage.setItem("curtain-mode", "v4"); setCurtainChoice(false); }}>
+                <span className="eyebrow">CURTAIN IV</span><strong>Shielded pool</strong>
+                <span>Use a fresh private note and a zero-knowledge proof for the strongest available route.</span>
               </button>
             </div>
             <p className="curtain-choice-footnote">Both modes are private by design. Public chain data can still expose timing and amount relationships.</p>

@@ -49,7 +49,7 @@ async function pendingWitness(commitment: Hex) {
     if (response.ok) return await response.json() as { root: Hex; siblings: string[]; pathBits: number[] };
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
-  throw new Error("Curtain is still indexing this private note. Try the rewind button again shortly.");
+  throw new Error("Curtain is still indexing this private note. Try the recovery screen again shortly.");
 }
 
 export async function recoverPoolV4Note({ publicClient, walletClient, note, onStatus }: {

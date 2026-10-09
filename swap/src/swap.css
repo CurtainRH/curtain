@@ -6,6 +6,9 @@
 .swap-brand { font: 1.25rem "Playfair Display", serif; }
 .swap-curtain-logo { width: 24px; height: 30px; object-fit: contain; }
 .swap-header-link { color: #c5a059; font-size: .75rem; }
+.swap-recovery-button { display: inline-grid; place-items: center; margin-left: auto; border: 0; background: transparent; color: #9daabc; cursor: pointer; padding: 5px; }
+.swap-recovery-button:hover { color: #c5a059; }
+.swap-recovery-button:disabled { opacity: .45; cursor: wait; }
 .swap-card { max-width: 620px; margin: auto; background: #0b192b; border: 1px solid #d2ae6f30; box-shadow: 0 25px 90px #0006; padding: clamp(25px, 6vw, 54px); }
 .swap-intro { margin-bottom: 30px; }
 .swap-eyebrow { display: flex; align-items: center; gap: 7px; color: #c5a059; font-size: .65rem; letter-spacing: .16em; }

@@ -27,10 +27,11 @@ const env = import.meta.env;
 // Always same-origin: the server relays /api/curtain/* to the operator (src/lib/curtain-proxy.ts),
 // so the operator URL never reaches the browser.
 export const apiUrl = "/api/curtain";
-export type CurtainMode = "v2" | "v3";
+export type CurtainMode = "v2" | "v3" | "v4";
 export function curtainMode(): CurtainMode {
   if (typeof window === "undefined") return "v2";
-  return window.localStorage.getItem("curtain-mode") === "v3" ? "v3" : "v2";
+  const value = window.localStorage.getItem("curtain-mode");
+  return value === "v3" || value === "v4" ? value : "v2";
 }
 export function apiUrlForMode(mode: CurtainMode = curtainMode()) {
   return mode === "v3" ? "/api/curtain-v3" : apiUrl;

@@ -93,12 +93,11 @@ In Render Dashboard: **New → Background Worker → Existing Image**
   - `VAULT_ADDR`: `vault` address from `deployments/4663.json`
   - `KEEPER_TICK_MS`: `5000`
 
-The standalone Swap client currently keeps the pool route disabled while its updated
-browser proving assets complete their own end-to-end release validation. Do not set
-this Vercel variable yet:
+For the standalone Swap client and the main dashboard, enable the product V4 shielded-pool
+route after the operator environment above is deployed:
 
 ```text
-VITE_ENABLE_POOL_V4=false
+VITE_ENABLE_POOL_V4=true
 ```
 
 ### Step 4: GitHub Actions Auto-Deploy Hooks (Optional)
