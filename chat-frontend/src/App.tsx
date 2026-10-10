@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useAccount, useDisconnect } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
-import { ArrowUp, Check, LoaderCircle, X } from "lucide-react";
+import { ArrowUp, Check, CircleAlert, CircleCheck, LoaderCircle, X } from "lucide-react";
 import { createPublicClient, createWalletClient, custom, formatUnits, http, isAddress, parseUnits, type Address } from "viem";
 import { CurtainClient, DEFAULT_TOKENS, ROBINHOOD_CHAIN_TOKENS, type PendingTicket } from "@curtain/sdk";
 import { chain } from "./wagmi";
@@ -9,6 +9,7 @@ import { chain } from "./wagmi";
 type Action = { type: "swap"; amount: string; tokenIn: string; tokenOut: string; recipient?: string };
 type Proposal = { action: Action; quote: { expectedOut: string; minOutSuggested: string; available: boolean; venue: string; minOut?: string }; recipient?: Address; route: { id: "v2" | "v3" | "v4"; label: string } };
 type Message = { role: "user" | "assistant"; text: string; proposal?: Proposal; state?: "pending" | "done" | "denied" };
+type Toast = { kind: "success" | "error"; title: string; message: string };
 const api = "/api/curtain";
 const publicClient = createPublicClient({ chain, transport: http("/api/rpc", { retryCount: 2, timeout: 12_000 }) });
 const storeTicket = (ticket: PendingTicket) => {
@@ -39,7 +40,14 @@ export default function App() {
   const { disconnect } = useDisconnect();
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<Toast | null>(null);
   const [messages, setMessages] = useState<Message[]>([{ role: "assistant", text: "Tell me what you’d like to swap. Dynamic Privacy selects the available route for each request. I’ll prepare a proposal for you to review; nothing is sent until you approve it in your wallet." }]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 6500);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   async function send(e?: FormEvent) {
     e?.preventDefault();
@@ -92,6 +100,9 @@ export default function App() {
         try {
           const poolResult = await poolRoute.poolV4Swap({ publicClient, walletClient, tokenIn: tokenIn.address, tokenOut: tokenOut.address, amountIn, minOut: BigInt(quote.minOut ?? quote.minOutSuggested), recipient, onStatus: (status) => setMessages((old) => old.map((m, i) => i === index ? { ...m, state: "pending", text: status } : m)) });
           setMessages((old) => old.map((m, i) => i === index ? { ...m, state: "done", text: poolResult.deliveryConfirmed ? `Private swap complete using Curtain V4. Your output was delivered.` : `Your Curtain V4 private swap was submitted. Delivery confirmation is delayed; don’t submit again. Your recovery note remains saved.` } : m));
+          setToast(poolResult.deliveryConfirmed
+            ? { kind: "success", title: "Swap complete", message: "Your output was delivered. Your recovery note is saved in this browser." }
+            : { kind: "success", title: "Swap submitted", message: "Delivery confirmation is delayed. Don’t submit again; your recovery note is saved in this browser." });
           return;
         } catch (error) {
           if (!(error instanceof poolRoute.PoolV4FallbackError)) throw error;
@@ -111,12 +122,16 @@ export default function App() {
       localStorage.setItem(`curtain-chat-ticket:${result.intentId}`, JSON.stringify({ ...ticket, createdAt: Date.now(), source: "chat" }));
       const routeLabel = route === "v3" ? "Curtain V3 · fixed denominations" : "Curtain V2 · flexible amounts";
       setMessages((old) => old.map((m, i) => i === index ? { ...m, state: "done", text: `Deposit confirmed using ${routeLabel}. Your swap is now in the delivery queue. Escape ticket saved in this browser.` } : m));
+      setToast({ kind: "success", title: "Deposit confirmed", message: "Your swap is in the delivery queue. Your escape ticket is saved in this browser." });
     } catch (err) {
-      setMessages((old) => old.map((m, i) => i === index ? { ...m, state: undefined, text: err instanceof Error ? err.message : "Swap was not completed." } : m));
+      const message = err instanceof Error ? err.message : "Swap was not completed.";
+      setMessages((old) => old.map((m, i) => i === index ? { ...m, state: undefined, text: message } : m));
+      setToast({ kind: "error", title: "Swap not completed", message });
     }
   }
 
   return <main className="shell">
+    {toast && <div className={`toast toast-${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"} aria-live={toast.kind === "error" ? "assertive" : "polite"}><span className="toast-icon">{toast.kind === "success" ? <CircleCheck size={20}/> : <CircleAlert size={20}/>}</span><span className="toast-copy"><strong>{toast.title}</strong><span>{toast.message}</span></span><button className="toast-dismiss" onClick={() => setToast(null)} aria-label="Dismiss notification"><X size={17}/></button></div>}
     <header><a className="brand" href="https://www.curtainrh.com"><img src="/curtain-logo.png" /><span>Curtain <small>CHAT</small></span></a><div className="header-right">{isConnected ? <button className="wallet" onClick={() => disconnect()}>{account?.slice(0, 6)}…{account?.slice(-4)}</button> : <button className="wallet" onClick={() => openConnectModal?.()}>Connect wallet</button>}</div></header>
     <section className="intro"><div className="eyebrow">A CONVERSATION WITH CURTAIN</div><h1>Say what you<br/><em>want to swap.</em></h1><p>Review the details. Approve only when you’re ready.</p></section>
     <section className="conversation" aria-live="polite">
