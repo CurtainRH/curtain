@@ -31,16 +31,32 @@
  *   POOL_V2_LEGACY_ROOT_MANAGER_ADDR  prior pool's root manager
  *   POOL_V2_LEGACY_START_BLOCK first block to scan for legacy note recovery
  *                              (POOL_V4_* aliases remain temporarily compatible)
+ *   STOCK_STAKING_ADDR         wallet-backed CurtainStockStaking deployment (optional)
+ *   REWARD_POOL_WALLET_PRIVATE_KEY EOA key for EIP-712 reward claims; operator service only
+ *   MASTER_ADMIN_KEY           protects POST /admin/staking/rewards; operator service only
  */
 import { bunSqlDb, migrate } from "@curtain/db";
 import { DEFAULT_TOKENS } from "@curtain/sdk";
 import { createPublicClient, createWalletClient, defineChain, getAddress, http, isAddress, parseAbi, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { createApi } from "./api";
+import { createApi, type ApiConfig } from "./api";
 import { createMcpApi } from "./mcp";
 import { Operator, type StealthConfig } from "./operator";
 import { mockQuoter, mockRoute, uniswapQuoter, uniswapRoute } from "./routes";
 import { PoolV2RootPublisher } from "./poolV2";
+
+const STOCK_STAKING_ABI = parseAbi([
+  "function rewardPoolWallet() view returns (address)",
+  "function isRewardAsset(address) view returns (bool)",
+  "function positions(uint256) view returns (address owner,uint128 amount,uint128 weighted,uint64 unlockAt,uint32 bundleId,bool closed)",
+  "function earned(uint256,address) view returns (uint256)",
+  "function claimNonces(uint256,address) view returns (uint256)",
+  "function scheduleReward(uint256,address,uint256,uint256)",
+  "function reservedRewards(address) view returns (uint256)",
+  "function balanceOf(address) view returns (uint256)",
+  "function allowance(address,address) view returns (uint256)",
+]);
+const TOKEN_APPROVAL_ABI = parseAbi(["function approve(address spender,uint256 amount) returns (bool)"]);
 
 // Product V4 stays opt-in until the operator configuration and frontend rollout are ready.
 const POOL_V2_PRODUCT_ROUTE_ENABLED = process.env["FEATURE_POOL_V2_ROUTE"]?.trim().toLowerCase() === "true";
@@ -96,6 +112,88 @@ const publicClient = createPublicClient({ chain, transport: http() });
 const walletClient = createWalletClient({ account: privateKeyToAccount(env("OPERATOR_PRIVATE_KEY") as Hex), chain, transport: http() });
 const db = await bunSqlDb();
 await migrate(db);
+
+const stockStakingAddressRaw = process.env["STOCK_STAKING_ADDR"]?.trim();
+const rewardPoolKeyRaw = process.env["REWARD_POOL_WALLET_PRIVATE_KEY"]?.trim();
+let stockStaking: ApiConfig["stockStaking"];
+if (stockStakingAddressRaw) {
+  if (!isAddress(stockStakingAddressRaw)) throw new Error("STOCK_STAKING_ADDR is not an address");
+  if (!rewardPoolKeyRaw) throw new Error("REWARD_POOL_WALLET_PRIVATE_KEY is required when stock staking is enabled");
+  const stakingAddress = getAddress(stockStakingAddressRaw);
+  const rewardPoolAccount = privateKeyToAccount(rewardPoolKeyRaw as Hex);
+  const rewardPoolWalletClient = createWalletClient({ account: rewardPoolAccount, chain, transport: http() });
+  const configuredPool = await publicClient.readContract({
+    address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "rewardPoolWallet",
+  });
+  if (getAddress(configuredPool) !== rewardPoolAccount.address) {
+    throw new Error("REWARD_POOL_WALLET_PRIVATE_KEY does not match the staking contract reward pool");
+  }
+  stockStaking = {
+    address: stakingAddress,
+    rewardPoolWallet: rewardPoolAccount.address,
+    ...(process.env["MASTER_ADMIN_KEY"] ? { masterAdminKey: process.env["MASTER_ADMIN_KEY"] } : {}),
+    createClaim: async ({ positionId, account, token }) => {
+      const [positionOwner, , , unlockAt] = await publicClient.readContract({
+        address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "positions", args: [positionId],
+      });
+      if (getAddress(positionOwner) !== account) throw new Error("This staking position belongs to another wallet");
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      if (BigInt(nowSeconds) < unlockAt) throw new Error("This position has not reached its unlock date");
+      const amount = await publicClient.readContract({
+        address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "earned", args: [positionId, token],
+      });
+      if (amount === 0n) throw new Error("No accrued reward is available for this token");
+      const [reserved, poolBalance, poolAllowance] = await Promise.all([
+        publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "reservedRewards", args: [token] }),
+        publicClient.readContract({ address: token, abi: STOCK_STAKING_ABI, functionName: "balanceOf", args: [rewardPoolAccount.address] }),
+        publicClient.readContract({ address: token, abi: STOCK_STAKING_ABI, functionName: "allowance", args: [rewardPoolAccount.address, stakingAddress] }),
+      ]);
+      if (poolBalance < reserved || poolAllowance < reserved) throw new Error("Reward pool is underfunded or its token approval is too low");
+      const nonce = await publicClient.readContract({
+        address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "claimNonces", args: [positionId, token],
+      });
+      const deadline = nowSeconds + 300;
+      const signature = await rewardPoolAccount.signTypedData({
+        domain: { name: "CurtainStockStaking", version: "1", chainId, verifyingContract: stakingAddress },
+        types: {
+          RewardClaim: [
+            { name: "positionId", type: "uint256" }, { name: "account", type: "address" },
+            { name: "token", type: "address" }, { name: "amount", type: "uint256" },
+            { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" },
+          ],
+        },
+        primaryType: "RewardClaim",
+        message: { positionId, account, token, amount, nonce, deadline: BigInt(deadline) },
+      });
+      return { amount, nonce, deadline, signature };
+    },
+    scheduleReward: async ({ bundleId, token, amount, duration }) => {
+      if (!(await publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "isRewardAsset", args: [token] }))) {
+        throw new Error("Token is not registered as a stock reward asset");
+      }
+      const [reserved, poolBalance, poolAllowance] = await Promise.all([
+        publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "reservedRewards", args: [token] }),
+        publicClient.readContract({ address: token, abi: STOCK_STAKING_ABI, functionName: "balanceOf", args: [rewardPoolAccount.address] }),
+        publicClient.readContract({ address: token, abi: STOCK_STAKING_ABI, functionName: "allowance", args: [rewardPoolAccount.address, stakingAddress] }),
+      ]);
+      if (poolBalance < reserved + amount) throw new Error("Reward pool wallet does not have enough of this token to cover existing rewards and the new schedule");
+      if (poolAllowance < reserved + amount) {
+        const approvalHash = await rewardPoolWalletClient.writeContract({
+          address: token, abi: TOKEN_APPROVAL_ABI, functionName: "approve", args: [stakingAddress, (1n << 256n) - 1n],
+        });
+        const approvalReceipt = await publicClient.waitForTransactionReceipt({ hash: approvalHash });
+        if (approvalReceipt.status !== "success") throw new Error("Reward pool token approval failed");
+      }
+      const hash = await walletClient.writeContract({
+        address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "scheduleReward",
+        args: [bundleId, token, amount, duration],
+      });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error("Reward schedule transaction reverted");
+      return hash;
+    },
+  };
+}
 
 const vault = env("VAULT_ADDR") as Address;
 const router = env("DEX_ROUTER_ADDR") as Address;
@@ -196,6 +294,7 @@ if (v3Operator) console.log(`V3 context ON: ${v3Vault}`);
 
 const api = createApi({
   db, operator, vault, tokens, keeperFeeBps, chainId, rpcUrl: env("RPC_HTTP"),
+  ...(stockStaking ? { stockStaking } : {}),
   ...(process.env["GROQ_API_KEY"] && process.env["GROQ_MODEL"] ? { chat: { apiKey: process.env["GROQ_API_KEY"], model: process.env["GROQ_MODEL"] } } : {}),
   minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
   ...(poolV2Publisher && poolV2Address && poolV2ManagerAddress ? { poolV4: { publisher: poolV2Publisher, pool: poolV2Address, rootManager: poolV2ManagerAddress } } : {}),

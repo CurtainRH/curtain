@@ -5,18 +5,22 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import { EIP712 } from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
-/// @notice CRTN staking with stock-token bundle rewards and a non-withdrawable reward treasury.
-/// @dev Reward assets and bundle definitions are append-only. Funding is permissionless and
-///      streams each constituent independently; configured weights describe the target mix,
-///      not a price-oracle-enforced market-value allocation.
-contract CurtainStockStaking is Ownable, ReentrancyGuard {
+/// @notice CRTN staking with stock rewards held in an EOA pool wallet.
+/// @dev The owner schedules rewards backed by wallet balance and allowance. Users claim with
+///      backend-signed vouchers and submit the transfer transaction themselves, paying gas.
+contract CurtainStockStaking is Ownable, ReentrancyGuard, EIP712 {
     using SafeERC20 for IERC20;
 
     uint256 public constant PRECISION = 1e18;
     uint256 public constant BPS = 10_000;
     uint256 public constant MAX_BUNDLE_ASSETS = 16;
     address public constant USDG = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
+    bytes32 private constant CLAIM_TYPEHASH = keccak256(
+        "RewardClaim(uint256 positionId,address account,address token,uint256 amount,uint256 nonce,uint256 deadline)"
+    );
 
     struct Bundle {
         string name;
@@ -40,6 +44,8 @@ contract CurtainStockStaking is Ownable, ReentrancyGuard {
     }
 
     IERC20 public immutable stakeToken;
+    address public rewardPoolWallet;
+    bool public rewardScheduleStarted;
     uint256 public bundleCount;
     uint256 public positionCount;
     uint256 public totalStaked;
@@ -55,6 +61,7 @@ contract CurtainStockStaking is Ownable, ReentrancyGuard {
     mapping(uint256 => Position) public positions;
     mapping(uint256 => mapping(address => uint256)) public rewardPerWeightPaid;
     mapping(uint256 => mapping(address => uint256)) public pendingRewards;
+    mapping(uint256 => mapping(address => uint256)) public claimNonces;
 
     event RewardAssetAdded(address indexed token);
     event BundleAdded(uint256 indexed bundleId, string name, address[] assets, uint16[] weightsBps);
@@ -66,9 +73,8 @@ contract CurtainStockStaking is Ownable, ReentrancyGuard {
         uint8 tier,
         uint64 unlockAt
     );
-    event RewardFunded(
-        uint256 indexed bundleId, address indexed token, address indexed funder, uint256 amount, uint256 duration
-    );
+    event RewardPoolWalletSet(address indexed wallet);
+    event RewardScheduled(uint256 indexed bundleId, address indexed token, uint256 amount, uint256 duration);
     event PositionKicked(uint256 indexed positionId, uint256 newWeight);
     event Withdrawn(uint256 indexed positionId, address indexed owner, uint256 principal);
     event RewardPaid(uint256 indexed positionId, address indexed owner, address indexed token, uint256 amount);
@@ -88,11 +94,26 @@ contract CurtainStockStaking is Ownable, ReentrancyGuard {
     error NotKickable();
     error FeeOnTransferUnsupported(address token, uint256 expected, uint256 received);
     error AmountTooLarge();
+    error RewardPoolNotConfigured();
+    error RewardPoolAlreadyActive();
+    error InsufficientPoolBacking(address token, uint256 required, uint256 balance, uint256 allowance);
+    error InvalidClaimSignature();
+    error ClaimExpired();
+    error NothingToClaim();
+    error ClaimExceedsAccrued(uint256 requested, uint256 accrued);
 
-    constructor(address admin, address crtn) Ownable(admin) {
+    constructor(address admin, address crtn) Ownable(admin) EIP712("CurtainStockStaking", "1") {
         if (admin == address(0) || crtn == address(0)) revert ZeroAddress();
         if (crtn.code.length == 0) revert InvalidAsset(crtn);
         stakeToken = IERC20(crtn);
+    }
+
+    /// @notice Set or correct the pool EOA before any reward schedule has started.
+    function setRewardPoolWallet(address wallet) external onlyOwner {
+        if (wallet == address(0) || wallet.code.length != 0) revert ZeroAddress();
+        if (rewardScheduleStarted) revert RewardPoolAlreadyActive();
+        rewardPoolWallet = wallet;
+        emit RewardPoolWalletSet(wallet);
     }
 
     function tier(uint8 t) public pure returns (uint64 lockSeconds, uint16 multiplierBps) {
@@ -176,29 +197,35 @@ contract CurtainStockStaking is Ownable, ReentrancyGuard {
         }
     }
 
-    /// @notice Anyone may fund an approved bundle constituent; no admin funding privilege is needed.
-    /// @dev Funding is an ERC-20 pull. Direct transfers do not create a reward schedule.
-    function fundReward(uint256 bundleId, address token, uint256 amount, uint256 duration) external nonReentrant {
+    /// @notice Schedule rewards already held in the pool wallet, after its approval to this contract.
+    function scheduleReward(uint256 bundleId, address token, uint256 amount, uint256 duration)
+        external
+        onlyOwner
+        nonReentrant
+    {
         if (!bundles[bundleId].exists || bundleWeightBps[bundleId][token] == 0) revert InvalidBundle();
         if (amount == 0) revert ZeroAmount();
         if (duration == 0) revert ZeroDuration();
+        address pool = rewardPoolWallet;
+        if (pool == address(0)) revert RewardPoolNotConfigured();
 
         RewardStream storage stream = rewardStreams[bundleId][token];
         _updateStream(bundleId, token);
-
-        uint256 beforeBalance = IERC20(token).balanceOf(address(this));
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-        uint256 received = IERC20(token).balanceOf(address(this)) - beforeBalance;
-        if (received != amount) revert FeeOnTransferUnsupported(token, amount, received);
-
         uint256 remaining =
             block.timestamp < stream.periodFinish ? (stream.periodFinish - block.timestamp) * stream.rate : 0;
+        uint256 required = reservedRewards[token] + amount;
+        uint256 poolBalance = IERC20(token).balanceOf(pool);
+        uint256 poolAllowance = IERC20(token).allowance(pool, address(this));
+        if (poolBalance < required || poolAllowance < required) {
+            revert InsufficientPoolBacking(token, required, poolBalance, poolAllowance);
+        }
         stream.rate = (amount + remaining) / duration;
         if (stream.rate == 0) revert EmissionTooSmall();
         stream.lastUpdate = block.timestamp;
         stream.periodFinish = block.timestamp + duration;
         reservedRewards[token] += amount;
-        emit RewardFunded(bundleId, token, msg.sender, amount, duration);
+        rewardScheduleStarted = true;
+        emit RewardScheduled(bundleId, token, amount, duration);
     }
 
     function stake(uint256 amount, uint8 tierId, uint256 bundleId) external nonReentrant returns (uint256 positionId) {
@@ -253,6 +280,7 @@ contract CurtainStockStaking is Ownable, ReentrancyGuard {
     function earned(uint256 positionId, address token) public view returns (uint256) {
         Position storage p = positions[positionId];
         if (p.owner == address(0) || !isRewardAsset[token] || bundleWeightBps[p.bundleId][token] == 0) return 0;
+        if (p.closed) return pendingRewards[positionId][token];
         RewardStream storage stream = rewardStreams[p.bundleId][token];
         uint256 accumulator = stream.rewardPerWeightStored;
         uint256 totalWeight = totalWeightedByBundle[p.bundleId];
@@ -264,7 +292,7 @@ contract CurtainStockStaking is Ownable, ReentrancyGuard {
             + (uint256(p.weighted) * (accumulator - rewardPerWeightPaid[positionId][token])) / PRECISION;
     }
 
-    /// @notice Return principal and all accrued bundle constituents after the selected lock expires.
+    /// @notice Return principal after lock expiry; stock rewards are claimed separately.
     function withdraw(uint256 positionId) external nonReentrant {
         Position storage p = positions[positionId];
         if (p.owner != msg.sender) revert NotPositionOwner();
@@ -279,23 +307,57 @@ contract CurtainStockStaking is Ownable, ReentrancyGuard {
         totalWeightedByBundle[bundleId] -= p.weighted;
 
         stakeToken.safeTransfer(msg.sender, p.amount);
-        address[] storage assets = bundleAssets[bundleId];
-        for (uint256 i; i < assets.length; ++i) {
-            address asset = assets[i];
-            uint256 reward = pendingRewards[positionId][asset];
-            pendingRewards[positionId][asset] = 0;
-            if (reward != 0) {
-                reservedRewards[asset] -= reward;
-                uint256 recipientBefore = IERC20(asset).balanceOf(msg.sender);
-                IERC20(asset).safeTransfer(msg.sender, reward);
-                uint256 recipientReceived = IERC20(asset).balanceOf(msg.sender) - recipientBefore;
-                if (recipientReceived != reward) {
-                    revert FeeOnTransferUnsupported(asset, reward, recipientReceived);
-                }
-                emit RewardPaid(positionId, msg.sender, asset, reward);
-            }
-        }
         emit Withdrawn(positionId, msg.sender, p.amount);
+    }
+
+    /// @notice Claim a backend-authorized reward from the EOA pool; the user submits and pays gas.
+    function claimReward(
+        uint256 positionId,
+        address token,
+        uint256 amount,
+        uint256 deadline,
+        bytes calldata signature
+    ) external nonReentrant {
+        Position storage p = positions[positionId];
+        if (p.owner != msg.sender) revert NotPositionOwner();
+        if (block.timestamp < p.unlockAt) revert PositionLocked(p.unlockAt);
+        if (!isRewardAsset[token] || bundleWeightBps[p.bundleId][token] == 0) revert InvalidAsset(token);
+        if (block.timestamp > deadline) revert ClaimExpired();
+        if (amount == 0) revert NothingToClaim();
+
+        uint256 bundleId = p.bundleId;
+        _updateBundle(bundleId);
+        if (!p.closed) _checkpoint(positionId, p);
+        uint256 accrued = pendingRewards[positionId][token];
+        if (amount > accrued) revert ClaimExceedsAccrued(amount, accrued);
+
+        uint256 nonce = claimNonces[positionId][token];
+        bytes32 structHash = keccak256(abi.encode(CLAIM_TYPEHASH, positionId, msg.sender, token, amount, nonce, deadline));
+        address signer = ECDSA.recover(_hashTypedDataV4(structHash), signature);
+        if (signer != rewardPoolWallet || signer == address(0)) revert InvalidClaimSignature();
+
+        claimNonces[positionId][token] = nonce + 1;
+        pendingRewards[positionId][token] = accrued - amount;
+        reservedRewards[token] -= amount;
+        uint256 recipientBefore = IERC20(token).balanceOf(msg.sender);
+        IERC20(token).safeTransferFrom(rewardPoolWallet, msg.sender, amount);
+        uint256 received = IERC20(token).balanceOf(msg.sender) - recipientBefore;
+        if (received != amount) revert FeeOnTransferUnsupported(token, amount, received);
+        emit RewardPaid(positionId, msg.sender, token, amount);
+    }
+
+    /// @notice Digest helper for the backend claim signer and client-side verification.
+    function rewardClaimDigest(
+        uint256 positionId,
+        address account,
+        address token,
+        uint256 amount,
+        uint256 deadline
+    ) external view returns (bytes32) {
+        bytes32 structHash = keccak256(
+            abi.encode(CLAIM_TYPEHASH, positionId, account, token, amount, claimNonces[positionId][token], deadline)
+        );
+        return _hashTypedDataV4(structHash);
     }
 
     function bundleAssetCount(uint256 bundleId) external view returns (uint256) {

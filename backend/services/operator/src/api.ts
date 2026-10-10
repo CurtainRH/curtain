@@ -44,6 +44,15 @@ export interface ApiConfig {
   chat?: { apiKey: string; model: string; fetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response> };
   poolV4?: { publisher: PoolV2RootPublisher; pool: Address; rootManager: Address };
   poolV4Legacy?: { publisher: PoolV2RootPublisher; pool: Address; rootManager: Address }[];
+  stockStaking?: {
+    address: Address;
+    rewardPoolWallet: Address;
+    masterAdminKey?: string;
+    createClaim: (args: { positionId: bigint; account: Address; token: Address }) => Promise<{
+      amount: bigint; deadline: number; nonce: bigint; signature: Hex;
+    }>;
+    scheduleReward: (args: { bundleId: bigint; token: Address; amount: bigint; duration: bigint }) => Promise<Hex>;
+  };
   contexts?: { v2: Omit<ApiConfig, "contexts">; v3?: Omit<ApiConfig, "contexts"> };
 }
 
@@ -53,7 +62,7 @@ export const MAX_SYNC_BODY = 420_000;
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body, (_, v) => (typeof v === "bigint" ? v.toString() : v)), {
     status,
-    headers: { "content-type": "application/json", "access-control-allow-origin": "*" },
+    headers: { "content-type": "application/json", "access-control-allow-origin": "*", "cache-control": "no-store" },
   });
 
 /** In-memory rate limiting map (IP -> request bucket). */
@@ -75,6 +84,15 @@ function checkRate(key: string, limit: number, windowMs = 60_000): boolean {
   return true;
 }
 
+function constantTimeEqual(a: string, b: string): boolean {
+  const left = new TextEncoder().encode(a);
+  const right = new TextEncoder().encode(b);
+  let difference = left.length ^ right.length;
+  const length = Math.max(left.length, right.length);
+  for (let i = 0; i < length; i++) difference |= (left[i] ?? 0) ^ (right[i] ?? 0);
+  return difference === 0;
+}
+
 export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
   const now = cfg.now ?? (() => Math.floor(Date.now() / 1000));
   const developerApi = createDeveloperApi(cfg);
@@ -92,7 +110,7 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
 
     try {
       if (req.method === "OPTIONS") {
-        return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, PUT", "access-control-allow-headers": "content-type" } });
+        return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, PUT", "access-control-allow-headers": "content-type,x-master-admin-key" } });
       }
       if (pathname === "/rpc") {
         if (!rpcProxy) return json({ error: "RPC proxy is not configured" }, 503);
@@ -100,6 +118,45 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         return await rpcProxy(req);
       }
       if (req.method === "GET" && pathname === "/health") return json({ status: "ok" });
+
+      if (pathname.startsWith("/staking/") || pathname.startsWith("/admin/staking/")) {
+        const staking = cfg.stockStaking;
+        if (!staking) return json({ error: "Stock-bundle staking is not configured" }, 503);
+        if (req.method === "GET" && pathname === "/staking/config") {
+          return json({ enabled: true, chainId: cfg.chainId ?? 4663, staking: staking.address, rewardPoolWallet: staking.rewardPoolWallet });
+        }
+        if (req.method === "POST" && pathname === "/staking/claim-signature") {
+          if (!checkRate(`staking-claim:${clientIp}`, 20)) return json({ error: "Too many claim requests. Please wait a moment." }, 429);
+          const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+          const positionId = typeof body?.positionId === "string" && /^(0|[1-9]\d*)$/.test(body.positionId) ? BigInt(body.positionId) : -1n;
+          const account = typeof body?.account === "string" && isAddress(body.account) ? getAddress(body.account) : undefined;
+          const token = typeof body?.token === "string" && isAddress(body.token) ? getAddress(body.token) : undefined;
+          if (positionId < 1n || !account || !token) return json({ error: "positionId, account, and token are required" }, 400);
+          let claim: Awaited<ReturnType<typeof staking.createClaim>>;
+          try { claim = await staking.createClaim({ positionId, account, token }); }
+          catch (error) {
+            const message = error instanceof Error ? error.message : "Unable to prepare claim";
+            const status = message.includes("belongs to another wallet") ? 403 : message.includes("underfunded") ? 503 : 400;
+            return json({ error: message }, status);
+          }
+          return json({ staking: staking.address, positionId, account, token, amount: claim.amount, nonce: claim.nonce, deadline: claim.deadline, signature: claim.signature });
+        }
+        if (req.method === "POST" && pathname === "/admin/staking/rewards") {
+          if (!staking.masterAdminKey) return json({ error: "Admin reward scheduling is not configured" }, 503);
+          const supplied = req.headers.get("x-master-admin-key") ?? "";
+          if (!constantTimeEqual(supplied, staking.masterAdminKey)) return json({ error: "Unauthorized" }, 401);
+          if (!checkRate(`staking-admin:${clientIp}`, 20)) return json({ error: "Too many admin requests" }, 429);
+          const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+          const bundleId = typeof body?.bundleId === "string" && /^[1-9]\d*$/.test(body.bundleId) ? BigInt(body.bundleId) : 0n;
+          const token = typeof body?.token === "string" && isAddress(body.token) ? getAddress(body.token) : undefined;
+          const amount = typeof body?.amount === "string" && /^[1-9]\d*$/.test(body.amount) ? BigInt(body.amount) : 0n;
+          const duration = typeof body?.durationSeconds === "string" && /^[1-9]\d*$/.test(body.durationSeconds) ? BigInt(body.durationSeconds) : 0n;
+          if (bundleId === 0n || !token || amount === 0n || duration === 0n) return json({ error: "bundleId, token, positive raw amount, and durationSeconds are required" }, 400);
+          const txHash = await staking.scheduleReward({ bundleId, token, amount, duration });
+          return json({ ok: true, txHash, bundleId, token, amount, durationSeconds: duration }, 201);
+        }
+        return json({ error: "not found" }, 404);
+      }
 
       // Curtain Chat's MVP is deliberately pinned to the normal V2 vault flow. The model may
       // suggest token symbols and an amount, but it never chooses a route or returns calldata.

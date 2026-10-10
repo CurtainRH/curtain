@@ -64,6 +64,9 @@ In Render Dashboard: **New → Web Service → Existing Image**
   - `CHAIN_ID`: `4663`
   - `RPC_HTTP`: Dedicated Robinhood Chain RPC URL
   - `OPERATOR_PRIVATE_KEY`: The operator wallet private key
+  - `STOCK_STAKING_ADDR`: `0x0852E2B555090dFc537207f3cB2d9D936eDa2e7A`
+  - `REWARD_POOL_WALLET_PRIVATE_KEY`: reward-pool EOA key; keep only on the operator service (never frontend/keeper)
+  - `MASTER_ADMIN_KEY`: strong private admin secret used only for the operator's reward-scheduling endpoint; never expose it in a frontend bundle
   - `VAULT_ADDR`: `vault` address from `deployments/4663.json`
   - `TOKENS`: *(Optional)* Custom token map as JSON. If omitted, defaults to all 45 verified Robinhood Chain tokens built into the SDK.
   - `DEX_ROUTER_ADDR`: `0xcaf681a66d020601342297493863e78c959e5cb2`
@@ -112,7 +115,7 @@ In your GitHub Repository **Settings → Secrets and variables → Actions**, ad
 When code is pushed to `main`, GitHub Actions will build the container image and trigger both deploy hooks automatically.
 
 ### Step 5: Verification
-Check that `https://<operator>.onrender.com/health` returns `{"status":"ok"}`, and `/config` returns the deployed vault address and supported tokens.
+Check that `https://<operator>.onrender.com/health` returns `{"status":"ok"}`, and `/config` returns the deployed vault address and supported tokens. With `STOCK_STAKING_ADDR` set, `/staking/config` should return the staking and pool-wallet addresses. The operator serves `POST /staking/claim-signature` for matured owner positions and `POST /admin/staking/rewards` (header `x-master-admin-key`) to schedule already-backed pool inventory; no admin UI is required.
 
 ## 3. Monitoring
 
@@ -139,11 +142,12 @@ Alert yourself on any 503.
 
 The original `CurtainStaking` contract is the legacy single-reward-token implementation. The stock-bundle staking contract is separate:
 
-- `CurtainStockStaking`: `0xf97DE94DA75923e31c5a8cdf8C048E611aDe3892`
+- `CurtainStockStaking`: `0x0852E2B555090dFc537207f3cB2d9D936eDa2e7A`
+- Reward pool EOA: `0x5368049BBb06859e2fC9E78e315b164614097F67`
 - CRTN principal token: `0x66a844fcbf4705dbde3c97394d5a4c9822e8f35b`
-- The staking contract address is also the stock-reward treasury; there is no owner withdrawal/rescue function.
+- Stock rewards remain in the EOA pool wallet; the staking contract holds CRTN principal and reward accounting only.
 
-Anyone can fund a bundle constituent by approving the staking contract and calling `fundReward(bundleId, token, amount, duration)`. Funding is per stock token; a plain transfer to the contract does not create an emission. Bundle definitions are immutable and new bundles/assets are append-only. See [`CRTN_STOCK_BUNDLE_STAKING.md`](CRTN_STOCK_BUNDLE_STAKING.md) for the deployed bundle IDs and funding details.
+Send each stock token directly to the pool EOA. Before reward schedules can be created, the pool EOA must approve the staking contract for each token (one-time; the pool wallet needs a small ETH balance to pay approval gas). The operator then calls `scheduleReward(bundleId, token, amount, duration)`. At maturity, users withdraw CRTN principal and separately claim stock rewards using a backend signature; each user submits the claim and pays its gas. Bundle definitions are immutable and new bundles/assets are append-only. See [`CRTN_STOCK_BUNDLE_STAKING.md`](CRTN_STOCK_BUNDLE_STAKING.md) for details.
 
 ## Day-to-day
 

@@ -19,21 +19,26 @@ contract DeployCurtainStockStakingScript is Script {
         string memory json = vm.readFile(path);
         address operator = json.readAddress(".operator");
         uint256 key = vm.envUint("OPERATOR_PRIVATE_KEY");
+        uint256 poolKey = vm.envUint("REWARD_POOL_WALLET_PRIVATE_KEY");
         address deployer = vm.addr(key);
+        address rewardPool = vm.addr(poolKey);
         require(deployer == operator, "key must match configured operator");
+        require(rewardPool != address(0), "reward pool key invalid");
         require(CRTN.code.length > 0, "CRTN contract missing");
 
         vm.startBroadcast(key);
         CurtainStockStaking staking = new CurtainStockStaking(deployer, CRTN);
+        staking.setRewardPoolWallet(rewardPool);
         _addInitialBundles(staking, json);
         vm.stopBroadcast();
 
         console.log("CurtainStockStaking:", address(staking));
         console.log("CRTN principal token:", CRTN);
         console.log("Owner / add-only registry:", deployer);
+        console.log("Reward pool EOA:", rewardPool);
         console.log("Bundles:", staking.bundleCount());
         console.log("Reward assets:", staking.rewardAssetCount());
-        console.log("Anyone may fund registered bundle constituents; there is no withdrawal/rescue method.");
+        console.log("Users submit signed reward claims and pay gas; stock inventory remains in the pool EOA.");
     }
 
     function _addInitialBundles(CurtainStockStaking staking, string memory json) internal {

@@ -69,6 +69,8 @@
   "poolV4VerifierAdapter": "0x0a997c29065e765DF0C66FB746D2683fDfEc8fd5",
   "poolV4UnshieldVerifierAdapter": "0x64260f018073e5E9710A150C2a0938A4Cb57100B",
   "vault": "0xF9381841e982648c178E762116A437Ecbcf12Bbd",
-  "stockStaking": "0xf97DE94DA75923e31c5a8cdf8C048E611aDe3892",
+  "stockStaking": "0x0852E2B555090dFc537207f3cB2d9D936eDa2e7A",
+  "stockRewardPoolWallet": "0x5368049BBb06859e2fC9E78e315b164614097F67",
+  "stockStakingWalletBackedSuperseded": "0xf97DE94DA75923e31c5a8cdf8C048E611aDe3892",
   "stockStakingSupersededEmpty": "0xf024145CcCb2d67185FB7883Ca891456cba72454"
 }
