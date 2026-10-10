@@ -48,7 +48,7 @@ export interface ApiConfig {
     address: Address;
     rewardPoolWallet: Address;
     config: () => Promise<{ bundles: unknown[] }>;
-    quoteStake: (args: { account: Address; amount: bigint; tierId: number; bundleId: bigint }) => Promise<{ principalUsd: bigint; deadline: number; signature: Hex }>;
+    quoteStake: (args: { account: Address; amount: bigint; tierId: number; bundleId: bigint }) => Promise<{ principalUsd: bigint; priceSource: "uniswap-v3-v4" | "codex.io"; deadline: number; signature: Hex }>;
     createClaim: (args: { positionId: bigint; account: Address }) => Promise<{ rewardUsd: bigint; tokens: Address[]; amounts: bigint[]; deadline: number; signature: Hex }>;
   };
   contexts?: { v2: Omit<ApiConfig, "contexts">; v3?: Omit<ApiConfig, "contexts"> };

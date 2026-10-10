@@ -9,9 +9,9 @@ Curtain staking lets a user lock CRTN for a fixed period and earn a USDG-valued 
 - 90 days: 1.5× multiplier (6% APR).
 - 180 days: 2× multiplier (8% APR).
 - Accrual stops at the position's fixed maturity; it is not compounded.
-- At stake time, the operator signs a current best-available Uniswap V3/V4 CRTN→USDG quote. The contract stores that USDG-denominated principal value.
+- At stake time, the operator first checks the best available Uniswap V3/V4 CRTN→USDG quote. If neither venue has a quote, it can use Codex.io's CRTN USD market price and treat USD as equivalent to USDG at 1:1. The source is shown to the user before approval; the operator signs the resulting USDG-denominated principal value.
 - At maturity, accrued USDG value is split by the chosen bundle weights. The operator checks supported Uniswap V3 fee tiers and standard V4 pools for each USDG→stock quote, selects the highest output for that exact amount, and the reward-pool EOA signs one complete claim package.
-- V3 and V4 quote coverage depends on actual pool liquidity. The current deployment has quotes for the Market Core and Platform Leaders assets, and V3 quotes for SMH and TSM. It currently has no direct CRTN/USDG quote on either venue (nor a CRTN/WETH V3/V4 hop), so stake quotes remain unavailable until a supported CRTN market/pricing source exists. A one-off swap is not a durable price oracle.
+- V3 and V4 quote coverage depends on actual pool liquidity. The current deployment has quotes for the Market Core and Platform Leaders assets, and V3 quotes for SMH and TSM. It has no direct CRTN/USDG quote on either venue (nor a CRTN/WETH V3/V4 hop), so Codex.io is the configured off-chain fallback for CRTN valuation. The fallback requires a positive market price and reported liquidity; a one-off swap is not treated as a durable price oracle.
 - The user submits one atomic bundle claim. If any constituent is underfunded or lacks allowance, the transaction reverts as a whole and the accrued reward remains claimable. The principal can be withdrawn independently after maturity.
 
 The stock pool is an inventory source, not an independent yield source. Pool inventory shortages can delay claims. There is no admin-created schedule or manual reward amount: the contract computes the user's entitlement from the signed stake-time USDG valuation and fixed APR terms.
@@ -20,7 +20,7 @@ The stock pool is an inventory source, not an independent yield source. Pool inv
 
 - The operator key signs stake-time price attestations and owns the contract; it cannot withdraw users' CRTN principal.
 - The reward-pool EOA signs claim packages and grants token allowances to the staking contract when needed. Its private key must remain server-side as `REWARD_POOL_WALLET_PRIVATE_KEY`.
-- The pool wallet must hold enough of every constituent in a user's selected bundle. A lack of inventory or a missing V4 quote prevents claim authorization; it does not consume accrued entitlement.
+- The pool wallet must hold enough of every constituent in a user's selected bundle. A lack of inventory or an unavailable V3/V4 quote prevents claim authorization; it does not consume accrued entitlement.
 - Existing bundle definitions are immutable. The owner can append new bundles and assets; it cannot edit existing mixes through this contract.
 - Users submit and pay gas for stake, principal withdrawal, and stock-bundle claim transactions.
 
@@ -32,10 +32,14 @@ Set these on the operator service:
 STOCK_STAKING_ADDR=<deployed CurtainStockStaking address>
 STOCK_STAKING_START_BLOCK=<deployment block>
 REWARD_POOL_WALLET_PRIVATE_KEY=<server-side reward-pool EOA key>
+CODEX_IO_API_KEY=<server-side Codex.io market-data key>
+UNISWAP_QUOTER_ADDR=<configured Uniswap V3 QuoterV2>
+DEX_ROUTER_ADDR=<configured Uniswap V3 router>
+V4_ADAPTER_ADDR=<configured Uniswap V4 adapter>
 V4_QUOTER_ADDR=<configured Uniswap V4 quoter>
 ```
 
-The frontend fetches the active staking address and bundle definitions from `/api/curtain/staking/config`; do not configure private keys or quote secrets in frontend variables.
+The frontend fetches the active staking address and bundle definitions from `/api/curtain/staking/config`; do not configure private keys, Codex keys, or quote secrets in frontend variables.
 
 ## Deployment
 

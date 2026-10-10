@@ -34,6 +34,7 @@
  *   STOCK_STAKING_ADDR         fixed-term CurtainStockStaking deployment (optional)
  *   REWARD_POOL_WALLET_PRIVATE_KEY EOA key for stock-bundle claim signing/approvals; operator only
  *   STOCK_STAKING_START_BLOCK  first block of current staking contract (for dashboard position history)
+ *   CODEX_IO_API_KEY           server-only Codex.io fallback for CRTN/USDG staking valuation
  */
 import { bunSqlDb, migrate } from "@curtain/db";
 import { DEFAULT_TOKENS } from "@curtain/sdk";
@@ -43,6 +44,7 @@ import { createApi, type ApiConfig } from "./api";
 import { createMcpApi } from "./mcp";
 import { Operator, type StealthConfig } from "./operator";
 import { mockQuoter, mockRoute, uniswapQuoter, uniswapRoute } from "./routes";
+import { createCodexUsdgPricer } from "./codexPricing";
 import { PoolV2RootPublisher } from "./poolV2";
 
 const STOCK_STAKING_ABI = parseAbi([
@@ -146,6 +148,8 @@ if (stockStakingAddressRaw) {
   });
   const usdg = getAddress("0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168");
   const crtn = getAddress("0x66A844fcbf4705Dbde3c97394d5a4C9822E8F35b");
+  const codexApiKey = process.env["CODEX_IO_API_KEY"]?.trim();
+  const codexPriceCrtn = codexApiKey ? createCodexUsdgPricer({ apiKey: codexApiKey, chainId }) : undefined;
   const symbolFor = new Map(Object.entries(DEFAULT_TOKENS).filter((entry): entry is [string, Address] => typeof entry[1] === "string").map(([symbol, address]) => [getAddress(address), symbol]));
   const getBundle = (bundleId: bigint) => publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "getBundle", args: [bundleId] });
   const bundleConfig = async () => {
@@ -162,7 +166,14 @@ if (stockStakingAddressRaw) {
     config: bundleConfig,
     quoteStake: async ({ account, amount, tierId, bundleId }) => {
       const quote = await quoteBest(crtn, usdg, amount);
-      if (quote.amountOut <= 0n) throw new Error("A live CRTN/USDG market quote is not available on Uniswap V3 or V4 right now.");
+      let principalUsd = quote.amountOut;
+      let priceSource: "uniswap-v3-v4" | "codex.io" = "uniswap-v3-v4";
+      if (principalUsd <= 0n) {
+        if (!codexPriceCrtn) throw new Error("A live CRTN/USDG market quote is unavailable and Codex.io pricing is not configured.");
+        principalUsd = await codexPriceCrtn(crtn, amount);
+        priceSource = "codex.io";
+      }
+      if (principalUsd <= 0n) throw new Error("The CRTN price quote is too small to value this stake.");
       const nonce = await publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "stakeQuoteNonces", args: [account] });
       const deadline = Math.floor(Date.now() / 1000) + 300;
       const signature = await walletClient.signTypedData({
@@ -171,9 +182,9 @@ if (stockStakingAddressRaw) {
         types: { StakeQuote: [
           { name: "account", type: "address" }, { name: "amount", type: "uint256" }, { name: "tierId", type: "uint8" },
           { name: "bundleId", type: "uint256" }, { name: "principalUsd", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" },
-        ] }, primaryType: "StakeQuote", message: { account, amount, tierId, bundleId, principalUsd: quote.amountOut, nonce, deadline: BigInt(deadline) },
+        ] }, primaryType: "StakeQuote", message: { account, amount, tierId, bundleId, principalUsd, nonce, deadline: BigInt(deadline) },
       });
-      return { principalUsd: quote.amountOut, deadline, signature };
+      return { principalUsd, priceSource, deadline, signature };
     },
     createClaim: async ({ positionId, account }) => {
       const [positionOwner, , , , , unlockAt, bundleId] = await publicClient.readContract({

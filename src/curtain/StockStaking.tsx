@@ -15,6 +15,7 @@ const ABI = parseAbi([
 ]);
 type Bundle = { id: number; name: string; assets: { address: Address; symbol: string; weightBps: number }[] };
 type Position = { id: bigint; amount: bigint; principalUsd: bigint; rewardUsd: bigint; unlockAt: bigint; bundleId: bigint; withdrawn: boolean };
+type StakeQuote = { account: string; amount: string; tierId: number; bundleId: number; principalUsd: string; priceSource: "uniswap-v3-v4" | "codex.io"; deadline: number; signature: `0x${string}` };
 const tierOptions = [{ days: 30, multiplier: "1×" }, { days: 90, multiplier: "1.5×" }, { days: 180, multiplier: "2×" }];
 const timeLeft = (unlockAt: bigint) => {
   const seconds = Number(unlockAt) - Math.floor(Date.now() / 1000);
@@ -36,6 +37,7 @@ export default function StockStaking() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [configured, setConfigured] = useState<boolean | null>(null);
+  const [stakeQuote, setStakeQuote] = useState<StakeQuote>();
 
   const walletClient = () => {
     const p = provider();
@@ -85,6 +87,25 @@ export default function StockStaking() {
   }
 
   const selectedBundle = bundles.find(bundle => bundle.id === bundleId);
+  const quoteMatchesSelection = stakeQuote?.account.toLowerCase() === wallet?.toLowerCase() && stakeQuote?.amount === amount && stakeQuote.tierId === tier && stakeQuote.bundleId === bundleId;
+  const requestStakeQuote = () => void transact(async () => {
+    const value = parseUnits(amount, 18);
+    if (value <= 0n || balance === undefined || value > balance) throw new Error("Enter an amount within your available CRTN balance.");
+    const response = await fetch("/api/curtain/staking/stake-quote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ account: wallet, amount: value.toString(), tierId: tier, bundleId: String(bundleId) }) });
+    const quote = await response.json() as { principalUsd?: string; priceSource?: StakeQuote["priceSource"]; deadline?: number; signature?: `0x${string}`; error?: string };
+    if (!response.ok || !quote.principalUsd || !quote.deadline || !quote.signature || !quote.priceSource) throw new Error(quote.error || "A current CRTN/USDG quote is unavailable.");
+    setStakeQuote({ account: wallet!, amount, tierId: tier, bundleId, principalUsd: quote.principalUsd, priceSource: quote.priceSource, deadline: quote.deadline, signature: quote.signature });
+  }, "Stake quote ready. Review the valuation source before approving and staking.");
+  const confirmStake = () => void transact(async () => {
+    if (!quoteMatchesSelection || !stakeQuote || stakeQuote.deadline <= Math.floor(Date.now() / 1000)) throw new Error("This quote has expired or no longer matches your selection. Request a new quote.");
+    const value = parseUnits(amount, 18);
+    if (balance === undefined || value <= 0n || value > balance) throw new Error("Enter an amount within your available CRTN balance.");
+    await ensureChain(); const client = walletClient();
+    const allowance = await publicClient.readContract({ address: CRTN, abi: erc20Abi, functionName: "allowance", args: [wallet as Address, staking!] });
+    if (allowance < value) { const hash = await client.writeContract({ address: CRTN, abi: erc20Abi, functionName: "approve", args: [staking!, value] }); await publicClient.waitForTransactionReceipt({ hash }); }
+    await send("stake", [value, tier, BigInt(bundleId), BigInt(stakeQuote.principalUsd), BigInt(stakeQuote.deadline), stakeQuote.signature]);
+    setAmount(""); setStakeQuote(undefined);
+  }, "CRTN locked. Your stock-bundle reward accrues at the selected rate until maturity.");
   return <div className="stock-staking-page">
     <header className="stock-staking-heading"><div><p className="eyebrow">CRTN · STOCK REWARDS</p><h1>Stake Curtain</h1><p>Lock CRTN for a fixed term and receive stock-token rewards in your chosen bundle.</p></div>
       <button className="text-button" onClick={() => void refresh()} disabled={busy}><RefreshCw size={15} /> Refresh</button></header>
@@ -95,21 +116,15 @@ export default function StockStaking() {
       <section className="panel form-panel stock-staking-card">
         <p className="eyebrow">CREATE A POSITION</p><h2>Choose your lock</h2>
         <label className="field-label" htmlFor="stock-stake-amount">Amount · CRTN {balance !== undefined ? `· Balance ${formatUnits(balance, 18)}` : ""}</label>
-        <input id="stock-stake-amount" inputMode="decimal" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
-        <p className="field-label">Stock bundle</p><div className="stock-bundle-options">{bundles.map(bundle => <button key={bundle.id} className="panel" aria-pressed={bundleId === bundle.id} onClick={() => setBundleId(bundle.id)}><strong>{bundle.name}</strong><small>{bundle.assets.map(asset => `${asset.symbol} ${asset.weightBps / 100}%`).join(" · ")}</small></button>)}</div>
-        <p className="field-label">Lock period</p><div className="stock-lock-options">{tierOptions.map((item, i) => <button key={item.days} className="panel" aria-pressed={tier === i} onClick={() => setTier(i)}><strong>{item.days} days</strong><small>{item.multiplier} multiplier · {4 * Number(item.multiplier.replace("×", ""))}% APR</small></button>)}</div>
-        <button className="button gold" disabled={busy || !wallet || configured !== true || !amount || !selectedBundle} onClick={() => void transact(async () => {
-          const value = parseUnits(amount, 18);
-          if (value <= 0n || balance === undefined || value > balance) throw new Error("Enter an amount within your available CRTN balance.");
-          const quoteResponse = await fetch("/api/curtain/staking/stake-quote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ account: wallet, amount: value.toString(), tierId: tier, bundleId: String(bundleId) }) });
-          const quote = await quoteResponse.json() as { principalUsd?: string; deadline?: number; signature?: `0x${string}`; error?: string };
-          if (!quoteResponse.ok || !quote.principalUsd || !quote.deadline || !quote.signature) throw new Error(quote.error || "A current CRTN/USDG quote is unavailable.");
-          await ensureChain(); const client = walletClient();
-          const allowance = await publicClient.readContract({ address: CRTN, abi: erc20Abi, functionName: "allowance", args: [wallet as Address, staking!] });
-          if (allowance < value) { const hash = await client.writeContract({ address: CRTN, abi: erc20Abi, functionName: "approve", args: [staking!, value] }); await publicClient.waitForTransactionReceipt({ hash }); }
-          await send("stake", [value, tier, BigInt(bundleId), BigInt(quote.principalUsd), BigInt(quote.deadline), quote.signature]); setAmount("");
-        }, "CRTN locked. Your stock-bundle reward accrues at the selected rate until maturity.")}>
-          {busy ? "Processing…" : wallet ? "Stake CRTN" : "Connect wallet to stake"}
+        <input id="stock-stake-amount" inputMode="decimal" placeholder="0.00" value={amount} onChange={e => { setAmount(e.target.value); setStakeQuote(undefined); }} />
+        <p className="field-label">Stock bundle</p><div className="stock-bundle-options">{bundles.map(bundle => <button key={bundle.id} className="panel" aria-pressed={bundleId === bundle.id} onClick={() => { setBundleId(bundle.id); setStakeQuote(undefined); }}><strong>{bundle.name}</strong><small>{bundle.assets.map(asset => `${asset.symbol} ${asset.weightBps / 100}%`).join(" · ")}</small></button>)}</div>
+        <p className="field-label">Lock period</p><div className="stock-lock-options">{tierOptions.map((item, i) => <button key={item.days} className="panel" aria-pressed={tier === i} onClick={() => { setTier(i); setStakeQuote(undefined); }}><strong>{item.days} days</strong><small>{item.multiplier} multiplier · {4 * Number(item.multiplier.replace("×", ""))}% APR</small></button>)}</div>
+        {quoteMatchesSelection && stakeQuote && <div className="stock-staking-notice" role="status">
+          <strong>Stake valuation: {formatUnits(BigInt(stakeQuote.principalUsd), 6)} USDG</strong>
+          <p>Price source: {stakeQuote.priceSource === "codex.io" ? "Codex.io market data (USD price treated as USDG equivalent)" : "Uniswap V3/V4 live quote"}. Review this valuation before continuing.</p>
+        </div>}
+        <button className="button gold" disabled={busy || !wallet || configured !== true || !amount || !selectedBundle} onClick={quoteMatchesSelection ? confirmStake : requestStakeQuote}>
+          {busy ? "Processing…" : !wallet ? "Connect wallet to stake" : quoteMatchesSelection ? "Approve & stake CRTN" : "Get stake quote"}
         </button>
         {!wallet && <button className="text-button" onClick={connect}>Connect wallet</button>}
         <p className="field-help">The base rate is 4% APR. The 30-, 90-, and 180-day locks use 1×, 1.5×, and 2× multipliers. Your CRTN is valued in USDG when you stake; rewards stop at the end of the selected lock.</p>

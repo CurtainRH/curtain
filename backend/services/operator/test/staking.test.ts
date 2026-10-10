@@ -19,7 +19,7 @@ async function makeApi(staking = true) {
     ...(staking ? { stockStaking: {
       address: STAKING, rewardPoolWallet: POOL,
       config: async () => ({ bundles: [{ id: 1, name: "Market Core" }] }),
-      quoteStake: async () => ({ principalUsd: 1_000_000n, deadline: 1_800_000_000, signature: "0xabcd" as Hex }),
+      quoteStake: async () => ({ principalUsd: 1_000_000n, priceSource: "codex.io", deadline: 1_800_000_000, signature: "0xabcd" as Hex }),
       createClaim: async () => ({ rewardUsd: 123n, tokens: TOKENS, amounts: [10n, 20n], deadline: 1_800_000_000, signature: "0xbeef" as Hex }),
     } } : {}),
   });
@@ -38,7 +38,7 @@ describe("stock staking API", () => {
     const { api } = await makeApi();
     const response = await api(new Request("http://operator/staking/stake-quote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ account: ALICE, amount: "1000000000000000000", tierId: 1, bundleId: "1" }) }));
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ staking: STAKING, account: ALICE, amount: "1000000000000000000", tierId: 1, bundleId: "1", principalUsd: "1000000", signature: "0xabcd" });
+    expect(await response.json()).toMatchObject({ staking: STAKING, account: ALICE, amount: "1000000000000000000", tierId: 1, bundleId: "1", principalUsd: "1000000", priceSource: "codex.io", signature: "0xabcd" });
   });
 
   test("returns a single signed all-bundle claim package", async () => {
