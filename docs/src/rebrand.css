@@ -1,8 +1,20 @@
-:root { background: #050505; color: #f5f5f5; --gold: #ff6a1a; --muted: #aaa; }
-body { background: radial-gradient(ellipse at 90% 0%, #ff6a1a16, transparent 30rem), #050505; }
-header { background: #080808ed; border-bottom-color: #ffffff24; }
-.brand { display: inline-flex; gap: 12px; align-items: center; color: #fff; }
+:root { color-scheme: light; background: #f7f6f3; color: #191919; --gold: #e9511c; --muted: #68625c; }
+body { color: #24211e; background: radial-gradient(ellipse at 90% 0%, #ff6a1a16, transparent 30rem), #f7f6f3; }
+header { color: #191919; background: #fffffff2; border-bottom-color: #24201c20; }
+.brand { display: inline-flex; gap: 12px; align-items: center; color: #191919; }
 .brand > span:last-child { margin-left: 0; }
-.base-url, .code { background: #111; border-color: #ffffff24; }
-code { color: #ffb38a; }
+.layout, main, section { color: #24211e; }
+aside { color: #39332e; }
+.nav-label, .eyebrow { color: #c94716; }
+nav a { color: #625d58; border-left-color: #24201c20; }
+nav a:hover, nav a[aria-current] { color: #c94716; border-left-color: #f15a24; background: #f15a240c; }
+p, li, .network, .code-title { color: #625d58; }
+.dashboard-link { color: #c94716; border-color: #f15a2460; }
+.base-url { color: #24211e; background: #fff; border-color: #24201c24; }
+.code { color: #24211e; background: #fff; border-color: #24201c24; }
+.code-title { border-bottom-color: #24201c20; }
+code { color: #a33e16; }
+.flow div { border-top-color: #f15a2475; }
+.flow b { color: #c94716; }
+section { border-bottom-color: #24201c20; }
 @media (max-width: 520px) { .brand { gap: 8px; font-size: 22px; } .brand > span:last-child { display: none; } }
