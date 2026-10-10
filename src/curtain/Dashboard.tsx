@@ -1559,8 +1559,8 @@ export default function Dashboard({ path }: { path: string }) {
                     <RouteLink to="/app/swap">
                       Swap privately <ArrowUpRight size={16} />
                     </RouteLink>
-                    <RouteLink to="/app/stake">
-                      Earn up to 2× rewards <ArrowUpRight size={16} />
+                    <RouteLink to="/app/staking">
+                      Stake CRTN for stock bundles <ArrowUpRight size={16} />
                     </RouteLink>
                     <p>Lending coming soon.</p>
                   </section>
@@ -1571,9 +1571,13 @@ export default function Dashboard({ path }: { path: string }) {
                   </div>
                   {rows(true)}
                 </section>
-                <div className="v2-section">
-                  {stakeToken ? positionTable() : <Note>Staking opens when $CRTN launches.</Note>}
-                </div>
+                <section className="panel v2-section">
+                  <div className="panel-heading">
+                    <div><p className="eyebrow">CRTN · STOCK REWARDS</p><h2>Stake CRTN for stock bundles</h2></div>
+                    <RouteLink to="/app/staking">Explore staking <ArrowUpRight size={16} /></RouteLink>
+                  </div>
+                  <p className="field-help">Choose a stock mix and a fixed lock period. Your reward is calculated from your CRTN stake and paid in the selected bundle when the lock ends.</p>
+                </section>
               </>
             )}
             {current.id === "swap" && (
