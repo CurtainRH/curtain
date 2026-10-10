@@ -121,7 +121,7 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
           "Use only these exact token symbols: " + symbols.join(", "),
           "Never invent token addresses, quote amounts, calldata, execution status, or fees. Do not execute anything.",
           "Only propose a swap when the user clearly gives an input amount/token and an output token. Ask a concise follow-up otherwise.",
-          "The only supported route for this MVP is Curtain V2. Do not suggest or claim another route.",
+          "Dynamic Privacy selects the route on the server. Never choose, imply, or invent a route in your action; the application will disclose the selected route after quoting.",
           "Recipient is optional and must be a literal EVM address supplied by the user.",
         ].join("\n");
         const call = cfg.chat.fetch ?? fetch;
@@ -158,9 +158,81 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         return json({
           reply: action ? "Review the swap proposal below. Nothing is sent until you approve it in your wallet." : reply,
           action,
-          route: { id: "v2", label: "Curtain V2 · flexible-amount route" },
-          routeDisclosure: "Route for this request: Curtain V2 (flexible-amount route).",
         });
+      }
+
+      if (req.method === "POST" && pathname === "/chat/route") {
+        if (!checkRate(`chat-route:${clientIp}`, 60)) return json({ error: "Chat route-quote limit reached. Please wait a moment." }, 429);
+        if (Number(req.headers.get("content-length") ?? 0) > 8_192) return json({ error: "Payload too large" }, 413);
+        let body: Record<string, unknown>;
+        try { body = await req.json() as Record<string, unknown>; } catch { return json({ error: "Invalid JSON" }, 400); }
+        const tokenIn = typeof body.tokenIn === "string" && isAddress(body.tokenIn) ? getAddress(body.tokenIn) : undefined;
+        const tokenOut = typeof body.tokenOut === "string" && isAddress(body.tokenOut) ? getAddress(body.tokenOut) : undefined;
+        const amountIn = typeof body.amountIn === "string" && /^[1-9]\d*$/.test(body.amountIn) ? BigInt(body.amountIn) : 0n;
+        if (!tokenIn || !tokenOut || amountIn <= 0n) return json({ error: "tokenIn, tokenOut, and a positive raw amount are required" }, 400);
+        const v2 = cfg.contexts?.v2 ?? cfg;
+        const v3 = cfg.contexts?.v3;
+        const v2Allowed = new Set(Object.values(v2.tokens).map((token) => getAddress(token)));
+        if (!v2Allowed.has(tokenIn) || !v2Allowed.has(tokenOut)) return json({ error: "token not supported" }, 400);
+        const label = (id: "v2" | "v3" | "v4") => id === "v4" ? "Curtain V4 · shielded pool" : id === "v3" ? "Curtain V3 · fixed denominations" : "Curtain V2 · flexible amounts";
+        const response = async (id: "v2" | "v3" | "v4", quote: Record<string, unknown>) => {
+          const routeLabel = label(id);
+          let reply = `For this swap, I’ll use ${routeLabel}. Nothing is sent until you approve it in your wallet.`;
+          if (cfg.chat?.apiKey && cfg.chat.model) {
+            const completion = await (cfg.chat.fetch ?? fetch)("https://api.groq.com/openai/v1/chat/completions", {
+              method: "POST",
+              headers: { authorization: `Bearer ${cfg.chat.apiKey}`, "content-type": "application/json" },
+              body: JSON.stringify({
+                model: cfg.chat.model, temperature: 0.2, max_tokens: 120, response_format: { type: "json_object" },
+                messages: [
+                  { role: "system", content: `You are Curtain Chat. Write one brief, friendly assistant message for this proposed swap. You MUST name the selected route exactly as: ${routeLabel}. Say nothing is submitted until the user approves in their wallet. Do not change the route, invent quote details, or claim execution. Return only JSON: {"reply":"..."}.` },
+                  { role: "user", content: JSON.stringify({ request: typeof body.message === "string" ? body.message.slice(0, 4000) : "Swap request", amount: String(body.amount ?? ""), tokenIn, tokenOut, selectedRoute: routeLabel }) },
+                ],
+              }),
+              signal: AbortSignal.timeout(15_000),
+            });
+            if (!completion.ok) return json({ error: "Curtain Chat could not prepare the route explanation. Please try again." }, 502);
+            const payload = await completion.json() as { choices?: { message?: { content?: unknown } }[] };
+            try {
+              const parsed = JSON.parse(typeof payload.choices?.[0]?.message?.content === "string" ? payload.choices[0].message.content : "") as { reply?: unknown };
+              if (typeof parsed.reply !== "string" || parsed.reply.length > 500) throw new Error("invalid response");
+              reply = parsed.reply.trim();
+            } catch {
+              return json({ error: "Curtain Chat could not safely describe the selected route. Please try again." }, 502);
+            }
+          }
+          // Keep route truth explicit even if the model omitted or paraphrased the route name.
+          const otherRoute = (["v2", "v3", "v4"] as const).filter((route) => route !== id).some((route) => new RegExp(`Curtain ${route}`, "i").test(reply));
+          if (otherRoute) reply = "I’ve prepared the swap proposal for you to review.";
+          if (!reply.toLowerCase().includes(routeLabel.toLowerCase())) reply = `${reply} For this swap, I’ll use ${routeLabel}.`;
+          if (!/approve|wallet/i.test(reply)) reply = `${reply} Nothing is sent until you approve it in your wallet.`;
+          return json({ route: { id, label: routeLabel }, reply, quote });
+        };
+
+        // Dynamic Privacy always tries the shielded pool route first when it is configured
+        // and can quote this immediate swap.
+        if (active.poolV4 && body.excludeV4 !== true) {
+          try {
+            const q = await v2.operator.quoteForPool(active.poolV4.pool, tokenIn, tokenOut, amountIn, 100);
+            if (q.available) return response("v4", {
+              available: true, expectedOut: q.marketOut, minOutSuggested: q.minOut,
+              venue: q.venue, pool: active.poolV4.pool, router: q.router, data: q.data,
+            });
+          } catch { /* Continue to the fixed-denomination and flexible vault routes. */ }
+        }
+
+        if (v3?.v3Mode && v3.fixedAmounts?.has(`${tokenIn}:${amountIn}`)) {
+          try {
+            const q = await v3.operator.quoteForUser(tokenIn, tokenOut, amountIn, 100);
+            if (q.available) return response("v3", q as unknown as Record<string, unknown>);
+          } catch { /* If the fixed-denomination vault cannot quote, try V2. */ }
+        }
+        try {
+          const q = await v2.operator.quoteForUser(tokenIn, tokenOut, amountIn, 100);
+          return response("v2", q as unknown as Record<string, unknown>);
+        } catch (error) {
+          return json({ error: error instanceof Error ? error.message : "No route is available for this pair" }, 400);
+        }
       }
 
       // For an uptime monitor: 503 with the list of problems when something needs attention.

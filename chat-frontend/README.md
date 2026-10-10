@@ -6,10 +6,11 @@ Standalone natural-language swap interface for `chat.curtain.com`.
 
 - Interprets a message on the operator server; the Groq credential never goes to the browser.
 - Uses the existing operator `/quote`, `/config`, `/intents` and `/rpc` paths.
-- Pins every proposal and execution to the Curtain V2 flexible-amount vault. No V3, Pool V2/product V4, or dynamic routing is exposed here.
-- Shows the route in the assistant response and approval card before wallet approval.
+- Uses Dynamic Privacy for each proposal: it tries Curtain V4’s shielded-pool route first when an immediate quote is available, then Curtain V3 for a configured fixed denomination, and Curtain V2 for flexible amounts.
+- Shows the selected route in the assistant response and approval card before wallet approval.
+- If Curtain V4 fails before the shielded swap is submitted, it requotes through V3/V2. If a shielded transaction may already have happened, it does not retry through another route; its local recovery note is retained.
 - The user reviews and accepts/declines a proposal. Acceptance still requires wallet approval and deposit signatures; the model cannot sign or submit transactions.
-- Saves the escape-ticket material in browser local storage as soon as the intent is created.
+- Saves V2/V3 escape-ticket material or the V4 recovery note in browser local storage before the corresponding wallet transaction.
 
 ## Deployment
 
