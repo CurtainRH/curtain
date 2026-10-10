@@ -40,6 +40,8 @@ export interface ApiConfig {
   now?: () => number; // unix seconds
   v3Mode?: boolean;
   fixedAmounts?: Set<string>;
+  /** Optional server-side natural-language swap interpreter. Never sent to /config. */
+  chat?: { apiKey: string; model: string; fetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response> };
   poolV4?: { publisher: PoolV2RootPublisher; pool: Address; rootManager: Address };
   poolV4Legacy?: { publisher: PoolV2RootPublisher; pool: Address; rootManager: Address }[];
   contexts?: { v2: Omit<ApiConfig, "contexts">; v3?: Omit<ApiConfig, "contexts"> };
@@ -98,6 +100,68 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         return await rpcProxy(req);
       }
       if (req.method === "GET" && pathname === "/health") return json({ status: "ok" });
+
+      // Curtain Chat's MVP is deliberately pinned to the normal V2 vault flow. The model may
+      // suggest token symbols and an amount, but it never chooses a route or returns calldata.
+      if (req.method === "POST" && pathname === "/chat/interpret") {
+        if (!cfg.chat?.apiKey || !cfg.chat.model) return json({ error: "Curtain Chat is not configured" }, 503);
+        if (!checkRate(`chat:${clientIp}`, 20)) return json({ error: "Chat request limit reached. Please wait a moment." }, 429);
+        if (Number(req.headers.get("content-length") ?? 0) > 8_192) return json({ error: "Message too large (max 8KB)" }, 413);
+        const raw = await req.text();
+        if (raw.length > 8_192) return json({ error: "Message too long (max 8KB)" }, 413);
+        let body: Record<string, unknown>;
+        try { body = JSON.parse(raw) as Record<string, unknown>; } catch { return json({ error: "Invalid JSON" }, 400); }
+        const message = typeof body.message === "string" ? body.message.trim() : "";
+        if (!message || message.length > 4_000) return json({ error: "message must be 1..4000 characters" }, 400);
+
+        const symbols = Object.keys(cfg.tokens);
+        const system = [
+          "You are Curtain Chat, a careful assistant that turns a user's request into a proposed token swap on Robinhood Chain.",
+          "Return only a JSON object with keys: reply, action. action is null or {type:'swap', amount:string, tokenIn:string, tokenOut:string, recipient?:string}.",
+          "Use only these exact token symbols: " + symbols.join(", "),
+          "Never invent token addresses, quote amounts, calldata, execution status, or fees. Do not execute anything.",
+          "Only propose a swap when the user clearly gives an input amount/token and an output token. Ask a concise follow-up otherwise.",
+          "The only supported route for this MVP is Curtain V2. Do not suggest or claim another route.",
+          "Recipient is optional and must be a literal EVM address supplied by the user.",
+        ].join("\n");
+        const call = cfg.chat.fetch ?? fetch;
+        const completion = await call("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { authorization: `Bearer ${cfg.chat.apiKey}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: cfg.chat.model, temperature: 0.1, max_tokens: 400, response_format: { type: "json_object" }, messages: [{ role: "system", content: system }, { role: "user", content: message }] }),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!completion.ok) {
+          console.error("Curtain Chat provider returned", completion.status);
+          return json({ error: "Chat is temporarily unavailable. Please try again." }, 502);
+        }
+        const payload = await completion.json() as { choices?: { message?: { content?: unknown } }[] };
+        const content = payload.choices?.[0]?.message?.content;
+        let parsed: Record<string, unknown>;
+        try { parsed = JSON.parse(typeof content === "string" ? content : "") as Record<string, unknown>; }
+        catch { return json({ error: "I couldn't safely interpret that request. Please rephrase it." }, 502); }
+        const reply = typeof parsed.reply === "string" ? parsed.reply.slice(0, 1_000) : "I can help prepare a swap.";
+        let action: { type: "swap"; amount: string; tokenIn: string; tokenOut: string; recipient?: string } | null = null;
+        if (parsed.action !== null && typeof parsed.action === "object") {
+          const candidate = parsed.action as Record<string, unknown>;
+          const tokenInValue = typeof candidate.tokenIn === "string" ? candidate.tokenIn : "";
+          const tokenOutValue = typeof candidate.tokenOut === "string" ? candidate.tokenOut : "";
+          const tokenIn = symbols.find((s) => s.toLowerCase() === tokenInValue.toLowerCase());
+          const tokenOut = symbols.find((s) => s.toLowerCase() === tokenOutValue.toLowerCase());
+          const amount = typeof candidate.amount === "string" ? candidate.amount : "";
+          const recipient = typeof candidate.recipient === "string" ? candidate.recipient : undefined;
+          if (candidate.type !== "swap" || !tokenIn || !tokenOut || tokenIn === tokenOut || !/^(?:0|[1-9]\d*)(?:\.\d{1,18})?$/.test(amount) || Number(amount) <= 0 || (recipient !== undefined && !isAddress(recipient)))
+            return json({ error: "I couldn't safely prepare that swap. Check the amount, supported tokens, and recipient, then try again." }, 422);
+          action = { type: "swap", amount, tokenIn, tokenOut, ...(recipient ? { recipient: getAddress(recipient) } : {}) };
+        }
+        // Route text is server-authored, not model-controlled, and is returned for every turn.
+        return json({
+          reply: action ? "Review the swap proposal below. Nothing is sent until you approve it in your wallet." : reply,
+          action,
+          route: { id: "v2", label: "Curtain V2 · flexible-amount route" },
+          routeDisclosure: "Route for this request: Curtain V2 (flexible-amount route).",
+        });
+      }
 
       // For an uptime monitor: 503 with the list of problems when something needs attention.
       if (req.method === "GET" && pathname === "/status") {

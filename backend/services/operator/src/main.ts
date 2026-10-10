@@ -196,6 +196,7 @@ if (v3Operator) console.log(`V3 context ON: ${v3Vault}`);
 
 const api = createApi({
   db, operator, vault, tokens, keeperFeeBps, chainId, rpcUrl: env("RPC_HTTP"),
+  ...(process.env["GROQ_API_KEY"] && process.env["GROQ_MODEL"] ? { chat: { apiKey: process.env["GROQ_API_KEY"], model: process.env["GROQ_MODEL"] } } : {}),
   minBalanceWei: BigInt(env("MIN_OPERATOR_BALANCE_WEI", "5000000000000000")),
   ...(poolV2Publisher && poolV2Address && poolV2ManagerAddress ? { poolV4: { publisher: poolV2Publisher, pool: poolV2Address, rootManager: poolV2ManagerAddress } } : {}),
   ...(poolV2LegacyPublisher && poolV2LegacyAddress && poolV2LegacyManagerAddress ? { poolV4Legacy: [{ publisher: poolV2LegacyPublisher, pool: poolV2LegacyAddress, rootManager: poolV2LegacyManagerAddress }] } : {}),
