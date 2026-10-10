@@ -42,7 +42,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { createApi, type ApiConfig } from "./api";
 import { createMcpApi } from "./mcp";
 import { Operator, type StealthConfig } from "./operator";
-import { mockQuoter, mockRoute, uniswapQuoter, uniswapRoute, uniswapV4OnlyQuoter } from "./routes";
+import { mockQuoter, mockRoute, uniswapQuoter, uniswapRoute } from "./routes";
 import { PoolV2RootPublisher } from "./poolV2";
 
 const STOCK_STAKING_ABI = parseAbi([
@@ -135,7 +135,15 @@ if (stockStakingAddressRaw) {
   if (getAddress(configuredPool) !== rewardPoolAccount.address) {
     throw new Error("REWARD_POOL_WALLET_PRIVATE_KEY does not match the staking contract reward pool");
   }
-  const quoteV4 = uniswapV4OnlyQuoter(publicClient, getAddress(env("V4_QUOTER_ADDR") as Address));
+  // Stake valuation and bundle payouts use the same best-of-V3/V4 quote engine as swaps.
+  // This matters on Robinhood Chain, where supported stock pairs are split across venues.
+  const quoteBest = uniswapQuoter({
+    client: publicClient,
+    v3Router: getAddress(env("DEX_ROUTER_ADDR") as Address),
+    v3Quoter: getAddress(env("UNISWAP_QUOTER_ADDR") as Address),
+    ...(process.env["V4_ADAPTER_ADDR"] ? { v4Adapter: getAddress(process.env["V4_ADAPTER_ADDR"] as Address) } : {}),
+    ...(process.env["V4_QUOTER_ADDR"] ? { v4Quoter: getAddress(process.env["V4_QUOTER_ADDR"] as Address) } : {}),
+  });
   const usdg = getAddress("0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168");
   const crtn = getAddress("0x66A844fcbf4705Dbde3c97394d5a4C9822E8F35b");
   const symbolFor = new Map(Object.entries(DEFAULT_TOKENS).filter((entry): entry is [string, Address] => typeof entry[1] === "string").map(([symbol, address]) => [getAddress(address), symbol]));
@@ -153,8 +161,8 @@ if (stockStakingAddressRaw) {
     rewardPoolWallet: rewardPoolAccount.address,
     config: bundleConfig,
     quoteStake: async ({ account, amount, tierId, bundleId }) => {
-      const quote = await quoteV4(crtn, usdg, amount);
-      if (quote.amountOut <= 0n) throw new Error("A Uniswap V4 CRTN/USDG quote is not available right now.");
+      const quote = await quoteBest(crtn, usdg, amount);
+      if (quote.amountOut <= 0n) throw new Error("A live CRTN/USDG market quote is not available on Uniswap V3 or V4 right now.");
       const nonce = await publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "stakeQuoteNonces", args: [account] });
       const deadline = Math.floor(Date.now() / 1000) + 300;
       const signature = await walletClient.signTypedData({
@@ -183,7 +191,7 @@ if (stockStakingAddressRaw) {
       for (let i = 0; i < tokens.length; i++) {
         const portionUsd = i === tokens.length - 1 ? rewardUsd - allocatedUsd : rewardUsd * BigInt(weights[i]!) / 10_000n;
         allocatedUsd += portionUsd;
-        const quote = await quoteV4(usdg, tokens[i]!, portionUsd);
+        const quote = await quoteBest(usdg, tokens[i]!, portionUsd);
         if (quote.amountOut <= 0n) throw new Error("Stock-bundle quotes are temporarily unavailable. Please try again later; your accrued rewards are unchanged.");
         amounts.push(quote.amountOut);
       }

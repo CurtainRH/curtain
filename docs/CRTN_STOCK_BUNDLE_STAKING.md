@@ -9,8 +9,9 @@ Curtain staking lets a user lock CRTN for a fixed period and earn a USDG-valued 
 - 90 days: 1.5× multiplier (6% APR).
 - 180 days: 2× multiplier (8% APR).
 - Accrual stops at the position's fixed maturity; it is not compounded.
-- At stake time, the operator signs the current Uniswap V4 CRTN→USDG quote. The contract stores that USDG-denominated principal value.
-- At maturity, accrued USDG value is split by the chosen bundle weights. The operator quotes USDG→each constituent stock token with Uniswap V4 and the reward-pool EOA signs one complete claim package.
+- At stake time, the operator signs a current best-available Uniswap V3/V4 CRTN→USDG quote. The contract stores that USDG-denominated principal value.
+- At maturity, accrued USDG value is split by the chosen bundle weights. The operator checks supported Uniswap V3 fee tiers and standard V4 pools for each USDG→stock quote, selects the highest output for that exact amount, and the reward-pool EOA signs one complete claim package.
+- V3 and V4 quote coverage depends on actual pool liquidity. The current deployment has quotes for the Market Core and Platform Leaders assets, and V3 quotes for SMH and TSM. It currently has no direct CRTN/USDG quote on either venue (nor a CRTN/WETH V3/V4 hop), so stake quotes remain unavailable until a supported CRTN market/pricing source exists. A one-off swap is not a durable price oracle.
 - The user submits one atomic bundle claim. If any constituent is underfunded or lacks allowance, the transaction reverts as a whole and the accrued reward remains claimable. The principal can be withdrawn independently after maturity.
 
 The stock pool is an inventory source, not an independent yield source. Pool inventory shortages can delay claims. There is no admin-created schedule or manual reward amount: the contract computes the user's entitlement from the signed stake-time USDG valuation and fixed APR terms.
