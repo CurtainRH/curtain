@@ -204,7 +204,7 @@ export function uniswapV4OnlyQuoter(client: PublicClient, quoter: Address): Quot
       const result = await quoteCall(() => client.simulateContract({
         address: quoter, abi: V4_QUOTER_ABI, functionName: "quoteExactInputSingle",
         args: [{ poolKey: pool.key, zeroForOne: pool.zeroForOne, exactAmount: amountIn, hookData: "0x" }],
-      }));
+      })).catch(() => null);
       return result && result.result[0] > 0n ? { amountOut: result.result[0], router: quoter, v4: pool } satisfies Quote : null;
     }));
     return quotes.reduce<Quote>((best, quote) => quote && quote.amountOut > best.amountOut ? quote : best, { amountOut: 0n });
