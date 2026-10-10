@@ -1,45 +1,56 @@
-# CRTN stock-bundle staking
+# CRTN staking: stock-bundle rewards
 
-Curtain’s wallet-backed stock-reward staking contract is deployed on Robinhood Chain (chain ID 4663).
+Curtain staking lets a user lock CRTN for a fixed period and earn a USDG-valued reward paid as stock tokens from the reward-pool wallet. The customer guide is published in the documentation site under [CRTN staking](https://docs.curtainrh.com/#staking).
 
-- Staking contract: `0x0852E2B555090dFc537207f3cB2d9D936eDa2e7A`
-- EOA reward pool: `0x5368049BBb06859e2fC9E78e315b164614097F67`
-- CRTN principal token: `0x66a844fcbf4705dbde3c97394d5a4c9822e8f35b`
-- Contract source: `backend/contracts/src/staking/CurtainStockStaking.sol`
-- Deployment manifest: `backend/contracts/deployments/4663.json` (`stockStaking`)
+## Reward model
 
-## User flow
+- Base simple APR: 4%.
+- 30 days: 1× multiplier (4% APR).
+- 90 days: 1.5× multiplier (6% APR).
+- 180 days: 2× multiplier (8% APR).
+- Accrual stops at the position's fixed maturity; it is not compounded.
+- At stake time, the operator signs the current Uniswap V4 CRTN→USDG quote. The contract stores that USDG-denominated principal value.
+- At maturity, accrued USDG value is split by the chosen bundle weights. The operator quotes USDG→each constituent stock token with Uniswap V4 and the reward-pool EOA signs one complete claim package.
+- The user submits one atomic bundle claim. If any constituent is underfunded or lacks allowance, the transaction reverts as a whole and the accrued reward remains claimable. The principal can be withdrawn independently after maturity.
 
-Users access the staking screen at `/app/staking`, choose a bundle, and lock CRTN for 30, 90, or 180 days. The lock weights are 1×, 1.5×, and 2× respectively. At maturity, the user can withdraw CRTN principal and claim each accrued stock token separately. The backend signs a claim voucher; the user submits `claimReward` from their connected wallet and pays transaction gas. The contract verifies the signature, position ownership, maturity, accrued amount, and replay nonce before pulling the reward from the pool EOA.
+The stock pool is an inventory source, not an independent yield source. Pool inventory shortages can delay claims. There is no admin-created schedule or manual reward amount: the contract computes the user's entitlement from the signed stake-time USDG valuation and fixed APR terms.
 
-## Funding and scheduling
+## Trust and operations
 
-Send each stock token directly to the reward-pool EOA. A transfer does not itself create a reward schedule. When an authorized schedule is created, the operator API checks the pool balance and automatically submits a one-time unlimited approval for that token if needed, then schedules the rewards. The EOA needs a small ETH balance for this initial approval transaction per token; users pay gas for their own reward claims.
+- The operator key signs stake-time price attestations and owns the contract; it cannot withdraw users' CRTN principal.
+- The reward-pool EOA signs claim packages and grants token allowances to the staking contract when needed. Its private key must remain server-side as `REWARD_POOL_WALLET_PRIVATE_KEY`.
+- The pool wallet must hold enough of every constituent in a user's selected bundle. A lack of inventory or a missing V4 quote prevents claim authorization; it does not consume accrued entitlement.
+- Existing bundle definitions are immutable. The owner can append new bundles and assets; it cannot edit existing mixes through this contract.
+- Users submit and pay gas for stake, principal withdrawal, and stock-bundle claim transactions.
 
-After funding, an authorized operator schedules each reward stream through `POST /admin/staking/rewards` (protected by `x-master-admin-key`). The request specifies a bundle ID, a constituent token, a raw token amount, and a duration in seconds. This starts emissions; wallet funding alone does not. The operator API submits a one-time pool-wallet approval per token when required, then schedules the stream.
+## Operator configuration
 
-Equivalent contract call:
+Set these on the operator service:
 
-```text
-scheduleReward(bundleId, tokenAddress, amount, durationSeconds)
+```env
+STOCK_STAKING_ADDR=<deployed CurtainStockStaking address>
+STOCK_STAKING_START_BLOCK=<deployment block>
+REWARD_POOL_WALLET_PRIVATE_KEY=<server-side reward-pool EOA key>
+V4_QUOTER_ADDR=<configured Uniswap V4 quoter>
 ```
 
-The contract verifies the EOA has both the balance and allowance to cover already-reserved rewards plus the new schedule. Emissions pause while a bundle has no active stake. Rewards are scheduled per token and bundle. Reward scheduling is an operator function, separate from the user-facing staking screen; no admin UI is required.
+The frontend fetches the active staking address and bundle definitions from `/api/curtain/staking/config`; do not configure private keys or quote secrets in frontend variables.
 
-The pool private key is used by the backend to sign claim vouchers and approve reward tokens; it must remain server-side as `REWARD_POOL_WALLET_PRIVATE_KEY`. Never put it in frontend/VITE variables. The contract owner is the operator wallet and can append assets/bundles and schedule backed rewards; it cannot withdraw rewards from the pool wallet. The admin scheduling API is protected by `MASTER_ADMIN_KEY`; no admin UI is required.
+## Deployment
+
+- Contract source: `backend/contracts/src/staking/CurtainStockStaking.sol`.
+- Deployment script: `backend/contracts/script/DeployCurtainStockStaking.s.sol`.
+- Network: Robinhood Chain, chain ID 4663.
+- Current deployment: `0xfabeaf10dd71f269b774c7e69aff52216b1a7a4c` (block `85046791`).
+- Deployment manifest: `backend/contracts/deployments/4663.json` (`stockStaking`).
+- Before replacing a deployed address, verify that it has no active positions. If positions exist, preserve the prior contract and provide a migration/continued-claim path instead of switching the UI away from it.
 
 ## Bundles
 
-The deployed immutable bundles are:
-
-| ID | Bundle | Target mix |
+| ID | Bundle | Value weights |
 |---:|---|---|
 | 1 | Market Core | SPY 60%, QQQ 40% |
 | 2 | AI & Chips | SMH 40%, NVDA 25%, TSM 20%, AMD 15% |
 | 3 | Platform Leaders | AAPL, MSFT, AMZN, GOOGL, META 20% each |
 
-Percentages describe the intended mix; they are not market-value rebalanced. There is no price oracle, and actual rewards depend on the constituent tokens funded and scheduled. No APR or payout amount is promised. CRTN and USDG are rejected as reward assets. Bundle definitions and reward assets are append-only.
-
-## Deployment history
-
-The previous staking contract `0xf97DE94DA75923e31c5a8cdf8C048E611aDe3892` used contract-held stock inventory and has been superseded by the EOA-backed design. Do not fund it. The earlier instance `0xf024145CcCb2d67185FB7883Ca891456cba72454` was also superseded before use. Current position/stake reads on the previous wallet-backed predecessor reported zero positions and zero CRTN staked.
+Weights determine the intended USDG value split at claim time; they do not specify fixed share counts.

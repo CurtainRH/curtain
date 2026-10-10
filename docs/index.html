@@ -31,6 +31,7 @@
           ><a href="#quotes">Quotes</a><a href="#intents">Create an intent</a>
           <a href="#transactions">Wallet transactions</a><a href="#status">Track delivery</a
           ><a href="#refunds">Escape tickets &amp; refunds</a>
+          <a href="#staking">CRTN staking</a>
           <a href="#booths">Booths runtime · experimental</a><a href="#lamps">Lamps windows · experimental</a
           ><a href="#errors">Errors &amp; limits</a
           ><a href="#privacy">Privacy model</a>
@@ -463,6 +464,26 @@ if (receipt.status !== "success") throw new Error("Deposit reverted");
             Revoking an API key does not change these contract rules. Your integration should offer
             recovery even when its API key or the operator is unavailable.
           </p>
+        </section>
+        <section id="staking">
+          <p class="eyebrow">CRTN · STOCK-BUNDLE REWARDS</p>
+          <h2>Lock CRTN.<br /><em>Earn a stock bundle.</em></h2>
+          <p class="lead">Choose a stock mix and a fixed lock period. Your reward is calculated from the USDG value of your CRTN when you stake, then paid in the selected bundle’s stock tokens when the lock ends.</p>
+          <h3>A clear, fixed reward formula</h3>
+          <p>The base rate is 4% simple APR. Your lock changes the rate: 30 days uses a 1× multiplier (4% APR), 90 days uses 1.5× (6% APR), and 180 days uses 2× (8% APR). Rewards accrue only until the selected end date; they do not compound or continue growing after maturity.</p>
+          <p>When you stake, Curtain gets a current CRTN/USDG quote. That USDG value is the basis for the reward calculation for the whole lock. For example, if your stake is valued at 1,000 USDG, the illustrative reward is about 3.29 USDG for 30 days, 14.79 USDG for 90 days, or 39.45 USDG for 180 days. Actual values depend on the quote at the time you stake and the exact elapsed term.</p>
+          <h3>How the stock bundle is paid</h3>
+          <p>At maturity, your accrued USDG reward value is split according to the bundle mix you selected. Curtain uses current Uniswap V4 quotes to calculate the token quantities, then pays all of the bundle tokens together in one claim. The stock-token quantities can change with market prices; the bundle percentages describe the value split, not fixed share counts.</p>
+          <h3>Your principal and reward are separate</h3>
+          <p>Once the lock ends, you can withdraw your original CRTN whenever you choose. You can claim your stock bundle separately, and withdrawing CRTN does not erase your accrued reward. Both actions require a wallet transaction and network gas.</p>
+          <div class="callout"><strong>Reward inventory can temporarily run short.</strong> Stock rewards are paid from the reward pool. If the pool cannot cover every token in your bundle, the claim will not go through at that moment. No part of the claim is paid, and your accrued reward is not consumed; try again later.</div>
+          <h3>Available bundles</h3>
+          <ul>
+            <li><strong>Market Core:</strong> SPY 60%, QQQ 40%.</li>
+            <li><strong>AI &amp; Chips:</strong> SMH 40%, NVDA 25%, TSM 20%, AMD 15%.</li>
+            <li><strong>Platform Leaders:</strong> AAPL, MSFT, AMZN, GOOGL, and META at 20% each.</li>
+          </ul>
+          <p>Bundle mixes are set when a bundle is introduced. Curtain may add new bundles over time, but your existing position keeps the bundle you chose.</p>
         </section>
         <section id="errors">
           <h2>Predictable errors. Clear limits.</h2>

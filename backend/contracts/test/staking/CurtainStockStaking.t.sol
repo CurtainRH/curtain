@@ -6,214 +6,142 @@ import { CurtainStockStaking } from "../../src/staking/CurtainStockStaking.sol";
 import { MockERC20 } from "../mocks/MockERC20.sol";
 
 contract CurtainStockStakingTest is Test {
+    bytes32 constant DOMAIN_TYPEHASH = keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    uint256 constant OPERATOR_KEY = 0x0A11CE;
     uint256 constant POOL_KEY = 0xBEEF1234;
+    address operator;
+    address pool;
+    address alice = address(0xA11CE);
     CurtainStockStaking staking;
     MockERC20 crtn;
     MockERC20 spy;
     MockERC20 qqq;
-    MockERC20 nvda;
-    address admin = address(0xAD);
-    address alice = address(0xA11CE);
-    address bob = address(0xB0B);
-    address pool;
-    uint256 coreBundle;
+    uint256 bundleId;
+
+    function domainSeparator() internal view returns (bytes32) {
+        return keccak256(abi.encode(DOMAIN_TYPEHASH, keccak256("CurtainStockStaking"), keccak256("2"), block.chainid, address(staking)));
+    }
 
     function setUp() public {
         vm.warp(1_000_000);
+        operator = vm.addr(OPERATOR_KEY);
         pool = vm.addr(POOL_KEY);
         crtn = new MockERC20("Curtain", "CRTN");
         spy = new MockERC20("SPY", "SPY");
         qqq = new MockERC20("QQQ", "QQQ");
-        nvda = new MockERC20("NVDA", "NVDA");
-        staking = new CurtainStockStaking(admin, address(crtn));
-        vm.startPrank(admin);
-        staking.setRewardPoolWallet(pool);
-        staking.addRewardAsset(address(spy));
-        staking.addRewardAsset(address(qqq));
-        staking.addRewardAsset(address(nvda));
+        staking = new CurtainStockStaking(operator, address(crtn), pool);
         address[] memory assets = new address[](2);
         uint16[] memory weights = new uint16[](2);
-        assets[0] = address(spy);
-        assets[1] = address(qqq);
-        weights[0] = 6_000;
-        weights[1] = 4_000;
-        coreBundle = staking.addBundle("Market Core", assets, weights);
-        vm.stopPrank();
-
+        assets[0] = address(spy); assets[1] = address(qqq);
+        weights[0] = 6_000; weights[1] = 4_000;
+        vm.prank(operator);
+        bundleId = staking.addBundle("Market Core", assets, weights);
         crtn.mint(alice, 1_000 ether);
-        crtn.mint(bob, 1_000 ether);
         spy.mint(pool, 10_000 ether);
         qqq.mint(pool, 10_000 ether);
-        vm.prank(pool);
-        spy.approve(address(staking), type(uint256).max);
-        vm.prank(pool);
-        qqq.approve(address(staking), type(uint256).max);
-        vm.prank(alice);
-        crtn.approve(address(staking), type(uint256).max);
-        vm.prank(bob);
-        crtn.approve(address(staking), type(uint256).max);
+        vm.prank(alice); crtn.approve(address(staking), type(uint256).max);
+        vm.prank(pool); spy.approve(address(staking), type(uint256).max);
+        vm.prank(pool); qqq.approve(address(staking), type(uint256).max);
     }
 
-    function test_walletBackedRewardClaimUserPaysGasAndPrincipalWithdrawsSeparately() public {
+    function stakeFor(uint8 tierId) internal returns (uint256 id) {
+        uint256 amount = 100 ether;
+        uint256 principalUsd = 1_000_000_000; // $1,000 in USDG's 6 decimals.
+        uint256 deadline = block.timestamp + 5 minutes;
+        uint256 nonce = staking.stakeQuoteNonces(alice);
+        bytes32 structHash = keccak256(abi.encode(
+            keccak256("StakeQuote(address account,uint256 amount,uint8 tierId,uint256 bundleId,uint256 principalUsd,uint256 nonce,uint256 deadline)"),
+            alice, amount, tierId, bundleId, principalUsd, nonce, deadline
+        ));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator(), structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(OPERATOR_KEY, digest);
         vm.prank(alice);
-        uint256 aliceId = staking.stake(100 ether, 0, coreBundle);
-        vm.prank(bob);
-        staking.stake(100 ether, 0, coreBundle);
-
-        // The stock stays in the EOA. The operator schedules only backed inventory.
-        vm.prank(admin);
-        staking.scheduleReward(coreBundle, address(spy), 600 ether, 30 days);
-        vm.prank(admin);
-        staking.scheduleReward(coreBundle, address(qqq), 400 ether, 30 days);
-        assertEq(spy.balanceOf(pool), 10_000 ether);
-        assertEq(spy.balanceOf(address(staking)), 0);
-
-        vm.warp(block.timestamp + 30 days);
-        uint256 spyReward = staking.earned(aliceId, address(spy));
-        uint256 qqqReward = staking.earned(aliceId, address(qqq));
-        uint256 deadline = block.timestamp + 1 hours;
-        bytes32 spyDigest = staking.rewardClaimDigest(aliceId, alice, address(spy), spyReward, deadline);
-        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(POOL_KEY, spyDigest);
-        bytes memory spySignature = abi.encodePacked(r1, s1, v1);
-        uint256 aliceSpyBefore = spy.balanceOf(alice);
-        vm.prank(alice);
-        staking.claimReward(aliceId, address(spy), spyReward, deadline, spySignature);
-        assertEq(spy.balanceOf(alice) - aliceSpyBefore, spyReward);
-
-        bytes32 qqqDigest = staking.rewardClaimDigest(aliceId, alice, address(qqq), qqqReward, deadline);
-        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(POOL_KEY, qqqDigest);
-        uint256 aliceQqqBefore = qqq.balanceOf(alice);
-        vm.prank(alice);
-        staking.claimReward(aliceId, address(qqq), qqqReward, deadline, abi.encodePacked(r2, s2, v2));
-        assertEq(qqq.balanceOf(alice) - aliceQqqBefore, qqqReward);
-
-        vm.prank(alice);
-        staking.withdraw(aliceId);
-        assertEq(crtn.balanceOf(alice), 1_000 ether, "principal returned");
-        assertEq(spy.balanceOf(pool), 10_000 ether - spyReward, "pool paid claim from EOA");
-        assertEq(staking.reservedRewards(address(spy)), 600 ether - spyReward);
+        id = staking.stake(amount, tierId, bundleId, principalUsd, deadline, abi.encodePacked(r, s, v));
     }
 
-    function testOnlyPositionOwnerCanClaimAndInvalidSignerIsRejected() public {
-        vm.prank(alice);
-        uint256 id = staking.stake(100 ether, 0, coreBundle);
-        vm.prank(admin);
-        staking.scheduleReward(coreBundle, address(spy), 100 ether, 30 days);
-        vm.warp(block.timestamp + 30 days);
-        uint256 amount = staking.earned(id, address(spy));
-        uint256 deadline = block.timestamp + 1 hours;
-        bytes32 digest = staking.rewardClaimDigest(id, alice, address(spy), amount, deadline);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(12345, digest);
-        bytes memory signature = abi.encodePacked(r, s, v);
-
-        vm.prank(bob);
-        vm.expectRevert(CurtainStockStaking.NotPositionOwner.selector);
-        staking.claimReward(id, address(spy), amount, deadline, signature);
-        vm.prank(alice);
-        vm.expectRevert(CurtainStockStaking.InvalidClaimSignature.selector);
-        staking.claimReward(id, address(spy), amount, deadline, signature);
-    }
-
-    function testClaimCannotExceedAccruedOrBeReplayed() public {
-        vm.prank(alice);
-        uint256 id = staking.stake(100 ether, 0, coreBundle);
-        vm.prank(admin);
-        staking.scheduleReward(coreBundle, address(spy), 100 ether, 30 days);
-        vm.warp(block.timestamp + 30 days);
-        uint256 amount = staking.earned(id, address(spy));
-        uint256 deadline = block.timestamp + 1 hours;
-        bytes32 digest = staking.rewardClaimDigest(id, alice, address(spy), amount, deadline);
+    function claimSignature(uint256 id, uint256 rewardUsd, address[] memory assets, uint256[] memory amounts, uint256 deadline) internal view returns (bytes memory) {
+        bytes32 structHash = keccak256(abi.encode(
+            keccak256("StockRewardClaim(uint256 positionId,address account,uint256 rewardUsd,bytes32 tokensHash,bytes32 amountsHash,uint256 nonce,uint256 deadline)"),
+            id, alice, rewardUsd, keccak256(abi.encode(assets)), keccak256(abi.encode(amounts)), staking.claimNonces(id), deadline
+        ));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(POOL_KEY, digest);
-        bytes memory signature = abi.encodePacked(r, s, v);
-
-        vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(CurtainStockStaking.ClaimExceedsAccrued.selector, amount + 1, amount));
-        staking.claimReward(id, address(spy), amount + 1, deadline, signature);
-        vm.prank(alice);
-        staking.claimReward(id, address(spy), amount, deadline, signature);
-        vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(CurtainStockStaking.ClaimExceedsAccrued.selector, amount, 0));
-        staking.claimReward(id, address(spy), amount, deadline, signature);
+        return abi.encodePacked(r, s, v);
     }
 
-    function testCannotWithdrawBeforeLockMatures() public {
-        vm.prank(alice);
-        uint256 id = staking.stake(100 ether, 1, coreBundle);
-        vm.prank(alice);
-        vm.expectPartialRevert(CurtainStockStaking.PositionLocked.selector);
-        staking.withdraw(id);
-    }
-
-    function testBundleDefinitionsAreAppendOnlyAndNewStockAssetsRegisterAtomically() public {
-        address[] memory assets = new address[](1);
-        uint16[] memory weights = new uint16[](1);
-        assets[0] = address(nvda);
-        weights[0] = 10_000;
-        vm.prank(admin);
-        uint256 added = staking.addBundle("AI & Chips", assets, weights);
-        (string memory name, address[] memory savedAssets, uint16[] memory savedWeights) = staking.getBundle(added);
-        assertEq(name, "AI & Chips");
-        assertEq(savedAssets[0], address(nvda));
-        assertEq(savedWeights[0], 10_000);
-        assertTrue(staking.isRewardAsset(address(nvda)));
-
-        assets[0] = address(crtn);
-        vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSelector(CurtainStockStaking.InvalidAsset.selector, address(crtn)));
-        staking.addBundle("CRTN cannot be a reward", assets, weights);
-    }
-
-    function testUSDGAndCRTNCannotBeRewardAssets() public {
-        address usdg = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
-        vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSelector(CurtainStockStaking.InvalidAsset.selector, usdg));
-        staking.addRewardAsset(usdg);
-
-        address[] memory assets = new address[](1);
-        uint16[] memory weights = new uint16[](1);
-        assets[0] = usdg;
-        weights[0] = 10_000;
-        vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSelector(CurtainStockStaking.InvalidAsset.selector, usdg));
-        staking.addBundle("USDG should not be a reward", assets, weights);
-    }
-
-    function testScheduleRequiresWalletBalanceAndAllowance() public {
-        vm.prank(admin);
-        vm.expectRevert();
-        staking.scheduleReward(coreBundle, address(nvda), 1 ether, 1 days);
-
-        vm.prank(admin);
-        vm.expectRevert();
-        staking.scheduleReward(coreBundle, address(spy), 20_000 ether, 1 days);
-    }
-
-    function testRewardPoolCannotChangeAfterScheduleStarts() public {
-        vm.prank(admin);
-        staking.scheduleReward(coreBundle, address(spy), 100 ether, 30 days);
-        vm.prank(admin);
-        vm.expectRevert(CurtainStockStaking.RewardPoolAlreadyActive.selector);
-        staking.setRewardPoolWallet(address(0x1234));
-    }
-
-    function testStreamsPauseWhenNoStakersAndResumeAfterStake() public {
-        vm.prank(admin);
-        staking.scheduleReward(coreBundle, address(spy), 100 ether, 10 days);
-        vm.warp(block.timestamp + 30 days);
-        vm.prank(alice);
-        uint256 id = staking.stake(100 ether, 0, coreBundle);
-        vm.warp(block.timestamp + 10 days);
-        assertApproxEqRel(staking.earned(id, address(spy)), 100 ether, 1e12);
-    }
-
-    function testMaturedMultiplierCanBeKickedWithoutLosingAccruedRewards() public {
-        vm.prank(alice);
-        uint256 id = staking.stake(100 ether, 2, coreBundle);
-        vm.prank(admin);
-        staking.scheduleReward(coreBundle, address(spy), 100 ether, 180 days);
+    function testAprUsesPrincipalUsdAndMultipliers() public {
+        uint256 id30 = stakeFor(0);
+        uint256 id90 = stakeFor(1);
+        uint256 id180 = stakeFor(2);
         vm.warp(block.timestamp + 180 days);
-        uint256 earnedBefore = staking.earned(id, address(spy));
-        staking.kick(id);
-        assertApproxEqAbs(staking.earned(id, address(spy)), earnedBefore, 1e6);
+        assertApproxEqAbs(staking.earnedUsd(id30), 3_287_671, 2);
+        assertApproxEqAbs(staking.earnedUsd(id90), 14_794_520, 2);
+        assertApproxEqAbs(staking.earnedUsd(id180), 39_452_054, 2);
+    }
+
+    function testAccrualStopsAtMaturityAndPrincipalCanBeWithdrawnSeparately() public {
+        uint256 id = stakeFor(0);
+        (, , , , , uint64 unlockAt, , ,) = staking.positions(id);
+        vm.warp(unlockAt);
+        uint256 matured = staking.earnedUsd(id);
+        vm.warp(uint256(unlockAt) + 90 days);
+        assertEq(staking.earnedUsd(id), matured);
+        vm.prank(alice); staking.withdraw(id);
+        assertEq(crtn.balanceOf(alice), 1_000 ether);
+        assertEq(staking.earnedUsd(id), matured);
+    }
+
+    function testCannotWithdrawOrClaimBeforeUnlock() public {
+        uint256 id = stakeFor(0);
+        vm.expectPartialRevert(CurtainStockStaking.PositionLocked.selector); vm.prank(alice); staking.withdraw(id);
+        address[] memory assets = new address[](2); assets[0] = address(spy); assets[1] = address(qqq);
+        uint256[] memory amounts = new uint256[](2); amounts[0] = 1; amounts[1] = 1;
+        uint256 rewardUsd = staking.earnedUsd(id);
+        uint256 deadline = block.timestamp + 1 days;
+        bytes memory signature = claimSignature(id, rewardUsd, assets, amounts, deadline);
+        vm.expectPartialRevert(CurtainStockStaking.PositionLocked.selector); vm.prank(alice);
+        staking.claimStockRewards(id, rewardUsd, assets, amounts, deadline, signature);
+    }
+
+    function testBundleClaimPaysAllTokensAtomicallyAndCannotReplay() public {
+        uint256 id = stakeFor(0);
+        (, , , , , uint64 unlockAt, , ,) = staking.positions(id);
+        vm.warp(unlockAt);
+        uint256 rewardUsd = staking.earnedUsd(id);
+        address[] memory assets = new address[](2); assets[0] = address(spy); assets[1] = address(qqq);
+        uint256[] memory amounts = new uint256[](2); amounts[0] = 6 ether; amounts[1] = 4 ether;
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes memory signature = claimSignature(id, rewardUsd, assets, amounts, deadline);
+        uint256 spyBefore = spy.balanceOf(alice); uint256 qqqBefore = qqq.balanceOf(alice);
+        vm.prank(alice); staking.claimStockRewards(id, rewardUsd, assets, amounts, deadline, signature);
+        assertEq(spy.balanceOf(alice) - spyBefore, amounts[0]);
+        assertEq(qqq.balanceOf(alice) - qqqBefore, amounts[1]);
+        vm.expectRevert(CurtainStockStaking.NothingToClaim.selector); vm.prank(alice);
+        staking.claimStockRewards(id, rewardUsd, assets, amounts, deadline, signature);
+    }
+
+    function testUnderfundingRevertsWithoutConsumingEntitlement() public {
+        uint256 id = stakeFor(0);
+        (, , , , , uint64 unlockAt, , ,) = staking.positions(id);
+        vm.warp(unlockAt);
+        uint256 rewardUsd = staking.earnedUsd(id);
+        address[] memory assets = new address[](2); assets[0] = address(spy); assets[1] = address(qqq);
+        uint256[] memory amounts = new uint256[](2); amounts[0] = type(uint256).max; amounts[1] = 4 ether;
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes memory signature = claimSignature(id, rewardUsd, assets, amounts, deadline);
+        vm.prank(alice);
+        vm.expectPartialRevert(CurtainStockStaking.PoolUnavailable.selector);
+        staking.claimStockRewards(id, rewardUsd, assets, amounts, deadline, signature);
+        assertEq(staking.earnedUsd(id), rewardUsd, "claim remains available");
+        assertEq(spy.balanceOf(alice), 0, "atomic revert rolls back any prior payout");
+    }
+
+    function testOwnerCannotWithdrawPoolAssetsAndBundleMixCannotChange() public {
+        vm.prank(operator); vm.expectRevert(); spy.transferFrom(pool, operator, 1);
+        address[] memory assets = new address[](1); assets[0] = address(spy);
+        uint16[] memory weights = new uint16[](1); weights[0] = 10_000;
+        vm.prank(operator); uint256 next = staking.addBundle("New bundle", assets, weights);
+        (string memory name,,) = staking.getBundle(next);
+        assertEq(name, "New bundle");
     }
 }

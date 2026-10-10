@@ -14,7 +14,7 @@ Private swaps and stake-to-earn on Robinhood Chain. Swap USDG and tokenized Stoc
 
 **$CRTN Contract address:** `0x66a844fcbf4705dbde3c97394d5a4c9822e8f35b`
 
-**Stock-bundle staking contract:** `0x0852E2B555090dFc537207f3cB2d9D936eDa2e7A`
+**Stock-bundle staking contract:** `0xfabeaf10dd71f269b774c7e69aff52216b1a7a4c`
 
 **Curtain privacy routes on Robinhood Chain:**
 
@@ -33,7 +33,7 @@ V2 is for flexible amounts. V3 is for fixed denominations—1, 10, and 100 whole
 | Limit orders | Set a minimum received amount and expiry; the operator waits for a qualifying quote, while the existing escape hatch protects the deposit if the target is not reached. |
 | Escape hatch | If a swap isn't paid by its deadline, you can take your deposit back 3 minutes later. |
 | Open keepers | Anyone can submit signed payouts and earn a small fee. |
-| CRTN stock-bundle staking | Lock CRTN for 30 / 90 / 180 days. At maturity, withdraw your CRTN principal and claim accrued stock-token rewards from the reward pool. Reward availability and amounts depend on funding; bundle percentages are target mixes, not price-oracle rebalancing or guaranteed yield. |
+| CRTN stock-bundle staking | Lock CRTN for 30 / 90 / 180 days at a 4% base APR, scaled by 1× / 1.5× / 2×. Rewards are valued in USDG when staked, stop accruing at maturity, and are paid in the selected stock bundle when claimed. Pool inventory can temporarily delay claims; accrued rewards remain available. |
 | Lending | Morpho integration, after launch. |
 | Developer API | Create and revoke API keys in Dashboard → Developer. V2 flexible, V3 fixed-denomination, and dynamic route selection, with idempotent intents, unsigned wallet transactions, per-key intent status, and optional integrator fees up to 1%. |
 | MCP for agents | Connect an MCP-compatible agent at `https://operator.curtainrh.com/mcp` for quotes, Dynamic Privacy, unsigned swap preparation, status, and keeper discovery. |

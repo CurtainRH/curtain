@@ -27,8 +27,7 @@ contract DeployCurtainStockStakingScript is Script {
         require(CRTN.code.length > 0, "CRTN contract missing");
 
         vm.startBroadcast(key);
-        CurtainStockStaking staking = new CurtainStockStaking(deployer, CRTN);
-        staking.setRewardPoolWallet(rewardPool);
+        CurtainStockStaking staking = new CurtainStockStaking(deployer, CRTN, rewardPool);
         _addInitialBundles(staking, json);
         vm.stopBroadcast();
 
@@ -38,7 +37,7 @@ contract DeployCurtainStockStakingScript is Script {
         console.log("Reward pool EOA:", rewardPool);
         console.log("Bundles:", staking.bundleCount());
         console.log("Reward assets:", staking.rewardAssetCount());
-        console.log("Users submit signed reward claims and pay gas; stock inventory remains in the pool EOA.");
+        console.log("Users submit one signed stock-bundle claim and pay gas; stock inventory remains in the pool EOA.");
     }
 
     function _addInitialBundles(CurtainStockStaking staking, string memory json) internal {

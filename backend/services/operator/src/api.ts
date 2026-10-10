@@ -47,11 +47,9 @@ export interface ApiConfig {
   stockStaking?: {
     address: Address;
     rewardPoolWallet: Address;
-    masterAdminKey?: string;
-    createClaim: (args: { positionId: bigint; account: Address; token: Address }) => Promise<{
-      amount: bigint; deadline: number; nonce: bigint; signature: Hex;
-    }>;
-    scheduleReward: (args: { bundleId: bigint; token: Address; amount: bigint; duration: bigint }) => Promise<Hex>;
+    config: () => Promise<{ bundles: unknown[] }>;
+    quoteStake: (args: { account: Address; amount: bigint; tierId: number; bundleId: bigint }) => Promise<{ principalUsd: bigint; deadline: number; signature: Hex }>;
+    createClaim: (args: { positionId: bigint; account: Address }) => Promise<{ rewardUsd: bigint; tokens: Address[]; amounts: bigint[]; deadline: number; signature: Hex }>;
   };
   contexts?: { v2: Omit<ApiConfig, "contexts">; v3?: Omit<ApiConfig, "contexts"> };
 }
@@ -84,15 +82,6 @@ function checkRate(key: string, limit: number, windowMs = 60_000): boolean {
   return true;
 }
 
-function constantTimeEqual(a: string, b: string): boolean {
-  const left = new TextEncoder().encode(a);
-  const right = new TextEncoder().encode(b);
-  let difference = left.length ^ right.length;
-  const length = Math.max(left.length, right.length);
-  for (let i = 0; i < length; i++) difference |= (left[i] ?? 0) ^ (right[i] ?? 0);
-  return difference === 0;
-}
-
 export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
   const now = cfg.now ?? (() => Math.floor(Date.now() / 1000));
   const developerApi = createDeveloperApi(cfg);
@@ -119,41 +108,42 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
       }
       if (req.method === "GET" && pathname === "/health") return json({ status: "ok" });
 
-      if (pathname.startsWith("/staking/") || pathname.startsWith("/admin/staking/")) {
+      if (pathname.startsWith("/staking/")) {
         const staking = cfg.stockStaking;
         if (!staking) return json({ error: "Stock-bundle staking is not configured" }, 503);
         if (req.method === "GET" && pathname === "/staking/config") {
-          return json({ enabled: true, chainId: cfg.chainId ?? 4663, staking: staking.address, rewardPoolWallet: staking.rewardPoolWallet });
+          return json({ enabled: true, chainId: cfg.chainId ?? 4663, staking: staking.address, baseAprBps: 400, tiers: [{ id: 0, days: 30, multiplierBps: 10_000 }, { id: 1, days: 90, multiplierBps: 15_000 }, { id: 2, days: 180, multiplierBps: 20_000 }], ...await staking.config() });
+        }
+        if (req.method === "POST" && pathname === "/staking/stake-quote") {
+          if (!checkRate(`staking-quote:${clientIp}`, 30)) return json({ error: "Too many quote requests. Please wait a moment." }, 429);
+          const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+          const account = typeof body?.account === "string" && isAddress(body.account) ? getAddress(body.account) : undefined;
+          const amount = typeof body?.amount === "string" && /^[1-9]\d*$/.test(body.amount) ? BigInt(body.amount) : 0n;
+          const tierId = Number(body?.tierId);
+          const bundleId = typeof body?.bundleId === "string" && /^[1-9]\d*$/.test(body.bundleId) ? BigInt(body.bundleId) : 0n;
+          if (!account || amount <= 0n || ![0, 1, 2].includes(tierId) || bundleId <= 0n) return json({ error: "account, positive raw amount, tierId (0–2), and bundleId are required" }, 400);
+          try {
+            const quote = await staking.quoteStake({ account, amount, tierId, bundleId });
+            return json({ ...quote, staking: staking.address, account, amount, tierId, bundleId });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Unable to quote stake";
+            return json({ error: message }, 503);
+          }
         }
         if (req.method === "POST" && pathname === "/staking/claim-signature") {
           if (!checkRate(`staking-claim:${clientIp}`, 20)) return json({ error: "Too many claim requests. Please wait a moment." }, 429);
           const body = await req.json().catch(() => null) as Record<string, unknown> | null;
           const positionId = typeof body?.positionId === "string" && /^(0|[1-9]\d*)$/.test(body.positionId) ? BigInt(body.positionId) : -1n;
           const account = typeof body?.account === "string" && isAddress(body.account) ? getAddress(body.account) : undefined;
-          const token = typeof body?.token === "string" && isAddress(body.token) ? getAddress(body.token) : undefined;
-          if (positionId < 1n || !account || !token) return json({ error: "positionId, account, and token are required" }, 400);
+          if (positionId < 1n || !account) return json({ error: "positionId and account are required" }, 400);
           let claim: Awaited<ReturnType<typeof staking.createClaim>>;
-          try { claim = await staking.createClaim({ positionId, account, token }); }
+          try { claim = await staking.createClaim({ positionId, account }); }
           catch (error) {
             const message = error instanceof Error ? error.message : "Unable to prepare claim";
-            const status = message.includes("belongs to another wallet") ? 403 : message.includes("underfunded") ? 503 : 400;
+            const status = message.includes("belongs to another wallet") ? 403 : 503;
             return json({ error: message }, status);
           }
-          return json({ staking: staking.address, positionId, account, token, amount: claim.amount, nonce: claim.nonce, deadline: claim.deadline, signature: claim.signature });
-        }
-        if (req.method === "POST" && pathname === "/admin/staking/rewards") {
-          if (!staking.masterAdminKey) return json({ error: "Admin reward scheduling is not configured" }, 503);
-          const supplied = req.headers.get("x-master-admin-key") ?? "";
-          if (!constantTimeEqual(supplied, staking.masterAdminKey)) return json({ error: "Unauthorized" }, 401);
-          if (!checkRate(`staking-admin:${clientIp}`, 20)) return json({ error: "Too many admin requests" }, 429);
-          const body = await req.json().catch(() => null) as Record<string, unknown> | null;
-          const bundleId = typeof body?.bundleId === "string" && /^[1-9]\d*$/.test(body.bundleId) ? BigInt(body.bundleId) : 0n;
-          const token = typeof body?.token === "string" && isAddress(body.token) ? getAddress(body.token) : undefined;
-          const amount = typeof body?.amount === "string" && /^[1-9]\d*$/.test(body.amount) ? BigInt(body.amount) : 0n;
-          const duration = typeof body?.durationSeconds === "string" && /^[1-9]\d*$/.test(body.durationSeconds) ? BigInt(body.durationSeconds) : 0n;
-          if (bundleId === 0n || !token || amount === 0n || duration === 0n) return json({ error: "bundleId, token, positive raw amount, and durationSeconds are required" }, 400);
-          const txHash = await staking.scheduleReward({ bundleId, token, amount, duration });
-          return json({ ok: true, txHash, bundleId, token, amount, durationSeconds: duration }, 201);
+          return json({ staking: staking.address, positionId, account, ...claim });
         }
         return json({ error: "not found" }, 404);
       }

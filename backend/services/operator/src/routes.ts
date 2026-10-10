@@ -195,6 +195,22 @@ export function uniswapQuoter(cfg: UniswapConfig): Quoter {
   };
 }
 
+/** Best quote across Curtain's supported hookless Uniswap V4 fee tiers only. */
+export function uniswapV4OnlyQuoter(client: PublicClient, quoter: Address): Quoter {
+  return async (tokenIn, tokenOut, amountIn) => {
+    if (amountIn <= 0n || amountIn >= 2n ** 127n) return { amountOut: 0n };
+    const quotes = await Promise.all(V4_STANDARD_POOLS.map(async ({ fee, tickSpacing }) => {
+      const pool = v4PoolFor(tokenIn, tokenOut, fee, tickSpacing);
+      const result = await quoteCall(() => client.simulateContract({
+        address: quoter, abi: V4_QUOTER_ABI, functionName: "quoteExactInputSingle",
+        args: [{ poolKey: pool.key, zeroForOne: pool.zeroForOne, exactAmount: amountIn, hookData: "0x" }],
+      }));
+      return result && result.result[0] > 0n ? { amountOut: result.result[0], router: quoter, v4: pool } satisfies Quote : null;
+    }));
+    return quotes.reduce<Quote>((best, quote) => quote && quote.amountOut > best.amountOut ? quote : best, { amountOut: 0n });
+  };
+}
+
 /** Builds calldata for whichever venue the quote picked. */
 export function uniswapRoute(defaultV3FeeTier = 3000): RouteBuilder {
   const v3 = uniswapV3Route(defaultV3FeeTier);

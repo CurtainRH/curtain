@@ -31,28 +31,29 @@
  *   POOL_V2_LEGACY_ROOT_MANAGER_ADDR  prior pool's root manager
  *   POOL_V2_LEGACY_START_BLOCK first block to scan for legacy note recovery
  *                              (POOL_V4_* aliases remain temporarily compatible)
- *   STOCK_STAKING_ADDR         wallet-backed CurtainStockStaking deployment (optional)
- *   REWARD_POOL_WALLET_PRIVATE_KEY EOA key for EIP-712 reward claims; operator service only
- *   MASTER_ADMIN_KEY           protects POST /admin/staking/rewards; operator service only
+ *   STOCK_STAKING_ADDR         fixed-term CurtainStockStaking deployment (optional)
+ *   REWARD_POOL_WALLET_PRIVATE_KEY EOA key for stock-bundle claim signing/approvals; operator only
+ *   STOCK_STAKING_START_BLOCK  first block of current staking contract (for dashboard position history)
  */
 import { bunSqlDb, migrate } from "@curtain/db";
 import { DEFAULT_TOKENS } from "@curtain/sdk";
-import { createPublicClient, createWalletClient, defineChain, getAddress, http, isAddress, parseAbi, type Address, type Hex } from "viem";
+import { createPublicClient, createWalletClient, defineChain, encodeAbiParameters, getAddress, http, isAddress, keccak256, parseAbi, parseAbiParameters, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { createApi, type ApiConfig } from "./api";
 import { createMcpApi } from "./mcp";
 import { Operator, type StealthConfig } from "./operator";
-import { mockQuoter, mockRoute, uniswapQuoter, uniswapRoute } from "./routes";
+import { mockQuoter, mockRoute, uniswapQuoter, uniswapRoute, uniswapV4OnlyQuoter } from "./routes";
 import { PoolV2RootPublisher } from "./poolV2";
 
 const STOCK_STAKING_ABI = parseAbi([
   "function rewardPoolWallet() view returns (address)",
-  "function isRewardAsset(address) view returns (bool)",
-  "function positions(uint256) view returns (address owner,uint128 amount,uint128 weighted,uint64 unlockAt,uint32 bundleId,bool closed)",
-  "function earned(uint256,address) view returns (uint256)",
-  "function claimNonces(uint256,address) view returns (uint256)",
-  "function scheduleReward(uint256,address,uint256,uint256)",
-  "function reservedRewards(address) view returns (uint256)",
+  "function bundleCount() view returns (uint256)",
+  "function getBundle(uint256) view returns (string name,address[] assets,uint16[] weightsBps)",
+  "function positions(uint256) view returns (address owner,uint128 amount,uint128 principalUsd,uint128 claimedUsd,uint64 stakedAt,uint64 unlockAt,uint32 bundleId,uint8 tierId,bool principalWithdrawn)",
+  "function earnedUsd(uint256) view returns (uint256)",
+  "function stakeQuoteNonces(address) view returns (uint256)",
+  "function claimNonces(uint256) view returns (uint256)",
+  "function BASE_APR_BPS() view returns (uint256)",
   "function balanceOf(address) view returns (uint256)",
   "function allowance(address,address) view returns (uint256)",
 ]);
@@ -118,8 +119,14 @@ const rewardPoolKeyRaw = process.env["REWARD_POOL_WALLET_PRIVATE_KEY"]?.trim();
 let stockStaking: ApiConfig["stockStaking"];
 if (stockStakingAddressRaw) {
   if (!isAddress(stockStakingAddressRaw)) throw new Error("STOCK_STAKING_ADDR is not an address");
-  if (!rewardPoolKeyRaw) throw new Error("REWARD_POOL_WALLET_PRIVATE_KEY is required when stock staking is enabled");
   const stakingAddress = getAddress(stockStakingAddressRaw);
+  const deployedApr = await publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "BASE_APR_BPS" }).catch(() => 0n);
+  const stakingStartBlock = process.env["STOCK_STAKING_START_BLOCK"]?.trim();
+  if (deployedApr !== 400n || !stakingStartBlock || !/^\d+$/.test(stakingStartBlock) || BigInt(stakingStartBlock) === 0n) {
+    console.warn("Stock-bundle staking disabled: set STOCK_STAKING_ADDR to the fixed-APR deployment and configure STOCK_STAKING_START_BLOCK.");
+  } else {
+  if (!rewardPoolKeyRaw) throw new Error("REWARD_POOL_WALLET_PRIVATE_KEY is required when stock staking is enabled");
+  const operatorAccount = privateKeyToAccount(env("OPERATOR_PRIVATE_KEY") as Hex);
   const rewardPoolAccount = privateKeyToAccount(rewardPoolKeyRaw as Hex);
   const rewardPoolWalletClient = createWalletClient({ account: rewardPoolAccount, chain, transport: http() });
   const configuredPool = await publicClient.readContract({
@@ -128,71 +135,91 @@ if (stockStakingAddressRaw) {
   if (getAddress(configuredPool) !== rewardPoolAccount.address) {
     throw new Error("REWARD_POOL_WALLET_PRIVATE_KEY does not match the staking contract reward pool");
   }
+  const quoteV4 = uniswapV4OnlyQuoter(publicClient, getAddress(env("V4_QUOTER_ADDR") as Address));
+  const usdg = getAddress("0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168");
+  const crtn = getAddress("0x66A844fcbf4705Dbde3c97394d5a4C9822E8F35b");
+  const symbolFor = new Map(Object.entries(DEFAULT_TOKENS).filter((entry): entry is [string, Address] => typeof entry[1] === "string").map(([symbol, address]) => [getAddress(address), symbol]));
+  const getBundle = (bundleId: bigint) => publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "getBundle", args: [bundleId] });
+  const bundleConfig = async () => {
+    const count = await publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "bundleCount" });
+    const bundles = await Promise.all(Array.from({ length: Number(count) }, async (_, i) => {
+      const [name, assets, weightsBps] = await getBundle(BigInt(i + 1));
+      return { id: i + 1, name, assets: assets.map((address, j) => ({ address, symbol: symbolFor.get(getAddress(address)) ?? getAddress(address), weightBps: weightsBps[j] })) };
+    }));
+    return { bundles, startBlock: stakingStartBlock };
+  };
   stockStaking = {
     address: stakingAddress,
     rewardPoolWallet: rewardPoolAccount.address,
-    ...(process.env["MASTER_ADMIN_KEY"] ? { masterAdminKey: process.env["MASTER_ADMIN_KEY"] } : {}),
-    createClaim: async ({ positionId, account, token }) => {
-      const [positionOwner, , , unlockAt] = await publicClient.readContract({
+    config: bundleConfig,
+    quoteStake: async ({ account, amount, tierId, bundleId }) => {
+      const quote = await quoteV4(crtn, usdg, amount);
+      if (quote.amountOut <= 0n) throw new Error("A Uniswap V4 CRTN/USDG quote is not available right now.");
+      const nonce = await publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "stakeQuoteNonces", args: [account] });
+      const deadline = Math.floor(Date.now() / 1000) + 300;
+      const signature = await walletClient.signTypedData({
+        account: operatorAccount,
+        domain: { name: "CurtainStockStaking", version: "2", chainId, verifyingContract: stakingAddress },
+        types: { StakeQuote: [
+          { name: "account", type: "address" }, { name: "amount", type: "uint256" }, { name: "tierId", type: "uint8" },
+          { name: "bundleId", type: "uint256" }, { name: "principalUsd", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" },
+        ] }, primaryType: "StakeQuote", message: { account, amount, tierId, bundleId, principalUsd: quote.amountOut, nonce, deadline: BigInt(deadline) },
+      });
+      return { principalUsd: quote.amountOut, deadline, signature };
+    },
+    createClaim: async ({ positionId, account }) => {
+      const [positionOwner, , , , , unlockAt, bundleId] = await publicClient.readContract({
         address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "positions", args: [positionId],
       });
       if (getAddress(positionOwner) !== account) throw new Error("This staking position belongs to another wallet");
       const nowSeconds = Math.floor(Date.now() / 1000);
       if (BigInt(nowSeconds) < unlockAt) throw new Error("This position has not reached its unlock date");
-      const amount = await publicClient.readContract({
-        address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "earned", args: [positionId, token],
-      });
-      if (amount === 0n) throw new Error("No accrued reward is available for this token");
-      const [reserved, poolBalance, poolAllowance] = await Promise.all([
-        publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "reservedRewards", args: [token] }),
-        publicClient.readContract({ address: token, abi: STOCK_STAKING_ABI, functionName: "balanceOf", args: [rewardPoolAccount.address] }),
-        publicClient.readContract({ address: token, abi: STOCK_STAKING_ABI, functionName: "allowance", args: [rewardPoolAccount.address, stakingAddress] }),
-      ]);
-      if (poolBalance < reserved || poolAllowance < reserved) throw new Error("Reward pool is underfunded or its token approval is too low");
-      const nonce = await publicClient.readContract({
-        address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "claimNonces", args: [positionId, token],
-      });
+      const rewardUsd = await publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "earnedUsd", args: [positionId] });
+      if (rewardUsd === 0n) throw new Error("No accrued stock-bundle reward is available yet.");
+      const [, assets, weights] = await getBundle(BigInt(bundleId));
+      const tokens = assets.map(getAddress);
+      const amounts: bigint[] = [];
+      let allocatedUsd = 0n;
+      for (let i = 0; i < tokens.length; i++) {
+        const portionUsd = i === tokens.length - 1 ? rewardUsd - allocatedUsd : rewardUsd * BigInt(weights[i]!) / 10_000n;
+        allocatedUsd += portionUsd;
+        const quote = await quoteV4(usdg, tokens[i]!, portionUsd);
+        if (quote.amountOut <= 0n) throw new Error("Stock-bundle quotes are temporarily unavailable. Please try again later; your accrued rewards are unchanged.");
+        amounts.push(quote.amountOut);
+      }
+      for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i]!;
+        const [balance, allowance] = await Promise.all([
+          publicClient.readContract({ address: token, abi: STOCK_STAKING_ABI, functionName: "balanceOf", args: [rewardPoolAccount.address] }),
+          publicClient.readContract({ address: token, abi: STOCK_STAKING_ABI, functionName: "allowance", args: [rewardPoolAccount.address, stakingAddress] }),
+        ]);
+        if (balance < amounts[i]!) throw new Error("Stock rewards are temporarily unavailable because the pool needs more inventory. Please try again later; your accrued rewards are unchanged.");
+        if (allowance < amounts[i]!) {
+          const approvalHash = await rewardPoolWalletClient.writeContract({ address: token, abi: TOKEN_APPROVAL_ABI, functionName: "approve", args: [stakingAddress, (1n << 256n) - 1n] });
+          const approvalReceipt = await publicClient.waitForTransactionReceipt({ hash: approvalHash });
+          if (approvalReceipt.status !== "success") throw new Error("Stock reward authorization is temporarily unavailable. Please try again later; your accrued rewards are unchanged.");
+        }
+      }
+      const nonce = await publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "claimNonces", args: [positionId] });
       const deadline = nowSeconds + 300;
       const signature = await rewardPoolAccount.signTypedData({
-        domain: { name: "CurtainStockStaking", version: "1", chainId, verifyingContract: stakingAddress },
-        types: {
-          RewardClaim: [
-            { name: "positionId", type: "uint256" }, { name: "account", type: "address" },
-            { name: "token", type: "address" }, { name: "amount", type: "uint256" },
-            { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" },
-          ],
+        domain: { name: "CurtainStockStaking", version: "2", chainId, verifyingContract: stakingAddress },
+        types: { StockRewardClaim: [
+          { name: "positionId", type: "uint256" }, { name: "account", type: "address" }, { name: "rewardUsd", type: "uint256" },
+          { name: "tokensHash", type: "bytes32" }, { name: "amountsHash", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" },
+        ] },
+        primaryType: "StockRewardClaim",
+        message: {
+          positionId, account, rewardUsd,
+          tokensHash: keccak256(encodeAbiParameters(parseAbiParameters("address[]"), [tokens])),
+          amountsHash: keccak256(encodeAbiParameters(parseAbiParameters("uint256[]"), [amounts])),
+          nonce, deadline: BigInt(deadline),
         },
-        primaryType: "RewardClaim",
-        message: { positionId, account, token, amount, nonce, deadline: BigInt(deadline) },
       });
-      return { amount, nonce, deadline, signature };
-    },
-    scheduleReward: async ({ bundleId, token, amount, duration }) => {
-      if (!(await publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "isRewardAsset", args: [token] }))) {
-        throw new Error("Token is not registered as a stock reward asset");
-      }
-      const [reserved, poolBalance, poolAllowance] = await Promise.all([
-        publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "reservedRewards", args: [token] }),
-        publicClient.readContract({ address: token, abi: STOCK_STAKING_ABI, functionName: "balanceOf", args: [rewardPoolAccount.address] }),
-        publicClient.readContract({ address: token, abi: STOCK_STAKING_ABI, functionName: "allowance", args: [rewardPoolAccount.address, stakingAddress] }),
-      ]);
-      if (poolBalance < reserved + amount) throw new Error("Reward pool wallet does not have enough of this token to cover existing rewards and the new schedule");
-      if (poolAllowance < reserved + amount) {
-        const approvalHash = await rewardPoolWalletClient.writeContract({
-          address: token, abi: TOKEN_APPROVAL_ABI, functionName: "approve", args: [stakingAddress, (1n << 256n) - 1n],
-        });
-        const approvalReceipt = await publicClient.waitForTransactionReceipt({ hash: approvalHash });
-        if (approvalReceipt.status !== "success") throw new Error("Reward pool token approval failed");
-      }
-      const hash = await walletClient.writeContract({
-        address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "scheduleReward",
-        args: [bundleId, token, amount, duration],
-      });
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") throw new Error("Reward schedule transaction reverted");
-      return hash;
+      return { rewardUsd, tokens, amounts, deadline, signature };
     },
   };
+  }
 }
 
 const vault = env("VAULT_ADDR") as Address;

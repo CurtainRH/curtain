@@ -13,18 +13,19 @@ There is no separate `PoolV4.sol`. Use V4 in user-facing route selection and API
 
 ## CRTN stock-bundle staking
 
-`CurtainStockStaking` is separate from the legacy single-reward `CurtainStaking` contract. Users lock the deployed CRTN token for 30, 90, or 180 days and select one stock bundle. At maturity, `withdraw` returns only CRTN principal; stock rewards are claimed separately from the EOA pool wallet using a backend-signed voucher. The user submits the claim transaction and pays its gas.
+`CurtainStockStaking` is separate from the legacy single-reward `CurtainStaking` contract. Users lock CRTN for 30, 90, or 180 days and select one stock bundle. The base rate is 4% simple APR, multiplied by 1×, 1.5×, or 2× for the selected term. At stake time, the operator signs a Uniswap V4 CRTN/USDG valuation; accrual stops at maturity. At maturity, a single backend-signed package quotes and pays the complete stock bundle from the reward-pool EOA. `withdraw` returns CRTN principal independently; users submit and pay gas for both transactions.
 
 - Bundle and reward-asset registries are append-only: the owner may register more stock assets and add new bundles, but cannot edit or remove an existing asset or bundle.
-- Stock inventory remains in the EOA reward pool. After tokens are sent there, the pool wallet approves the staking contract once per reward token; the operator then calls `scheduleReward(bundleId, token, amount, duration)`. The contract verifies the pool balance and allowance before recording emissions.
-- `claimReward(positionId, token, amount, deadline, signature)` transfers the backend-authorized accrued amount from the EOA pool. The EOA key is the EIP-712 claim signer and must remain server-side; the user’s wallet sends the claim transaction and pays gas.
+- Stock inventory remains in the EOA reward pool. The operator approves each bundle token to the staking contract as needed while preparing a claim; no tokens are held by the contract.
+- `claimStockRewards(positionId, rewardUsd, tokens, amounts, deadline, signature)` transfers the full bundle atomically. If any constituent is short or lacks allowance, the entire transaction reverts and accrued rewards remain available.
+- The operator signs stake-time quotes and the pool EOA signs claim packages. Both keys must remain server-side. There are no scheduled streams or manually selected reward amounts.
 - The contract has no reward withdrawal or rescue method. It rejects CRTN and USDG as reward assets and only schedules registered bundle constituents.
-- Funding is per constituent. The published 60/40 and other percentages are target-mix metadata, not an on-chain value rebalance: there is no price oracle, and actual rewards depend on which assets are funded and their stream amounts.
-- Emissions pause while a bundle has no active stake. Fee-on-transfer stake/reward tokens are rejected. The owner is the operator key and can only append reward assets/bundles through its privileged methods.
+- The bundle weights determine the USDG value split at claim time. Current Uniswap V4 quotes determine token quantities, so weights are not fixed share counts.
+- Fee-on-transfer stake/reward tokens are rejected. The owner is the operator key and can only append reward assets/bundles through its privileged methods; the contract has no asset withdrawal method.
 
 Initial bundle definitions: Market Core (SPY 60%, QQQ 40%); AI & Chips (SMH 40%, NVDA 25%, TSM 20%, AMD 15%); Platform Leaders (AAPL, MSFT, AMZN, GOOGL, META 20% each). Deployment uses `script/DeployCurtainStockStaking.s.sol:DeployCurtainStockStakingScript` on Robinhood Chain 4663.
 
-Production CRTN stock-bundle staking on Robinhood Chain: `0x0852E2B555090dFc537207f3cB2d9D936eDa2e7A`, recorded as `stockStaking` in [`deployments/4663.json`](deployments/4663.json). The separate reward pool EOA is `0x5368049BBb06859e2fC9E78e315b164614097F67`. The former contract treasury `0xf97DE94DA75923e31c5a8cdf8C048E611aDe3892` is superseded by the wallet-backed claim design; do not fund it. The earlier instance `0xf024145CcCb2d67185FB7883Ca891456cba72454` is also superseded.
+Production CRTN stock-bundle staking on Robinhood Chain: `0xfabeaf10dd71f269b774c7e69aff52216b1a7a4c` (deployment block `85046791`), recorded as `stockStaking` in [`deployments/4663.json`](deployments/4663.json). The separate reward pool EOA is `0x5368049BBb06859e2fC9E78e315b164614097F67`. The prior wallet-backed deployment `0x0852E2B555090dFc537207f3cB2d9D936eDa2e7A` had zero positions and zero CRTN staked when checked before migration; it is superseded by the fixed-APR model.
 
 ## Foundry
 
