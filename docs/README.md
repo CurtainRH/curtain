@@ -52,6 +52,14 @@ performance-evidence interfaces. Integrators bring their own registry storage, i
 hardware trust roots, canary operation, and any bond/enforcement policy. It is not a hosted
 registry or attestation service. See [`HOST_NETWORK_EXPERIMENTAL.md`](HOST_NETWORK_EXPERIMENTAL.md).
 
+## Private Data Analysis toolkit (experimental)
+
+`backend/packages/private-analysis` provides in-process, policy-bounded aggregate queries over a
+dataset source supplied by the integrator. It allowlists dimensions/measures, bounds rows/groups,
+and suppresses small output groups. It is not differential privacy or a Curtain-hosted compute
+service; data source, authorization, deployment, and trust decisions remain with the integrator.
+See [`PRIVATE_DATA_ANALYSIS.md`](PRIVATE_DATA_ANALYSIS.md) and the package guide.
+
 ## Rig Rate reference calculator (experimental)
 
 Rig Rate is a cloneable, in-process calculator for hourly GPU reference rates. It normalizes

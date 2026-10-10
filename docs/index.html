@@ -33,6 +33,7 @@
           ><a href="#refunds">Escape tickets &amp; refunds</a>
           <a href="#staking">CRTN staking</a>
           <a href="#booths">Booths runtime · experimental</a><a href="#lamps">Lamps windows · experimental</a
+          ><a href="#private-analysis">Private Data Analysis · experimental</a
           ><a href="#errors">Errors &amp; limits</a
           ><a href="#privacy">Privacy model</a>
         </nav>
@@ -610,6 +611,33 @@ bun run --filter @curtain/lamps test</code></pre>
           <p>
             Read the <a href="https://github.com/CurtainRH/curtain/blob/main/docs/LAMPS_EXPERIMENTAL.md">Lamps build notes</a>
             and <a href="https://github.com/CurtainRH/curtain/tree/main/backend/packages/lamps">cloneable package</a>.
+          </p>
+        </section>
+        <section id="private-analysis">
+          <p class="eyebrow">EXPERIMENTAL · PRIVATE COMPUTE TOOLKIT</p>
+          <h2>Analyze data. Keep the workflow yours.</h2>
+          <p>
+            Private Data Analysis is cloneable code for running constrained aggregate queries
+            against datasets held by your own service. Bring your data connector, access rules,
+            compute environment, and deployment. Curtain does not receive your dataset or host
+            analysis jobs.
+          </p>
+          <div class="code">
+            <div class="code-title">Clone and test <button type="button" class="copy">Copy</button></div>
+            <pre><code>git clone https://github.com/CurtainRH/curtain.git
+cd curtain/backend
+bun install
+bun run --filter @curtain/private-analysis test</code></pre>
+          </div>
+          <div class="callout">
+            The toolkit limits query fields, rows, and group counts and can suppress small groups.
+            This is not differential privacy or encryption. Your service and data source can see
+            the data; a remote host may see it unless you separately deploy and verify protections.
+            Use synthetic data until your full setup has been reviewed.
+          </div>
+          <p>
+            Read the <a href="https://github.com/CurtainRH/curtain/blob/main/docs/PRIVATE_DATA_ANALYSIS.md">Private Data Analysis guide</a>
+            or inspect the <a href="https://github.com/CurtainRH/curtain/tree/main/backend/packages/private-analysis">toolkit package and example</a>.
           </p>
         </section>
         <section id="privacy">
