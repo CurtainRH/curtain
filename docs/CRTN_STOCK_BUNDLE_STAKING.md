@@ -10,19 +10,21 @@ Curtain’s wallet-backed stock-reward staking contract is deployed on Robinhood
 
 ## User flow
 
-Users choose a bundle and lock CRTN for 30, 90, or 180 days. The lock weights are 1×, 1.5×, and 2× respectively. At maturity, the user can withdraw CRTN principal and claim each accrued stock token separately. The backend signs a claim voucher; the user submits `claimReward` from their connected wallet and pays transaction gas. The contract verifies the signature, position ownership, maturity, accrued amount, and replay nonce before pulling the reward from the pool EOA.
+Users access the staking screen at `/app/staking`, choose a bundle, and lock CRTN for 30, 90, or 180 days. The lock weights are 1×, 1.5×, and 2× respectively. At maturity, the user can withdraw CRTN principal and claim each accrued stock token separately. The backend signs a claim voucher; the user submits `claimReward` from their connected wallet and pays transaction gas. The contract verifies the signature, position ownership, maturity, accrued amount, and replay nonce before pulling the reward from the pool EOA.
 
 ## Funding and scheduling
 
 Send each stock token directly to the reward-pool EOA. A transfer does not itself create a reward schedule. When an authorized schedule is created, the operator API checks the pool balance and automatically submits a one-time unlimited approval for that token if needed, then schedules the rewards. The EOA needs a small ETH balance for this initial approval transaction per token; users pay gas for their own reward claims.
 
-After funding and approval, the operator calls:
+After funding, an authorized operator schedules each reward stream through `POST /admin/staking/rewards` (protected by `x-master-admin-key`). The request specifies a bundle ID, a constituent token, a raw token amount, and a duration in seconds. This starts emissions; wallet funding alone does not. The operator API submits a one-time pool-wallet approval per token when required, then schedules the stream.
+
+Equivalent contract call:
 
 ```text
 scheduleReward(bundleId, tokenAddress, amount, durationSeconds)
 ```
 
-The contract verifies the EOA has both the balance and allowance to cover already-reserved rewards plus the new schedule. Emissions pause while a bundle has no active stake. Rewards are scheduled per token and bundle. Reward funding/scheduling is not yet exposed in the dashboard; the operator contract call is the current control surface.
+The contract verifies the EOA has both the balance and allowance to cover already-reserved rewards plus the new schedule. Emissions pause while a bundle has no active stake. Rewards are scheduled per token and bundle. Reward scheduling is an operator function, separate from the user-facing staking screen; no admin UI is required.
 
 The pool private key is used by the backend to sign claim vouchers and approve reward tokens; it must remain server-side as `REWARD_POOL_WALLET_PRIVATE_KEY`. Never put it in frontend/VITE variables. The contract owner is the operator wallet and can append assets/bundles and schedule backed rewards; it cannot withdraw rewards from the pool wallet. The admin scheduling API is protected by `MASTER_ADMIN_KEY`; no admin UI is required.
 

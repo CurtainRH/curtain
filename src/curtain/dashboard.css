@@ -25,7 +25,9 @@
   top: 0;
   height: 100svh;
   max-height: 1100px;
-  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), padding 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    padding 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   overflow-x: hidden;
   box-sizing: border-box;
 }
@@ -65,7 +67,10 @@
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
-  transition: background 0.2s, border-color 0.2s, color 0.2s;
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    color 0.2s;
 }
 .sidebar-retract-btn:hover {
   background: #ff6a1a20;
@@ -147,7 +152,10 @@
   color: var(--gold);
   border-radius: 2px;
   text-decoration: none;
-  transition: background 0.2s, border-color 0.2s, color 0.2s;
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    color 0.2s;
 }
 .sidebar .socials button:hover,
 .sidebar .socials a:hover {
@@ -332,7 +340,10 @@
   min-width: 38px;
   min-height: 30px;
   padding: 5px 9px;
-  transition: color 0.2s, background 0.2s, border-color 0.2s;
+  transition:
+    color 0.2s,
+    background 0.2s,
+    border-color 0.2s;
 }
 .curtain-switch button:hover,
 .curtain-switch button:focus-visible {
@@ -771,6 +782,195 @@
 .form-panel {
   padding: 28px;
 }
+.stock-staking-page {
+  width: min(100%, 1080px);
+}
+.stock-staking-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0 0 30px;
+}
+.stock-staking-heading h1 {
+  margin: 5px 0 8px;
+  font-size: clamp(2rem, 4vw, 3.4rem);
+}
+.stock-staking-heading p:not(.eyebrow) {
+  color: var(--muted);
+}
+.stock-staking-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 20px;
+}
+.stock-staking-card {
+  padding: 26px;
+}
+.stock-staking-card h2 {
+  margin: 5px 0 22px;
+  font-size: 1.45rem;
+}
+.stock-staking-card input {
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 15px;
+  margin: 9px 0 19px;
+  color: var(--text);
+  background: var(--surface, #fff);
+  border: 1px solid var(--line);
+}
+.stock-bundle-options,
+.stock-lock-options {
+  display: grid;
+  gap: 9px;
+  margin: 8px 0 20px;
+}
+.stock-bundle-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.stock-lock-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.stock-bundle-options button,
+.stock-lock-options button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 75px;
+  padding: 12px;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+}
+.stock-bundle-options button[aria-pressed="true"],
+.stock-lock-options button[aria-pressed="true"] {
+  border-color: var(--gold);
+  box-shadow: inset 0 0 0 1px var(--gold);
+}
+.stock-bundle-options small,
+.stock-lock-options small {
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+.stock-staking-card .button {
+  width: 100%;
+  justify-content: center;
+  margin: 8px 0 12px;
+}
+.stock-staking-card .field-help {
+  display: block;
+  line-height: 1.6;
+}
+.stock-overview h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.stock-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 17px 0;
+  border-block: 1px solid var(--line);
+}
+.stock-total span,
+.stock-bundle-row span {
+  color: var(--muted);
+}
+.stock-bundle-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.stock-staking-alert,
+.stock-staking-notice {
+  padding: 13px 16px;
+  margin: 0 0 16px;
+  border: 1px solid var(--line);
+}
+.stock-staking-alert {
+  color: #8c331d;
+  background: #fff2eb;
+}
+.stock-staking-notice {
+  color: #345d42;
+  background: #edf8ef;
+}
+.stock-positions {
+  margin-top: 24px;
+}
+.stock-positions > .panel-heading {
+  padding-inline: 0;
+}
+.stock-position {
+  padding: 20px;
+  margin-top: 12px;
+}
+.stock-position-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.stock-position-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.stock-position-head span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.stock-reward-list {
+  margin: 16px 0;
+  border-top: 1px solid var(--line);
+}
+.stock-reward-list > div {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+.stock-reward-list > div > span {
+  color: var(--muted);
+}
+.stock-reward-list .text-button {
+  color: var(--gold);
+}
+.stock-position > .button {
+  min-height: 42px;
+  padding: 0 16px;
+}
+@media (max-width: 850px) {
+  .stock-staking-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 560px) {
+  .stock-staking-heading {
+    flex-direction: column;
+  }
+  .stock-bundle-options {
+    grid-template-columns: 1fr;
+  }
+  .stock-lock-options {
+    grid-template-columns: 1fr;
+  }
+  .stock-position-head {
+    flex-direction: column;
+  }
+  .stock-reward-list > div {
+    grid-template-columns: 0.6fr 1fr auto;
+    gap: 8px;
+    font-size: 0.8rem;
+  }
+}
 .form-panel .panel-heading {
   padding: 0 0 25px;
   margin-bottom: 25px;
@@ -901,7 +1101,9 @@
   padding: 8px 14px;
   border-radius: 4px;
   cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
   text-align: left;
 }
 .asset-select-trigger:hover {
@@ -1009,8 +1211,12 @@
   animation: fadeIn 0.18s ease-out;
 }
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .token-modal-card {
   background: #101010;
@@ -1021,13 +1227,21 @@
   max-height: 84vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.8),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
   overflow: hidden;
   animation: modalSlideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 @keyframes modalSlideUp {
-  from { transform: translateY(12px) scale(0.98); opacity: 0; }
-  to { transform: translateY(0) scale(1); opacity: 1; }
+  from {
+    transform: translateY(12px) scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
 }
 .token-modal-header {
   display: flex;
@@ -1775,7 +1989,9 @@
   height: 32px;
   padding: 0;
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
 }
 .mobile-sidebar:hover {
   background: #ff6a1a20;

@@ -51,6 +51,7 @@ import PrivacyScore from "./PrivacyScore";
 import StealthReceive from "./StealthReceive";
 import TicketSync from "./TicketSync";
 import Developer from "./Developer";
+import StockStaking from "./StockStaking";
 import { useWorkspaceTools } from "./useWorkspaceTools";
 import {
   address,
@@ -82,11 +83,17 @@ import {
   type CurtainMode,
 } from "./integration";
 import { balanceText, useCurtain, type TokenData } from "./useCurtain";
-import { pendingPoolV4Notes, poolV4Quote, poolV4Swap, PoolV4FallbackError, recoverPoolV4Note } from "./poolV4";
+import {
+  pendingPoolV4Notes,
+  poolV4Quote,
+  poolV4Swap,
+  PoolV4FallbackError,
+  recoverPoolV4Note,
+} from "./poolV4";
 const nav = [
   { id: "overview", path: "/app", name: "Overview", icon: LayoutDashboard },
   { id: "swap", path: "/app/swap", name: "Swap", icon: Repeat2 },
-  { id: "stake", path: "/app/stake", name: "Stake", icon: Coins },
+  { id: "staking", path: "/app/staking", name: "Staking", icon: Coins },
   { id: "activity", path: "/app/activity", name: "Activity", icon: Activity },
   { id: "recovery", path: "/app/recovery", name: "Recovery", icon: Rewind },
   { id: "receive", path: "/app/receive", name: "Receive", icon: Inbox },
@@ -205,8 +212,13 @@ export default function Dashboard({ path }: { path: string }) {
     try {
       await ensureChain();
       setBusy("Recovering private note");
-      const walletClient = createWalletClient({ chain, transport: custom(browserProvider), account: wallet as Address });
-      for (const note of notes) await recoverPoolV4Note({ publicClient, walletClient, note, onStatus: setBusy });
+      const walletClient = createWalletClient({
+        chain,
+        transport: custom(browserProvider),
+        account: wallet as Address,
+      });
+      for (const note of notes)
+        await recoverPoolV4Note({ publicClient, walletClient, note, onStatus: setBusy });
       setMessage("Private note recovered and delivered.");
     } catch (e) {
       setAlertMessage(errorMessage(e));
@@ -477,16 +489,30 @@ export default function Dashboard({ path }: { path: string }) {
       setQuoting(true);
       try {
         const raw = rawAmount(amount, input.decimals);
-        const q = mode === "v4"
-          ? await poolV4Quote({ tokenIn: input.address, tokenOut: output.address, amountIn: raw, slippageBps: slippage }).then((pool) => ({
-              amountIn: raw.toString(), marketOut: pool.minOut || "0", expectedOut: pool.minOut || "0",
-              minOutSuggested: pool.minOut || "0", protocolFee: "0", keeperFee: "0", venue: "Curtain IV shielded pool",
-              available: pool.available === true,
-            } satisfies SwapQuote))
-          : await app.sdk.quote(input.address, output.address, raw, slippage, {
-              stealth: useStealth,
-              ...(useSplit ? { splits: splitTo.length, splitMode } : {}),
-            });
+        const q =
+          mode === "v4"
+            ? await poolV4Quote({
+                tokenIn: input.address,
+                tokenOut: output.address,
+                amountIn: raw,
+                slippageBps: slippage,
+              }).then(
+                (pool) =>
+                  ({
+                    amountIn: raw.toString(),
+                    marketOut: pool.minOut || "0",
+                    expectedOut: pool.minOut || "0",
+                    minOutSuggested: pool.minOut || "0",
+                    protocolFee: "0",
+                    keeperFee: "0",
+                    venue: "Curtain IV shielded pool",
+                    available: pool.available === true,
+                  }) satisfies SwapQuote,
+              )
+            : await app.sdk.quote(input.address, output.address, raw, slippage, {
+                stealth: useStealth,
+                ...(useSplit ? { splits: splitTo.length, splitMode } : {}),
+              });
         if (alive && number === requestNumber.current) {
           setQuote(q);
           setQuoteError("");
@@ -619,7 +645,11 @@ export default function Dashboard({ path }: { path: string }) {
       return;
     }
     if (limitOrder) {
-      if (!Number.isInteger(Number(limitExpiry)) || Number(limitExpiry) < 60 || Number(limitExpiry) > app.maxDelay) {
+      if (
+        !Number.isInteger(Number(limitExpiry)) ||
+        Number(limitExpiry) < 60 ||
+        Number(limitExpiry) > app.maxDelay
+      ) {
         setAlertMessage("Choose a limit order expiry between 1 minute and the service maximum.");
         return;
       }
@@ -658,7 +688,11 @@ export default function Dashboard({ path }: { path: string }) {
         try {
           const result = await poolV4Swap({
             publicClient,
-            walletClient: createWalletClient({ chain, transport: custom(browserProvider), account: wallet as Address }),
+            walletClient: createWalletClient({
+              chain,
+              transport: custom(browserProvider),
+              account: wallet as Address,
+            }),
             tokenIn: input.address,
             tokenOut: output.address,
             amountIn: raw,
@@ -668,12 +702,16 @@ export default function Dashboard({ path }: { path: string }) {
           });
           setAmount("");
           setQuote(undefined);
-          setMessage(`Curtain IV delivered your ${to} privately. Transaction: ${result.unshieldTx.slice(0, 10)}…`);
+          setMessage(
+            `Curtain IV delivered your ${to} privately. Transaction: ${result.unshieldTx.slice(0, 10)}…`,
+          );
           void app.refresh();
           return;
         } catch (error) {
           if (!(error instanceof PoolV4FallbackError)) throw error;
-          setMessage("Curtain IV is unavailable for this pair, so Curtain is using the compatible vault route.");
+          setMessage(
+            "Curtain IV is unavailable for this pair, so Curtain is using the compatible vault route.",
+          );
         }
       }
 
@@ -801,7 +839,9 @@ export default function Dashboard({ path }: { path: string }) {
           amountIn: raw,
           tokenOut: output!.address,
           recipient: payTo,
-          minOut: limitOrder ? parseUnits(limitMinOut, output!.decimals) : BigInt(fresh.minOutSuggested),
+          minOut: limitOrder
+            ? parseUnits(limitMinOut, output!.decimals)
+            : BigInt(fresh.minOutSuggested),
           delaySeconds: limitOrder ? 0 : delaySeconds,
           orderType,
           ...(limitOrder ? { expiresInSeconds: Number(limitExpiry) } : {}),
@@ -897,7 +937,9 @@ export default function Dashboard({ path }: { path: string }) {
           : {}),
         ...(typeof source.delaySeconds === "number" ? { delaySeconds: source.delaySeconds } : {}),
         ...(source.orderType === "limit" ? { orderType: "limit" as const } : {}),
-        ...(typeof source.expiresInSeconds === "number" ? { expiresInSeconds: source.expiresInSeconds } : {}),
+        ...(typeof source.expiresInSeconds === "number"
+          ? { expiresInSeconds: source.expiresInSeconds }
+          : {}),
       });
       setMessage("Ticket imported. Refunds use the vault directly.");
     } catch (e) {
@@ -956,8 +998,8 @@ export default function Dashboard({ path }: { path: string }) {
                     ? status.status === "deposited" && row.orderType === "limit"
                       ? "Waiting for target price"
                       : status.status === "deposited" && row.delaySeconds
-                      ? "Scheduled (private delay)"
-                      : statusCopy[status.status]
+                        ? "Scheduled (private delay)"
+                        : statusCopy[status.status]
                     : "Service unavailable — ticket ready";
           const remaining = (deposit?.requestedAt || 0) + CHALLENGE_WINDOW_SECONDS + 1 - app.now;
           return (
@@ -1450,17 +1492,34 @@ export default function Dashboard({ path }: { path: string }) {
                     <p className="eyebrow">PRIVATE NOTE RECOVERY</p>
                     <h2>Recover a pending swap</h2>
                   </div>
-                  <button className="button gold" type="button" onClick={() => void recoverPoolNotes()} disabled={!wallet || !!busy}>
+                  <button
+                    className="button gold"
+                    type="button"
+                    onClick={() => void recoverPoolNotes()}
+                    disabled={!wallet || !!busy}
+                  >
                     <Rewind size={16} />
                     Recover notes
                   </button>
                 </div>
                 <p className="panel-copy">
-                  Curtain keeps the recovery material for shielded-pool swaps in this browser. If a swap was interrupted while its private note was being indexed, connect the same wallet and try again here.
+                  Curtain keeps the recovery material for shielded-pool swaps in this browser. If a
+                  swap was interrupted while its private note was being indexed, connect the same
+                  wallet and try again here.
                 </p>
-                <Note>Recovery material stays on this device and is removed only after a successful private delivery.</Note>
-                {!pendingPoolV4Notes().length && <p className="muted">No pending private notes are saved in this browser.</p>}
-                {!!pendingPoolV4Notes().length && <p className="muted">{pendingPoolV4Notes().length} private note{pendingPoolV4Notes().length === 1 ? "" : "s"} ready to recover.</p>}
+                <Note>
+                  Recovery material stays on this device and is removed only after a successful
+                  private delivery.
+                </Note>
+                {!pendingPoolV4Notes().length && (
+                  <p className="muted">No pending private notes are saved in this browser.</p>
+                )}
+                {!!pendingPoolV4Notes().length && (
+                  <p className="muted">
+                    {pendingPoolV4Notes().length} private note
+                    {pendingPoolV4Notes().length === 1 ? "" : "s"} ready to recover.
+                  </p>
+                )}
               </section>
             )}
             {current.id === "overview" && (
@@ -1777,152 +1836,184 @@ export default function Dashboard({ path }: { path: string }) {
                   <p className="field-label">Order type</p>
                   <div className="segmented">
                     {(["market", "limit"] as const).map((kind) => (
-                      <button key={kind} aria-pressed={orderType === kind} onClick={() => {
-                        setOrderType(kind);
-                        if (kind === "limit") setDelayed(false);
-                      }}>
+                      <button
+                        key={kind}
+                        aria-pressed={orderType === kind}
+                        onClick={() => {
+                          setOrderType(kind);
+                          if (kind === "limit") setDelayed(false);
+                        }}
+                      >
                         {kind === "market" ? "Market swap" : "Limit order"}
                       </button>
                     ))}
                   </div>
                   {limitOrder ? (
                     <>
-                      <label className="field-label" htmlFor="limit-min-out">Minimum received ({to})</label>
-                      <input id="limit-min-out" inputMode="decimal" placeholder={quote ? formatUnits(BigInt(quote.minOutSuggested), output?.decimals ?? 18) : "0"} value={limitMinOut} onChange={(e) => setLimitMinOut(e.target.value)} />
-                      <label className="field-label" htmlFor="limit-expiry">Order expires</label>
-                      <select id="limit-expiry" value={limitExpiry} onChange={(e) => setLimitExpiry(e.target.value)}>
-                        <option value="3600">In 1 hour</option><option value="21600">In 6 hours</option><option value="86400">In 1 day</option><option value="604800">In 7 days</option><option value="2592000">In 30 days</option>
-                      </select>
-                      <span className="field-help">Curtain waits until the current quote meets your minimum. If it does not, your escape ticket remains refundable after expiry.</span>
-                    </>
-                  ) : <>
-                  <p className="field-label">Timing</p>
-                  <div className="segmented">
-                    {[false, true].map((v) => (
-                      <button
-                        key={String(v)}
-                        aria-pressed={delayed === v}
-                        onClick={() => setDelayed(v)}
+                      <label className="field-label" htmlFor="limit-min-out">
+                        Minimum received ({to})
+                      </label>
+                      <input
+                        id="limit-min-out"
+                        inputMode="decimal"
+                        placeholder={
+                          quote
+                            ? formatUnits(BigInt(quote.minOutSuggested), output?.decimals ?? 18)
+                            : "0"
+                        }
+                        value={limitMinOut}
+                        onChange={(e) => setLimitMinOut(e.target.value)}
+                      />
+                      <label className="field-label" htmlFor="limit-expiry">
+                        Order expires
+                      </label>
+                      <select
+                        id="limit-expiry"
+                        value={limitExpiry}
+                        onChange={(e) => setLimitExpiry(e.target.value)}
                       >
-                        {v ? "Private delay" : "Instant"}
-                      </button>
-                    ))}
-                  </div>
-                  {delayed && features.delayPresets && (
+                        <option value="3600">In 1 hour</option>
+                        <option value="21600">In 6 hours</option>
+                        <option value="86400">In 1 day</option>
+                        <option value="604800">In 7 days</option>
+                        <option value="2592000">In 30 days</option>
+                      </select>
+                      <span className="field-help">
+                        Curtain waits until the current quote meets your minimum. If it does not,
+                        your escape ticket remains refundable after expiry.
+                      </span>
+                    </>
+                  ) : (
                     <>
-                      <div className="segmented v2-delay-presets">
-                        {(["quick", "better", "best", "custom"] as const).map((p) => (
+                      <p className="field-label">Timing</p>
+                      <div className="segmented">
+                        {[false, true].map((v) => (
                           <button
-                            key={p}
-                            aria-pressed={delayPreset === p}
-                            onClick={() => {
-                              setDelayPreset(p);
-                              if (p !== "custom") setPresetSeconds(presetWindow(p, app.maxDelay));
-                            }}
+                            key={String(v)}
+                            aria-pressed={delayed === v}
+                            onClick={() => setDelayed(v)}
                           >
-                            {p === "custom" ? "Custom" : DELAY_PRESETS[p].label}
-                            {p !== "custom" && <small>{DELAY_PRESETS[p].range}</small>}
+                            {v ? "Private delay" : "Instant"}
                           </button>
                         ))}
                       </div>
-                      {usePresets && (
-                        <span className="field-help">
-                          This swap gets a window of {aboutDuration(delaySeconds)}, picked at random
-                          inside the preset so delays don't all look the same.
-                        </span>
-                      )}
-                    </>
-                  )}
-                  {delayed && (
-                    <>
-                      {!usePresets && (
+                      {delayed && features.delayPresets && (
                         <>
-                          <label className="field-label" htmlFor="swap-delay">
-                            Delay window
-                          </label>
-                          <select
-                            id="swap-delay"
-                            value={delay}
-                            onChange={(e) => setDelay(e.target.value)}
-                          >
-                            {[
-                              [3600, "1 hour"],
-                              [21600, "6 hours"],
-                              [86400, "1 day"],
-                              [604800, "7 days"],
-                              [2592000, "30 days"],
-                              [15552000, "180 days"],
-                            ].map(([s, label]) => (
-                              <option key={s} value={s} disabled={Number(s) > app.maxDelay}>
-                                {label}
-                              </option>
-                            ))}
-                            <option value="custom">Custom</option>
-                          </select>
-                          {delay === "custom" && (
-                            <>
-                              <label className="field-label" htmlFor="custom-delay">
-                                Window in seconds (maximum {app.maxDelay})
-                              </label>
-                              <input
-                                id="custom-delay"
-                                type="number"
-                                min={1}
-                                max={app.maxDelay}
-                                value={customDelay}
-                                onChange={(e) => setCustomDelay(e.target.value)}
-                              />
-                            </>
-                          )}
-                        </>
-                      )}
-                      <span className="field-help">
-                        Curtain pays out at a random time inside this window. Longer windows are
-                        more private.
-                      </span>
-                      {piecesAvailable && (
-                        <>
-                          <div className="segmented">
-                            {[false, true].map((v) => (
+                          <div className="segmented v2-delay-presets">
+                            {(["quick", "better", "best", "custom"] as const).map((p) => (
                               <button
-                                key={String(v)}
-                                aria-pressed={piecesOn === v}
-                                onClick={() => setPiecesOn(v)}
+                                key={p}
+                                aria-pressed={delayPreset === p}
+                                onClick={() => {
+                                  setDelayPreset(p);
+                                  if (p !== "custom")
+                                    setPresetSeconds(presetWindow(p, app.maxDelay));
+                                }}
                               >
-                                {v ? "Deliver in pieces" : "One delivery"}
+                                {p === "custom" ? "Custom" : DELAY_PRESETS[p].label}
+                                {p !== "custom" && <small>{DELAY_PRESETS[p].range}</small>}
                               </button>
                             ))}
                           </div>
-                          {usePieces && (
+                          {usePresets && (
+                            <span className="field-help">
+                              This swap gets a window of {aboutDuration(delaySeconds)}, picked at
+                              random inside the preset so delays don't all look the same.
+                            </span>
+                          )}
+                        </>
+                      )}
+                      {delayed && (
+                        <>
+                          {!usePresets && (
                             <>
-                              <label className="field-label" htmlFor="piece-count">
-                                Pieces
+                              <label className="field-label" htmlFor="swap-delay">
+                                Delay window
                               </label>
                               <select
-                                id="piece-count"
-                                value={pieceCount}
-                                onChange={(e) => setPieceCount(Number(e.target.value))}
+                                id="swap-delay"
+                                value={delay}
+                                onChange={(e) => setDelay(e.target.value)}
                               >
-                                {[2, 3, 4, 5].map((n) => (
-                                  <option key={n} value={n}>
-                                    {n} pieces
+                                {[
+                                  [3600, "1 hour"],
+                                  [21600, "6 hours"],
+                                  [86400, "1 day"],
+                                  [604800, "7 days"],
+                                  [2592000, "30 days"],
+                                  [15552000, "180 days"],
+                                ].map(([s, label]) => (
+                                  <option key={s} value={s} disabled={Number(s) > app.maxDelay}>
+                                    {label}
                                   </option>
                                 ))}
+                                <option value="custom">Custom</option>
                               </select>
-                              <span className="field-help">
-                                Your swap becomes {pieceCount} separate private swaps of random
-                                sizes, each delivered at its own random time in this window. Each
-                                piece has its own escape ticket, so every piece stays refundable on
-                                its own. Your wallet asks you to approve once and confirm{" "}
-                                {pieceCount} deposits.
-                              </span>
+                              {delay === "custom" && (
+                                <>
+                                  <label className="field-label" htmlFor="custom-delay">
+                                    Window in seconds (maximum {app.maxDelay})
+                                  </label>
+                                  <input
+                                    id="custom-delay"
+                                    type="number"
+                                    min={1}
+                                    max={app.maxDelay}
+                                    value={customDelay}
+                                    onChange={(e) => setCustomDelay(e.target.value)}
+                                  />
+                                </>
+                              )}
+                            </>
+                          )}
+                          <span className="field-help">
+                            Curtain pays out at a random time inside this window. Longer windows are
+                            more private.
+                          </span>
+                          {piecesAvailable && (
+                            <>
+                              <div className="segmented">
+                                {[false, true].map((v) => (
+                                  <button
+                                    key={String(v)}
+                                    aria-pressed={piecesOn === v}
+                                    onClick={() => setPiecesOn(v)}
+                                  >
+                                    {v ? "Deliver in pieces" : "One delivery"}
+                                  </button>
+                                ))}
+                              </div>
+                              {usePieces && (
+                                <>
+                                  <label className="field-label" htmlFor="piece-count">
+                                    Pieces
+                                  </label>
+                                  <select
+                                    id="piece-count"
+                                    value={pieceCount}
+                                    onChange={(e) => setPieceCount(Number(e.target.value))}
+                                  >
+                                    {[2, 3, 4, 5].map((n) => (
+                                      <option key={n} value={n}>
+                                        {n} pieces
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <span className="field-help">
+                                    Your swap becomes {pieceCount} separate private swaps of random
+                                    sizes, each delivered at its own random time in this window.
+                                    Each piece has its own escape ticket, so every piece stays
+                                    refundable on its own. Your wallet asks you to approve once and
+                                    confirm {pieceCount} deposits.
+                                  </span>
+                                </>
+                              )}
                             </>
                           )}
                         </>
                       )}
                     </>
                   )}
-                  </>}
                   <label className="field-label" htmlFor="slippage">
                     Slippage
                   </label>
@@ -2203,6 +2294,7 @@ export default function Dashboard({ path }: { path: string }) {
                   <div className="v2-section">{positionTable()}</div>
                 </>
               ))}
+            {current.id === "staking" && <StockStaking />}
             {current.id === "receive" && (
               <StealthReceive
                 wallet={wallet}
