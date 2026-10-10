@@ -11,7 +11,7 @@ Curtain staking lets a user lock CRTN for a fixed period and earn a USDG-valued 
 - Accrual stops at the position's fixed maturity; it is not compounded.
 - At stake time, the operator first checks the best available Uniswap V3/V4 CRTN→USDG quote. If neither venue has a quote, it can use Codex.io's CRTN USD market price and treat USD as equivalent to USDG at 1:1. The source is shown to the user before approval; the operator signs the resulting USDG-denominated principal value.
 - At maturity, accrued USDG value is split by the chosen bundle weights. The operator checks supported Uniswap V3 fee tiers and standard V4 pools for each USDG→stock quote, selects the highest output for that exact amount, and the reward-pool EOA signs one complete claim package.
-- V3 and V4 quote coverage depends on actual pool liquidity. The current deployment has quotes for the Market Core and Platform Leaders assets, and V3 quotes for SMH and TSM. It has no direct CRTN/USDG quote on either venue (nor a CRTN/WETH V3/V4 hop), so Codex.io is the configured off-chain fallback for CRTN valuation. The fallback requires a positive market price and reported liquidity; a one-off swap is not treated as a durable price oracle.
+- V3 and V4 quote coverage depends on actual pool liquidity and can change over time. The operator checks the supported venues when a stake quote or claim is requested. It has no direct CRTN/USDG quote on either venue (nor a CRTN/WETH V3/V4 hop), so Codex.io is the configured off-chain fallback for CRTN valuation. The fallback requires a positive market price and reported liquidity; a one-off swap is not treated as a durable price oracle.
 - The user submits one atomic bundle claim. If any constituent is underfunded or lacks allowance, the transaction reverts as a whole and the accrued reward remains claimable. The principal can be withdrawn independently after maturity.
 
 The stock pool is an inventory source, not an independent yield source. Pool inventory shortages can delay claims. There is no admin-created schedule or manual reward amount: the contract computes the user's entitlement from the signed stake-time USDG valuation and fixed APR terms.
@@ -57,5 +57,9 @@ The frontend fetches the active staking address and bundle definitions from `/ap
 | 1 | Market Core | SPY 60%, QQQ 40% |
 | 2 | AI & Chips | SMH 40%, NVDA 25%, TSM 20%, AMD 15% |
 | 3 | Platform Leaders | AAPL, MSFT, AMZN, GOOGL, META 20% each |
+| 4 | Digital Asset Economy | COIN 30%, CRCL 25%, MSTR 25%, GLXY 20% |
+| 5 | Health & Everyday | LLY 30%, JNJ 20%, PFE 20%, COST 20%, UPS 10% |
 
 Weights determine the intended USDG value split at claim time; they do not specify fixed share counts.
+
+New bundle registration is append-only: the contract owner adds the name, token addresses, and weights (which must total 100%). Existing bundle mixes cannot be changed. Registration does not fund the reward pool; claims for the new bundles depend on the pool wallet holding enough of each constituent token and the operator being able to quote the payout.
