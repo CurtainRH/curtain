@@ -292,19 +292,19 @@ export default function Roadmap() {
                       <span className="eyebrow" style={{ fontSize: "0.7rem", color: "var(--gold)" }}>
                         {track.toUpperCase()} · {String(index + 1).padStart(2, "0")} · {milestone.focus.toUpperCase()}
                       </span>
-                      <span style={{ fontSize: "0.65rem", letterSpacing: "0.08em", textTransform: "uppercase", padding: "4px 8px", border: "1px solid var(--line)", background: "#101d2d50", color: "var(--muted)" }}>
+                      <span style={{ fontSize: "0.65rem", letterSpacing: "0.08em", textTransform: "uppercase", padding: "4px 8px", border: "1px solid var(--line)", background: "#18181850", color: "var(--muted)" }}>
                         Planned · not live
                       </span>
                     </div>
                     <h3>{milestone.title}</h3>
                     <p>{milestone.summary}</p>
-                    <div style={{ background: "#081323", border: "1px solid var(--line)", padding: "20px 24px", borderRadius: "2px", marginTop: "20px" }}>
+                    <div style={{ background: "#111111", border: "1px solid var(--line)", padding: "20px 24px", borderRadius: "2px", marginTop: "20px" }}>
                       <p style={{ margin: "0 0 14px", color: "var(--bright)", fontSize: "0.82rem", fontWeight: 500, letterSpacing: "0.05em" }}>
                         DIRECTIONAL SCOPE
                       </p>
                       <ul style={{ margin: 0, paddingLeft: "18px" }}>
                         {milestone.deliverables.map((item) => (
-                          <li key={item} style={{ marginBottom: "10px", color: "#c1ccdc" }}>{item}</li>
+                          <li key={item} style={{ marginBottom: "10px", color: "#cccccc" }}>{item}</li>
                         ))}
                       </ul>
                     </div>

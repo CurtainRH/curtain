@@ -13,13 +13,13 @@ const CurtainExperience = lazy(() => import("@/curtain/entry"));
  */
 export default function CurtainApp() {
   return (
-    <ClientOnly fallback={<div style={{ minHeight: "100vh", background: "#091323" }} />}>
-      <Suspense fallback={<div style={{ minHeight: "100vh", background: "#091323" }} />}>
+    <ClientOnly fallback={<div style={{ minHeight: "100vh", background: "#121212" }} />}>
+      <Suspense fallback={<div style={{ minHeight: "100vh", background: "#121212" }} />}>
         <WagmiProvider config={wagmiConfig}>
           <RainbowKitProvider
             theme={darkTheme({
-              accentColor: "#c5a059",
-              accentColorForeground: "#080c14",
+              accentColor: "#ff6a1a",
+              accentColorForeground: "#0b0b0b",
               borderRadius: "medium",
             })}
           >

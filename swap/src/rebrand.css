@@ -1,0 +1,9 @@
+html { color-scheme: dark; background: #050505; }
+body { margin: 0; }
+* { box-sizing: border-box; }
+.swap-page { background: radial-gradient(ellipse at 10% -10%, #ff6a1a26, transparent 55%), #050505; color: #f5f5f5; }
+.swap-card { background: #111; border-color: #ffffff24; box-shadow: 0 25px 90px #0009; }
+.swap-token-card, .swap-input, .swap-private-select { background: #090909; border-color: #ffffff24; }
+.swap-private-panel { background: #171717; border-color: #ffffff24; }
+.swap-primary { background: #ff6a1a; border-color: #ff6a1a; color: #080808; }
+.swap-primary:hover { background: #ff894a; }

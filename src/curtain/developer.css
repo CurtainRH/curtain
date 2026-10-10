@@ -7,7 +7,7 @@
   margin-bottom: 24px;
 }
 .developer-panel > p {
-  color: #9daabc;
+  color: #adadad;
   line-height: 1.7;
   margin-bottom: 20px;
 }
@@ -21,7 +21,7 @@
   gap: 16px;
   padding: 24px 0;
   margin: 24px 0;
-  border-block: 1px solid #c5a05940;
+  border-block: 1px solid #ff6a1a40;
 }
 .developer-facts div {
   display: grid;
@@ -30,12 +30,12 @@
 .developer-facts span,
 .developer-muted,
 .developer-key small {
-  color: #9daabc;
+  color: #adadad;
   font-size: 0.8rem;
 }
 .developer-facts code,
 .developer-key code {
-  color: #c5a059;
+  color: #ff6a1a;
   overflow-wrap: anywhere;
 }
 .developer-create {
@@ -56,8 +56,8 @@
   box-sizing: border-box;
   width: 100%;
   padding: 12px;
-  border: 1px solid #c5a05960;
-  background: #071321;
+  border: 1px solid #ff6a1a60;
+  background: #101010;
   color: #eef0f3;
 }
 .developer-key {
@@ -66,7 +66,7 @@
   justify-content: space-between;
   gap: 16px;
   padding: 20px 0;
-  border-bottom: 1px solid #c5a05930;
+  border-bottom: 1px solid #ff6a1a30;
 }
 .developer-key > div {
   display: grid;
@@ -82,15 +82,15 @@
   max-height: 85vh;
   overflow: auto;
   padding: 28px;
-  background: #0b192b;
+  background: #161616;
   color: #eef0f3;
-  border: 1px solid #c5a05970;
+  border: 1px solid #ff6a1a70;
 }
 .developer-dialog::backdrop {
-  background: #020812db;
+  background: #080808db;
 }
 .developer-dialog p {
-  color: #9daabc;
+  color: #adadad;
   line-height: 1.65;
   overflow-wrap: anywhere;
 }

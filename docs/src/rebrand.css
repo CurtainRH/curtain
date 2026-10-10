@@ -1,0 +1,8 @@
+:root { background: #050505; color: #f5f5f5; --gold: #ff6a1a; --muted: #aaa; }
+body { background: radial-gradient(ellipse at 90% 0%, #ff6a1a16, transparent 30rem), #050505; }
+header { background: #080808ed; border-bottom-color: #ffffff24; }
+.brand { display: inline-flex; gap: 12px; align-items: center; color: #fff; }
+.brand > span:last-child { margin-left: 0; }
+.base-url, .code { background: #111; border-color: #ffffff24; }
+code { color: #ffb38a; }
+@media (max-width: 520px) { .brand { gap: 8px; font-size: 22px; } .brand > span:last-child { display: none; } }

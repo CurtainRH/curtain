@@ -101,7 +101,7 @@ export default function Whitepaper() {
               The heart of the Curtain protocol is the <code>CurtainVault</code> contract. The life
               cycle of a private transaction begins with client intent generation:
             </p>
-            <div className="status-card" style={{ background: "#0a1626", border: "1px solid var(--line)", padding: "20px", margin: "20px 0" }}>
+            <div className="status-card" style={{ background: "#131313", border: "1px solid var(--line)", padding: "20px", margin: "20px 0" }}>
               <p style={{ margin: "0 0 10px", color: "var(--gold)", fontWeight: 500 }}>Intent Generation Flow:</p>
               <p style={{ margin: "5px 0", fontSize: "0.82rem", fontFamily: "monospace" }}>
                 1. User selects: TokenIn (X), Amount, TokenOut (Y), Recipient, and Delay Window.<br />
@@ -113,7 +113,7 @@ export default function Whitepaper() {
             <p>
               The user broadcasts a simple on-chain deposit transaction:
             </p>
-            <pre style={{ background: "#060f1b", border: "1px solid var(--line)", padding: "16px", borderRadius: "4px", overflowX: "auto", fontSize: "0.8rem", color: "#e3caa5" }}>
+            <pre style={{ background: "#0d0d0d", border: "1px solid var(--line)", padding: "16px", borderRadius: "4px", overflowX: "auto", fontSize: "0.8rem", color: "#ffb38a" }}>
               <code>{`// Contract interface
 function deposit(
     address token,
@@ -141,7 +141,7 @@ function deposit(
               amounts unlinkable: public deposit amounts, payout amounts, and batch totals can
               permit statistical correlation in low-volume batches.
             </p>
-            <p style={{ fontFamily: "monospace", color: "var(--gold)", fontSize: "0.85rem", background: "#0b1728", padding: "12px", border: "1px solid var(--line)" }}>
+            <p style={{ fontFamily: "monospace", color: "var(--gold)", fontSize: "0.85rem", background: "#141414", padding: "12px", border: "1px solid var(--line)" }}>
               payoutTag = keccak256(abi.encode(depositId, secret))
             </p>
             <p>

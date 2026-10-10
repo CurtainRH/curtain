@@ -1,0 +1,17 @@
+:root { color-scheme: dark; background: #050505; color: #f5f5f5; }
+body { background: radial-gradient(ellipse at 10% -20%, #ff6a1a26, transparent 55%), #050505; }
+.brand { color: #fff; }
+.intro h1 em { color: #ff6a1a; }
+.accept, .composer button { background: #ff6a1a; color: #080808; }
+.proposal { background: linear-gradient(145deg, #1b1b1b, #101010); border-color: #ff6a1a45; }
+.artifacts-panel { background: #101010; }
+.artifact-download { background: #ff6a1a16; border-color: #ff6a1a50; color: #ffb38a; }
+@media (max-width: 520px) {
+  .brand { font-size: 16px; gap: 8px; }
+  .brand > span:last-child { white-space: nowrap; }
+  .brand small { font-size: 8px; margin-left: 3px; }
+  .header-right { gap: 6px; }
+  .wallet { font-size: 12px; padding: 9px 10px; white-space: nowrap; }
+  .artifacts-button { gap: 5px; padding: 8px; font-size: 11px; }
+}
+@media (max-width: 360px) { .brand small { display: none; } }

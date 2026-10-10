@@ -76,12 +76,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { name: "theme-color", content: "#091323" },
+      { name: "theme-color", content: "#121212" },
       { name: "author", content: "Curtain" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
-    links: [{ rel: "icon", href: "/favicon.png", type: "image/png" }],
+    links: [
+      { rel: "icon", href: "/curtain-brand.png", type: "image/png" },
+      { rel: "stylesheet", href: "/curtain-brand.css" },
+    ],
   }),
   shellComponent: RootShell,
   component: RootComponent,

@@ -13,6 +13,7 @@ import { POOL_V2_CLIENT_ENABLED } from "./curtain/routes";
 import { pendingPoolV4Notes, poolV4Quote, poolV4Swap, PoolV4FallbackError, recoverPoolV4Note, type PendingPoolV4Note } from "./curtain/poolV4";
 import "@rainbow-me/rainbowkit/styles.css";
 import "./swap.css";
+import "./rebrand.css";
 
 const queryClient = new QueryClient();
 
@@ -345,7 +346,7 @@ function SwapExperience() {
     <main className="swap-page">
       <header className="swap-header">
         <a className="swap-brand" href="https://curtainrh.com" aria-label="Curtain home">
-          <img src="/curtain-logo-exact.png" alt="" className="swap-curtain-logo" />
+          <span className="brand-emblem"><img src="/curtain-brand.png" alt="" /></span>
           <span>Curtain</span>
         </a>
         <a className="swap-header-link" href="https://curtainrh.com/app"><Home size={14} /> main</a>
@@ -519,5 +520,5 @@ function TokenPickerModal({ title, options, selected, close, choose }: { title: 
 }
 
 export default function SwapApp() {
-  return <QueryClientProvider client={queryClient}><WagmiProvider config={wagmiConfig}><RainbowKitProvider theme={darkTheme({ accentColor: "#c5a059", accentColorForeground: "#080c14", borderRadius: "medium" })}><SwapExperience /></RainbowKitProvider></WagmiProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><WagmiProvider config={wagmiConfig}><RainbowKitProvider theme={darkTheme({ accentColor: "#ff6a1a", accentColorForeground: "#0b0b0b", borderRadius: "medium" })}><SwapExperience /></RainbowKitProvider></WagmiProvider></QueryClientProvider>;
 }

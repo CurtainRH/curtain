@@ -59,9 +59,9 @@ export const useNav = () => useContext(NavContext);
 export function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <span className={`brand ${compact ? "compact" : ""}`}>
-      <span className="brand-mark">
+      <span className="brand-mark brand-emblem">
         <img
-          src="/curtain-logo-exact.png"
+          src="/curtain-brand.png"
           width="448"
           height="571"
           alt={compact ? "Curtain" : ""}

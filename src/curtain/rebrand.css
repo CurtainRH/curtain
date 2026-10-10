@@ -1,0 +1,13 @@
+/* Identity accents shared by the landing experience and dashboard. */
+:root { color-scheme: dark; --gold: #ff6a1a; --bright: #ffb38a; --navy: #050505; --surface: #111; --surface2: #1b1b1b; --ink: #f5f5f5; --muted: #aaa; --line: #ffffff24; }
+.brand-name { color: #fff; }
+.button.gold { color: #080808; background: #ff6a1a; border-color: #ff6a1a; box-shadow: 0 5px 35px #ff6a1a18; }
+.button.gold:hover { background: #ff894a; border-color: #ff894a; box-shadow: 0 8px 40px #ff6a1a30; }
+.hero-scenery { background-image: radial-gradient(ellipse at 0% 40%, #ff6a1a85, transparent 45%), repeating-conic-gradient(from 35deg at -12% 40%, #ffffff12 0deg .12deg, transparent .18deg 3deg), linear-gradient(125deg, #343434, #050505 65%); }
+.hero-vignette { background: linear-gradient(180deg, #0005, transparent 35%, #050505); }
+.hero h1 { text-shadow: 0 6px 40px #0009; }
+.hero-description { color: #ddd; }
+.header { background: linear-gradient(#050505ed, #05050580); border-bottom-color: #ffffff20; }
+.entrance-left, .entrance-right, .route-curtain .curtain-left, .route-curtain .curtain-right { background-image: repeating-linear-gradient(90deg, #080808, #202020 8%, #080808 16%); background-color: #080808; }
+.final-invitation { background: radial-gradient(ellipse at 50% 120%, #ff6a1a30, transparent 65%), #080808; }
+.story-image, .cinema-image, .velvet-card-art { filter: grayscale(1); }

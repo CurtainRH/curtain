@@ -1,0 +1,36 @@
+/* Curtain identity: black, white and orange. Distributed with each standalone app. */
+:root {
+  --curtain-black: #050505;
+  --curtain-surface: #111111;
+  --curtain-white: #f5f5f5;
+  --curtain-orange: #ff6a1a;
+  --curtain-orange-light: #ffb38a;
+}
+
+/* Frame the supplied artwork without modifying the original PNG. */
+.brand-emblem.brand-emblem {
+  position: relative;
+  display: inline-block;
+  width: 28px;
+  height: 36px;
+  overflow: hidden;
+  flex: none;
+  vertical-align: middle;
+  margin: 0;
+  mix-blend-mode: screen;
+}
+.brand-emblem.brand-emblem > img {
+  position: absolute;
+  display: block;
+  width: 244%;
+  max-width: none;
+  height: auto;
+  left: -72%;
+  top: -42%;
+  filter: invert(1);
+  mix-blend-mode: screen;
+}
+.avatar .brand-emblem { width: 20px; height: 26px; }
+.avatar .brand-emblem { mix-blend-mode: multiply; }
+.assistant .avatar { background: #fff; }
+.avatar .brand-emblem > img { filter: none; mix-blend-mode: multiply; }
