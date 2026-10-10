@@ -135,14 +135,15 @@ Alert yourself on any 503.
 - Render's paid Postgres plans include daily backups. Upgrade the plan as volume grows.
 - The database holds the depositor→recipient mapping and the payout secrets used to challenge double refunds. Don't share access to it.
 
-## 5. Staking (after $CRTN launches)
+## 5. Staking contracts
 
-From the admin wallet:
-1. `CurtainStaking.setTokens(CRTN, CRTN)`
-2. `CRTN.approve(staking, amount)`
-3. `CurtainStaking.notifyRewardAmount(amount, durationSeconds)`
+The original `CurtainStaking` contract is the legacy single-reward-token implementation. The stock-bundle staking contract is separate:
 
-Repeat step 3 for each reward period.
+- `CurtainStockStaking`: `0xf97DE94DA75923e31c5a8cdf8C048E611aDe3892`
+- CRTN principal token: `0x66a844fcbf4705dbde3c97394d5a4c9822e8f35b`
+- The staking contract address is also the stock-reward treasury; there is no owner withdrawal/rescue function.
+
+Anyone can fund a bundle constituent by approving the staking contract and calling `fundReward(bundleId, token, amount, duration)`. Funding is per stock token; a plain transfer to the contract does not create an emission. Bundle definitions are immutable and new bundles/assets are append-only. See [`CRTN_STOCK_BUNDLE_STAKING.md`](CRTN_STOCK_BUNDLE_STAKING.md) for the deployed bundle IDs and funding details.
 
 ## Day-to-day
 
