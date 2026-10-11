@@ -45,6 +45,7 @@ import { createMcpApi } from "./mcp";
 import { Operator, type StealthConfig } from "./operator";
 import { mockQuoter, mockRoute, uniswapQuoter, uniswapRoute } from "./routes";
 import { createCodexUsdgPricer } from "./codexPricing";
+import { estimateStockRewardUsd, splitBundleRewardUsd } from "./stockStaking";
 import { PoolV2RootPublisher } from "./poolV2";
 
 const STOCK_STAKING_ABI = parseAbi([
@@ -174,6 +175,20 @@ if (stockStakingAddressRaw) {
         priceSource = "codex.io";
       }
       if (principalUsd <= 0n) throw new Error("The CRTN price quote is too small to value this stake.");
+      const [, rewardTokens, rewardWeights] = await getBundle(bundleId);
+      const rewardUsd = estimateStockRewardUsd(principalUsd, tierId);
+      const allocations = splitBundleRewardUsd(rewardUsd, rewardWeights.map(Number));
+      const rewardQuotes = await Promise.all(rewardTokens.map((token, index) =>
+        quoteBest(usdg, getAddress(token), allocations[index]!).catch(() => ({ amountOut: 0n })),
+      ));
+      const rewardPreview = {
+        estimatedRewardUsd: rewardUsd,
+        assets: rewardTokens.map((token, index) => ({
+          address: getAddress(token),
+          weightBps: Number(rewardWeights[index]),
+          amountOut: rewardQuotes[index]!.amountOut > 0n ? rewardQuotes[index]!.amountOut : null,
+        })),
+      };
       const nonce = await publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "stakeQuoteNonces", args: [account] });
       const deadline = Math.floor(Date.now() / 1000) + 300;
       const signature = await walletClient.signTypedData({
@@ -184,7 +199,7 @@ if (stockStakingAddressRaw) {
           { name: "bundleId", type: "uint256" }, { name: "principalUsd", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" },
         ] }, primaryType: "StakeQuote", message: { account, amount, tierId, bundleId, principalUsd, nonce, deadline: BigInt(deadline) },
       });
-      return { principalUsd, priceSource, deadline, signature };
+      return { principalUsd, priceSource, rewardPreview, deadline, signature };
     },
     createClaim: async ({ positionId, account }) => {
       const [positionOwner, , , , , unlockAt, bundleId] = await publicClient.readContract({

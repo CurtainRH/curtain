@@ -15,12 +15,27 @@ const ABI = parseAbi([
 ]);
 type Bundle = { id: number; name: string; assets: { address: Address; symbol: string; weightBps: number }[] };
 type Position = { id: bigint; amount: bigint; principalUsd: bigint; rewardUsd: bigint; unlockAt: bigint; bundleId: bigint; withdrawn: boolean };
-type StakeQuote = { account: string; amount: string; tierId: number; bundleId: number; principalUsd: string; priceSource: "uniswap-v3-v4" | "codex.io"; deadline: number; signature: `0x${string}` };
+type StakeQuote = {
+  account: string;
+  amount: string;
+  tierId: number;
+  bundleId: number;
+  principalUsd: string;
+  priceSource: "uniswap-v3-v4" | "codex.io";
+  rewardPreview?: { estimatedRewardUsd: string; assets: { address: Address; weightBps: number; amountOut: string | null }[] };
+  deadline: number;
+  signature: `0x${string}`;
+};
 const tierOptions = [{ days: 30, multiplier: "1×" }, { days: 90, multiplier: "1.5×" }, { days: 180, multiplier: "2×" }];
 const timeLeft = (unlockAt: bigint) => {
   const seconds = Number(unlockAt) - Math.floor(Date.now() / 1000);
   if (seconds <= 0) return "Unlocked";
   return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h remaining`;
+};
+const formatTokenEstimate = (raw: string) => {
+  const [whole = "0", fraction = ""] = formatUnits(BigInt(raw), 18).split(".");
+  const rounded = fraction.slice(0, 6).replace(/0+$/, "");
+  return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${rounded ? `.${rounded}` : ""}`;
 };
 
 export default function StockStaking() {
@@ -92,9 +107,9 @@ export default function StockStaking() {
     const value = parseUnits(amount, 18);
     if (value <= 0n || balance === undefined || value > balance) throw new Error("Enter an amount within your available CRTN balance.");
     const response = await fetch("/api/curtain/staking/stake-quote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ account: wallet, amount: value.toString(), tierId: tier, bundleId: String(bundleId) }) });
-    const quote = await response.json() as { principalUsd?: string; priceSource?: StakeQuote["priceSource"]; deadline?: number; signature?: `0x${string}`; error?: string };
+    const quote = await response.json() as { principalUsd?: string; priceSource?: StakeQuote["priceSource"]; rewardPreview?: StakeQuote["rewardPreview"]; deadline?: number; signature?: `0x${string}`; error?: string };
     if (!response.ok || !quote.principalUsd || !quote.deadline || !quote.signature || !quote.priceSource) throw new Error(quote.error || "A current CRTN/USDG quote is unavailable.");
-    setStakeQuote({ account: wallet!, amount, tierId: tier, bundleId, principalUsd: quote.principalUsd, priceSource: quote.priceSource, deadline: quote.deadline, signature: quote.signature });
+    setStakeQuote({ account: wallet!, amount, tierId: tier, bundleId, principalUsd: quote.principalUsd, priceSource: quote.priceSource, rewardPreview: quote.rewardPreview, deadline: quote.deadline, signature: quote.signature });
   }, "Stake quote ready. Review the valuation source before approving and staking.");
   const confirmStake = () => void transact(async () => {
     if (!quoteMatchesSelection || !stakeQuote || stakeQuote.deadline <= Math.floor(Date.now() / 1000)) throw new Error("This quote has expired or no longer matches your selection. Request a new quote.");
@@ -122,6 +137,15 @@ export default function StockStaking() {
         {quoteMatchesSelection && stakeQuote && <div className="stock-staking-notice" role="status">
           <strong>Stake valuation: {formatUnits(BigInt(stakeQuote.principalUsd), 6)} USDG</strong>
           <p>Price source: {stakeQuote.priceSource === "codex.io" ? "Codex.io market data (USD price treated as USDG equivalent)" : "Uniswap V3/V4 live quote"}. Review this valuation before continuing.</p>
+          {stakeQuote.rewardPreview && <div className="stock-reward-preview">
+            <h3>Estimated reward at maturity</h3>
+            <p><strong>{formatUnits(BigInt(stakeQuote.rewardPreview.estimatedRewardUsd), 6)} USDG</strong> · based on the selected lock</p>
+            <ul>{stakeQuote.rewardPreview.assets.map((asset, index) => <li key={asset.address}>
+              <span>{selectedBundle?.assets.find(item => item.address.toLowerCase() === asset.address.toLowerCase())?.symbol ?? asset.address} · {asset.weightBps / 100}%</span>
+              <strong>{asset.amountOut === null ? "Quote unavailable" : `${formatTokenEstimate(asset.amountOut)} estimated`}</strong>
+            </li>)}</ul>
+            <small>Illustrative token amounts use current best Uniswap V3/V4 quotes. Actual quantities are quoted at claim time and may differ; claims also depend on reward-pool inventory.</small>
+          </div>}
         </div>}
         <button className="button gold" disabled={busy || !wallet || configured !== true || !amount || !selectedBundle} onClick={quoteMatchesSelection ? confirmStake : requestStakeQuote}>
           {busy ? "Processing…" : !wallet ? "Connect wallet to stake" : quoteMatchesSelection ? "Approve & stake CRTN" : "Get stake quote"}
@@ -129,7 +153,7 @@ export default function StockStaking() {
         {!wallet && <button className="text-button" onClick={connect}>Connect wallet</button>}
         <p className="field-help">The base rate is 4% APR. The 30-, 90-, and 180-day locks use 1×, 1.5×, and 2× multipliers. Your CRTN is valued in USDG when you stake; rewards stop at the end of the selected lock.</p>
       </section>
-      <section className="panel stock-staking-card stock-overview"><p className="eyebrow">STOCK BUNDLES</p><h2><Coins size={20} /> Choose a mix</h2><div className="stock-total"><span>Total CRTN staked</span><strong>{formatUnits(totalStaked, 18)}</strong></div>{bundles.map(bundle => <article className="stock-bundle-row" key={bundle.id}><strong>{bundle.name}</strong><span>{bundle.assets.map(asset => `${asset.symbol} ${asset.weightBps / 100}%`).join(" · ")}</span></article>)}<p className="field-help">At maturity, the USDG value of your reward is split across the bundle and paid in its stock tokens. Token quantities use current Uniswap V4 quotes.</p></section>
+      <section className="panel stock-staking-card stock-overview"><p className="eyebrow">STOCK BUNDLES</p><h2><Coins size={20} /> Choose a mix</h2><div className="stock-total"><span>Total CRTN staked</span><strong>{formatUnits(totalStaked, 18)}</strong></div>{bundles.map(bundle => <article className="stock-bundle-row" key={bundle.id}><strong>{bundle.name}</strong><span>{bundle.assets.map(asset => `${asset.symbol} ${asset.weightBps / 100}%`).join(" · ")}</span></article>)}<p className="field-help">At maturity, the USDG value of your reward is split across the bundle and paid in its stock tokens. Quotes check Uniswap V3 and V4; final token amounts use quotes available when you claim.</p></section>
     </div>
     <section className="stock-positions"><div className="panel-heading"><h2>Your positions</h2><span>{positions.length} total</span></div>
       {!wallet ? <div className="panel empty-compact">Connect your wallet to view positions.</div> : positions.length === 0 ? <div className="panel empty-compact">No staking positions found for this wallet.</div> : positions.map(position => {

@@ -901,6 +901,42 @@
   color: #345d42;
   background: #edf8ef;
 }
+.stock-reward-preview {
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+.stock-reward-preview h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+.stock-reward-preview p {
+  margin: 0 0 10px;
+}
+.stock-reward-preview ul {
+  display: grid;
+  gap: 7px;
+  padding: 0;
+  margin: 0 0 10px;
+  list-style: none;
+}
+.stock-reward-preview li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.88rem;
+}
+.stock-reward-preview li span,
+.stock-reward-preview small {
+  color: var(--muted);
+}
+.stock-reward-preview li strong {
+  text-align: right;
+}
+.stock-reward-preview small {
+  display: block;
+  line-height: 1.5;
+}
 .stock-positions {
   margin-top: 24px;
 }
