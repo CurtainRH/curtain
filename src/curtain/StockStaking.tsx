@@ -109,7 +109,7 @@ export default function StockStaking() {
     const response = await fetch("/api/curtain/staking/stake-quote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ account: wallet, amount: value.toString(), tierId: tier, bundleId: String(bundleId) }) });
     const quote = await response.json() as { principalUsd?: string; priceSource?: StakeQuote["priceSource"]; rewardPreview?: StakeQuote["rewardPreview"]; deadline?: number; signature?: `0x${string}`; error?: string };
     if (!response.ok || !quote.principalUsd || !quote.deadline || !quote.signature || !quote.priceSource) throw new Error(quote.error || "A current CRTN/USDG quote is unavailable.");
-    setStakeQuote({ account: wallet!, amount, tierId: tier, bundleId, principalUsd: quote.principalUsd, priceSource: quote.priceSource, rewardPreview: quote.rewardPreview, deadline: quote.deadline, signature: quote.signature });
+    setStakeQuote({ account: wallet!, amount, tierId: tier, bundleId, principalUsd: quote.principalUsd, priceSource: quote.priceSource, ...(quote.rewardPreview ? { rewardPreview: quote.rewardPreview } : {}), deadline: quote.deadline, signature: quote.signature });
   }, "Stake quote ready. Review the valuation source before approving and staking.");
   const confirmStake = () => void transact(async () => {
     if (!quoteMatchesSelection || !stakeQuote || stakeQuote.deadline <= Math.floor(Date.now() / 1000)) throw new Error("This quote has expired or no longer matches your selection. Request a new quote.");

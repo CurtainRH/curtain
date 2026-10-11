@@ -52,6 +52,7 @@ import StealthReceive from "./StealthReceive";
 import TicketSync from "./TicketSync";
 import Developer from "./Developer";
 import StockStaking from "./StockStaking";
+import PortfolioSnapshot from "./PortfolioSnapshot";
 import { useWorkspaceTools } from "./useWorkspaceTools";
 import {
   address,
@@ -189,6 +190,11 @@ export default function Dashboard({ path }: { path: string }) {
     (n) => n.id !== "receive" || features.stealthKeys || features.stealthInbox,
   );
   const current = navItems.find((n) => n.id === (path.split("/")[2] || "overview")) || navItems[0]!;
+  const openSwapCount = app.pending.length + app.tickets.filter((row) => {
+    const status = app.statuses[row.intentId]?.status || "";
+    const depositStatus = app.deposits[row.intentId]?.status || 0;
+    return !["paid", "refunded", "challenged"].includes(status) && ![3, 4].includes(depositStatus);
+  }).length;
 
   function switchCurtain(nextMode: CurtainMode) {
     if (nextMode === mode || busy) return;
@@ -1524,6 +1530,7 @@ export default function Dashboard({ path }: { path: string }) {
             )}
             {current.id === "overview" && (
               <>
+                <PortfolioSnapshot openSwaps={openSwapCount} />
                 <div className="overview-grid">
                   <section className="panel">
                     <div className="panel-heading">

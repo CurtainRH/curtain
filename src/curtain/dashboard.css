@@ -439,6 +439,75 @@
   grid-template-columns: 1.7fr 1fr;
   gap: 24px;
 }
+.portfolio-snapshot {
+  margin: 0 0 28px;
+  padding: 24px 28px;
+  max-width: 1070px;
+}
+.portfolio-snapshot-heading,
+.portfolio-snapshot-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.portfolio-snapshot-heading h2 {
+  margin: 3px 0 0;
+  font-family: var(--serif);
+  font-size: 1.45rem;
+  font-weight: 500;
+}
+.portfolio-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 22px 0;
+}
+.portfolio-metrics > div {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft, #fffaf6);
+}
+.portfolio-metrics span,
+.portfolio-snapshot-footer > span:first-child {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.portfolio-metrics strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--ink);
+  font-size: clamp(0.95rem, 1.6vw, 1.2rem);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.portfolio-snapshot-footer > span:first-child strong {
+  margin-left: 6px;
+  color: var(--ink);
+}
+.portfolio-snapshot-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.portfolio-snapshot-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink);
+  font-size: 0.75rem;
+}
+.portfolio-snapshot-links a:hover { color: var(--gold); }
+.portfolio-snapshot-note,
+.portfolio-snapshot-empty {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.portfolio-refreshing { animation: portfolio-spin 0.8s linear infinite; }
+@keyframes portfolio-spin { to { transform: rotate(360deg); } }
 .panel {
   background: linear-gradient(135deg, #1c1c1ca8, #161616);
   border: 1px solid var(--line);
@@ -2211,6 +2280,7 @@
   .workspace-grid {
     grid-template-columns: 1fr;
   }
+  .portfolio-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .next-act h2 br {
     display: none;
   }
@@ -2284,6 +2354,9 @@
     height: 70px;
     padding: 0 22px;
   }
+  .portfolio-snapshot { padding: 20px; }
+  .portfolio-snapshot-footer { align-items: flex-start; flex-direction: column; }
+  .portfolio-snapshot-footer > span:first-child strong { display: block; margin: 5px 0 0; }
   .sidebar {
     display: none;
     position: fixed;

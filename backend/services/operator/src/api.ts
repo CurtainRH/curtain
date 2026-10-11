@@ -48,6 +48,12 @@ export interface ApiConfig {
     address: Address;
     rewardPoolWallet: Address;
     config: () => Promise<{ bundles: unknown[] }>;
+    summary: (args: { account: Address }) => Promise<{
+      staked: bigint;
+      rewardUsd: bigint;
+      positions: number;
+      nextUnlock: number | null;
+    }>;
     quoteStake: (args: { account: Address; amount: bigint; tierId: number; bundleId: bigint }) => Promise<{
       principalUsd: bigint;
       priceSource: "uniswap-v3-v4" | "codex.io";
@@ -119,6 +125,16 @@ export function createApi(cfg: ApiConfig): (req: Request) => Promise<Response> {
         if (!staking) return json({ error: "Stock-bundle staking is not configured" }, 503);
         if (req.method === "GET" && pathname === "/staking/config") {
           return json({ enabled: true, chainId: cfg.chainId ?? 4663, staking: staking.address, baseAprBps: 400, tiers: [{ id: 0, days: 30, multiplierBps: 10_000 }, { id: 1, days: 90, multiplierBps: 15_000 }, { id: 2, days: 180, multiplierBps: 20_000 }], ...await staking.config() });
+        }
+        if (req.method === "GET" && pathname === "/staking/summary") {
+          if (!checkRate(`staking-summary:${clientIp}`, 60)) return json({ error: "Too many summary requests. Please wait a moment." }, 429);
+          const account = url.searchParams.get("account");
+          if (!account || !isAddress(account)) return json({ error: "A valid account is required" }, 400);
+          try {
+            return json(await staking.summary({ account: getAddress(account) }));
+          } catch {
+            return json({ error: "Unable to load staking summary" }, 503);
+          }
         }
         if (req.method === "POST" && pathname === "/staking/stake-quote") {
           if (!checkRate(`staking-quote:${clientIp}`, 30)) return json({ error: "Too many quote requests. Please wait a moment." }, 429);

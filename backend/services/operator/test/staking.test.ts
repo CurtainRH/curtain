@@ -19,6 +19,7 @@ async function makeApi(staking = true) {
     ...(staking ? { stockStaking: {
       address: STAKING, rewardPoolWallet: POOL,
       config: async () => ({ bundles: [{ id: 1, name: "Market Core" }] }),
+      summary: async () => ({ staked: 5_000_000_000_000_000_000n, rewardUsd: 125_000n, positions: 2, nextUnlock: 1_900_000_000 }),
       quoteStake: async () => ({ principalUsd: 1_000_000n, priceSource: "codex.io", rewardPreview: { estimatedRewardUsd: 14_794n, assets: [{ address: TOKENS[0]!, weightBps: 6_000, amountOut: 8n }, { address: TOKENS[1]!, weightBps: 4_000, amountOut: 9n }] }, deadline: 1_800_000_000, signature: "0xabcd" as Hex }),
       createClaim: async () => ({ rewardUsd: 123n, tokens: TOKENS, amounts: [10n, 20n], deadline: 1_800_000_000, signature: "0xbeef" as Hex }),
     } } : {}),
@@ -39,6 +40,19 @@ describe("stock staking API", () => {
     const response = await api(new Request("http://operator/staking/stake-quote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ account: ALICE, amount: "1000000000000000000", tierId: 1, bundleId: "1" }) }));
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ staking: STAKING, account: ALICE, amount: "1000000000000000000", tierId: 1, bundleId: "1", principalUsd: "1000000", priceSource: "codex.io", rewardPreview: { estimatedRewardUsd: "14794", assets: [{ address: TOKENS[0], weightBps: 6000, amountOut: "8" }, { address: TOKENS[1], weightBps: 4000, amountOut: "9" }] }, signature: "0xabcd" });
+  });
+
+  test("returns a wallet-scoped portfolio summary", async () => {
+    const { api } = await makeApi();
+    const response = await api(new Request(`http://operator/staking/summary?account=${ALICE}`));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ staked: "5000000000000000000", rewardUsd: "125000", positions: 2, nextUnlock: 1_900_000_000 });
+  });
+
+  test("rejects an invalid wallet for the portfolio summary", async () => {
+    const { api } = await makeApi();
+    const response = await api(new Request("http://operator/staking/summary?account=not-an-address"));
+    expect(response.status).toBe(400);
   });
 
   test("returns a single signed all-bundle claim package", async () => {

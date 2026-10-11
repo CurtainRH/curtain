@@ -49,6 +49,7 @@ import { estimateStockRewardUsd, splitBundleRewardUsd } from "./stockStaking";
 import { PoolV2RootPublisher } from "./poolV2";
 
 const STOCK_STAKING_ABI = parseAbi([
+  "event Staked(uint256 indexed positionId,address indexed owner,uint256 indexed bundleId,uint256 amount,uint8 tierId,uint64 unlockAt,uint256 principalUsd)",
   "function rewardPoolWallet() view returns (address)",
   "function bundleCount() view returns (uint256)",
   "function getBundle(uint256) view returns (string name,address[] assets,uint16[] weightsBps)",
@@ -165,6 +166,30 @@ if (stockStakingAddressRaw) {
     address: stakingAddress,
     rewardPoolWallet: rewardPoolAccount.address,
     config: bundleConfig,
+    summary: async ({ account }) => {
+      const logs = await publicClient.getContractEvents({
+        address: stakingAddress,
+        abi: STOCK_STAKING_ABI,
+        eventName: "Staked",
+        args: { owner: account },
+        fromBlock: BigInt(stakingStartBlock),
+      });
+      const ids = [...new Set(logs.map(log => log.args.positionId).filter((id): id is bigint => id !== undefined))];
+      const positions = await Promise.all(ids.map(async id => {
+        const [position, earnedUsd] = await Promise.all([
+          publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "positions", args: [id] }),
+          publicClient.readContract({ address: stakingAddress, abi: STOCK_STAKING_ABI, functionName: "earnedUsd", args: [id] }),
+        ]);
+        return { amount: BigInt(position[1]), unlockAt: Number(position[5]), withdrawn: position[8], earnedUsd };
+      }));
+      const active = positions.filter(position => !position.withdrawn);
+      return {
+        staked: active.reduce((sum, position) => sum + position.amount, 0n),
+        rewardUsd: positions.reduce((sum, position) => sum + position.earnedUsd, 0n),
+        positions: active.length,
+        nextUnlock: active.length ? Math.min(...active.map(position => position.unlockAt)) : null,
+      };
+    },
     quoteStake: async ({ account, amount, tierId, bundleId }) => {
       const quote = await quoteBest(crtn, usdg, amount);
       let principalUsd = quote.amountOut;
