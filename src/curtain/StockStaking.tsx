@@ -105,7 +105,7 @@ export default function StockStaking() {
   const quoteMatchesSelection = stakeQuote?.account.toLowerCase() === wallet?.toLowerCase() && stakeQuote?.amount === amount && stakeQuote.tierId === tier && stakeQuote.bundleId === bundleId;
   const requestStakeQuote = () => void transact(async () => {
     const value = parseUnits(amount, 18);
-    if (value <= 0n || balance === undefined || value > balance) throw new Error("Enter an amount within your available CRTN balance.");
+    if (value <= 0n) throw new Error("Enter a positive CRTN amount to preview.");
     const response = await fetch("/api/curtain/staking/stake-quote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ account: wallet, amount: value.toString(), tierId: tier, bundleId: String(bundleId) }) });
     const quote = await response.json() as { principalUsd?: string; priceSource?: StakeQuote["priceSource"]; rewardPreview?: StakeQuote["rewardPreview"]; deadline?: number; signature?: `0x${string}`; error?: string };
     if (!response.ok || !quote.principalUsd || !quote.deadline || !quote.signature || !quote.priceSource) throw new Error(quote.error || "A current CRTN/USDG quote is unavailable.");
